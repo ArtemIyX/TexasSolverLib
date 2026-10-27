@@ -145,7 +145,7 @@ string(FIND "${trainer_text}" "const auto plan = make_export_plan(" plan_positio
 string(FIND "${trainer_text}" "const auto before_export = working_set_monitor_.export_process_observer" process_snapshot_position)
 string(FIND "${trainer_text}" "evaluate_multiway_export_process_gate(" process_gate_position)
 string(FIND "${trainer_text}" "evaluate_multiway_export_system_gate(" system_gate_position)
-string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan)" writer_position)
+string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan" writer_position)
 string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintShardedStreamWriter>(" sharded_writer_position)
 if(lease_position EQUAL -1 OR plan_position EQUAL -1 OR process_snapshot_position EQUAL -1 OR
    process_gate_position EQUAL -1 OR system_gate_position EQUAL -1 OR writer_position EQUAL -1 OR sharded_writer_position EQUAL -1 OR
@@ -185,4 +185,24 @@ if(checkpoint_directory_guard_position EQUAL -1 OR checkpoint_directory_create_p
    writer_position EQUAL -1 OR checkpoint_directory_guard_position GREATER checkpoint_directory_create_position OR
    checkpoint_directory_create_position GREATER writer_position)
     message(FATAL_ERROR "bucket workflow must create checkpoint directory before writer setup")
+endif()
+
+string(FIND "${source_text}" "--external-storage-snapshot-dir <dir>" snapshot_option_position)
+string(FIND "${source_text}" "batches != 0U" snapshot_batch_guard_position)
+string(FIND "${source_text}" "workflow.identity_storage_directory = workflow.storage_directory" snapshot_identity_position)
+string(FIND "${source_text}" "config.limits.external_storage.identity_directory = workflow.identity_storage_directory" snapshot_model_identity_position)
+string(FIND "${source_text}" "restore_multiway_external_checkpoint(" snapshot_restore_position)
+foreach(snapshot_journal "CHECKPOINT_TRAINING_ROLLBACK.tmp" "CATALOG_CURRENT.previous"
+        "ROWS_CURRENT.previous" "PAGES_CURRENT.previous" "CURRENT.restore.tmp"
+        "CHECKPOINT_ROLLBACK.tmp" ".PIN.tmp")
+    string(FIND "${source_text}" "${snapshot_journal}" snapshot_journal_position)
+    if(snapshot_journal_position EQUAL -1)
+        message(FATAL_ERROR "checkpoint-only storage snapshots must reject pending transaction state: ${snapshot_journal}")
+    endif()
+endforeach()
+if(snapshot_option_position EQUAL -1 OR snapshot_batch_guard_position EQUAL -1 OR
+   snapshot_identity_position EQUAL -1 OR snapshot_model_identity_position EQUAL -1 OR
+   snapshot_restore_position EQUAL -1 OR snapshot_identity_position GREATER snapshot_restore_position OR
+   snapshot_model_identity_position GREATER snapshot_restore_position)
+    message(FATAL_ERROR "checkpoint-only storage snapshots must preserve identity and redirect restore storage")
 endif()

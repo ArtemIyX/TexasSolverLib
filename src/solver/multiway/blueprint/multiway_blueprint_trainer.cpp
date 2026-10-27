@@ -46,6 +46,72 @@ namespace texas::solver::multiway
 			std::chrono::steady_clock::time_point started_at_;
 		};
 
+		class OptionalExportTimer final
+		{
+		public:
+			OptionalExportTimer(bool enabled, std::uint64_t& target) noexcept
+				: enabled_(enabled), target_(target), started_(enabled
+					? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}) {}
+			~OptionalExportTimer() noexcept
+			{
+				if (!enabled_) return;
+				const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started_).count());
+				target_ = elapsed > std::numeric_limits<std::uint64_t>::max() - target_
+					? std::numeric_limits<std::uint64_t>::max() : target_ + elapsed;
+			}
+		private:
+			bool enabled_;
+			std::uint64_t& target_;
+			std::chrono::steady_clock::time_point started_;
+		};
+
+		MultiwayExportStorageCounters export_counter_delta(
+			const MultiwayExternalStorageStats& before,
+			const MultiwayExternalStorageStats& after) noexcept
+		{
+			return { after.lookups - before.lookups, after.cache_hits - before.cache_hits,
+				after.cache_misses - before.cache_misses, after.disk_reads - before.disk_reads,
+				after.read_nanoseconds - before.read_nanoseconds,
+				after.page_cache_hits - before.page_cache_hits,
+				after.page_cache_misses - before.page_cache_misses };
+		}
+
+		void copy_page_profile(MultiwayExternalExportProfile& target,
+			const MultiwayExternalPageProfile& source) noexcept
+		{
+			target.page_locate_nanoseconds = source.locate_nanoseconds;
+			target.page_cache_find_nanoseconds = source.cache_find_nanoseconds;
+			target.page_victim_nanoseconds = source.victim_nanoseconds;
+			target.page_store_lookup_nanoseconds = source.store_lookup_nanoseconds;
+			target.page_decode_nanoseconds = source.decode_nanoseconds;
+			target.page_zero_nanoseconds = source.zero_nanoseconds;
+			target.page_decoded_count = source.decoded_pages;
+			target.page_zero_count = source.zero_pages;
+			target.page_index_opens = source.record_lookup.index_opens;
+			target.page_index_reads = source.record_lookup.index_reads;
+			target.page_run_range_skips = source.record_lookup.run_range_skips;
+			target.page_membership_misses = source.record_lookup.membership_misses;
+			target.page_data_opens = source.record_lookup.data_opens;
+			target.page_data_reads = source.record_lookup.data_reads;
+			target.page_requested_read_bytes = source.record_lookup.requested_bytes;
+			target.page_index_open_nanoseconds = source.record_lookup.index_open_nanoseconds;
+			target.page_index_search_nanoseconds = source.record_lookup.index_search_nanoseconds;
+			target.page_data_open_nanoseconds = source.record_lookup.data_open_nanoseconds;
+			target.page_data_read_nanoseconds = source.record_lookup.data_read_nanoseconds;
+		}
+
+		void copy_writer_profile(MultiwayExternalExportProfile& target,
+			const MultiwayFullBlueprintWriterProfile& source) noexcept
+		{
+			target.writer_sampled_rows = source.sampled_rows;
+			target.writer_sampled_validation_nanoseconds = source.sampled_validation_nanoseconds;
+			target.writer_sampled_payload_hash_nanoseconds = source.sampled_payload_hash_nanoseconds;
+			target.writer_sampled_policy_hash_nanoseconds = source.sampled_policy_hash_nanoseconds;
+			target.writer_sampled_encoding_nanoseconds = source.sampled_encoding_nanoseconds;
+			target.writer_flushes = source.flushes;
+		}
+
 		bool export_shape_less(
 			const MultiwaySparseRowShape& left,
 			const MultiwaySparseRowShape& right) noexcept
@@ -508,7 +574,9 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.compact_page_width);
 		if (limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 		{
-			const auto storage_directory = limits.external_storage.directory.lexically_normal().generic_u8string();
+			const auto& identity_directory = limits.external_storage.identity_directory.empty()
+				? limits.external_storage.directory : limits.external_storage.identity_directory;
+			const auto storage_directory = identity_directory.lexically_normal().generic_u8string();
 			append_u64(runtime_hash, storage_directory.size());
 			for (const auto character : storage_directory)
 				texas::core::fingerprint::append_u8(runtime_hash, static_cast<std::uint8_t>(character));
@@ -1197,10 +1265,19 @@ namespace texas::solver::multiway
 				checked_export_multiply(static_cast<std::uint64_t>(shard_action_counts.capacity()),
 					sizeof(std::uint64_t)))
 			: 0U;
-		const auto peak_scratch_bytes = checked_export_add(
+		const bool profile_enabled = working_set_monitor_.profile_external_export &&
+			lease.external_storage() != nullptr;
+		// Includes the fixed aggregate, callback context, and nested timer frames.
+		const bool use_export_filter = lease.external_storage() != nullptr &&
+			working_set_monitor_.external_export_membership_filter;
+		const std::uint64_t filter_bytes = use_export_filter
+			? MultiwayExternalRecordStore::export_filter_bytes + 131072U : 0U;
+		const std::uint64_t profile_bytes = sizeof(MultiwayExternalExportProfile) + 4096U + filter_bytes;
+		const auto peak_scratch_bytes = checked_export_add(profile_bytes, checked_export_add(
 			checked_export_add(checked_export_add(plan.order_index_bytes, sizeof(strategy)),
-				sizeof(actions)), sharding_metadata_bytes);
+				sizeof(actions)), sharding_metadata_bytes));
 		MultiwayExportTelemetry telemetry;
+		telemetry.external_profile.enabled = profile_enabled;
 		telemetry.attempted = true;
 		telemetry.sharded_output = sharded_output;
 		telemetry.shard_count = sharded_output ? shard_layout.ranges.size() : 0U;
@@ -1260,6 +1337,8 @@ namespace texas::solver::multiway
 			throw std::runtime_error("multiway blueprint export disk preflight rejected");
 		}
 		auto export_gate = working_set_monitor_.export_gate;
+		export_gate.process.exporter_headroom_bytes = checked_export_add(
+			export_gate.process.exporter_headroom_bytes, profile_bytes);
 		if (export_gate.process.mapped_residency_allowance_bytes == 0U)
 			export_gate.process.mapped_residency_allowance_bytes = status_.memory_ledger.mapped_resident_allowance_bytes;
 		telemetry.scratch = make_multiway_export_scratch_estimate(telemetry.plan, export_gate.process);
@@ -1305,13 +1384,28 @@ namespace texas::solver::multiway
 				: multiway_export_system_rejection_reason_name(telemetry.system_gate.rejection_reason);
 			throw std::runtime_error(std::string("multiway blueprint export memory gate rejected: ") + reason);
 		}
+		struct ExportFilterGuard
+		{
+			const MultiwayExternalCompactStorage* storage = nullptr;
+			~ExportFilterGuard() { if (storage != nullptr) storage->end_export_filter(); }
+		};
+		ExportFilterGuard filter_guard;
+		if (use_export_filter)
+		{
+			const auto& storage = lease.external_storage()->compact_storage();
+			storage.begin_export_filter();
+			filter_guard.storage = &storage;
+		}
+		MultiwayFullBlueprintWriterProfile writer_profile;
+		MultiwayFullBlueprintStreamOptions stream_options;
+		stream_options.profile = profile_enabled ? &writer_profile : nullptr;
 		std::unique_ptr<MultiwayFullBlueprintStreamWriter> writer;
 		std::unique_ptr<MultiwayFullBlueprintShardedStreamWriter> sharded_writer;
 		if (sharded_output)
 			sharded_writer = std::make_unique<MultiwayFullBlueprintShardedStreamWriter>(
-				path, stream_plan, std::move(shard_layout), std::move(shard_action_counts));
+				path, stream_plan, std::move(shard_layout), std::move(shard_action_counts), stream_options);
 		else
-			writer = std::make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan);
+			writer = std::make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan, stream_options);
 		const auto write_row = [&](const MultiwayFullBlueprintRowView& row) {
 			if (sharded_output)
 				sharded_writer->write_row(row);
@@ -1344,6 +1438,14 @@ namespace texas::solver::multiway
 		};
 		if (external != nullptr)
 		{
+			MultiwayExternalPageProfile page_profile;
+			MultiwayExternalStorageStats catalog_before{}, rows_before{}, pages_before{};
+			if (profile_enabled)
+			{
+				catalog_before = external->catalog().stats();
+				rows_before = external->compact_storage().row_index_stats();
+				pages_before = external->compact_storage().page_store_stats();
+			}
 			struct Context
 			{
 				const MultiwayExternalTrainingStorage* storage;
@@ -1351,26 +1453,50 @@ namespace texas::solver::multiway
 				MultiwayFullBlueprintShardedStreamWriter* sharded_writer;
 				Probability* strategy;
 				MultiwayQuantizedRootAction* actions;
+				MultiwayExternalExportProfile* profile;
+				MultiwayExternalPageProfile* page_profile;
+				MultiwayFullBlueprintWriterProfile* writer_profile;
+				MultiwayExternalExportProgressObserver progress;
+				void* progress_context;
+				std::uint64_t progress_interval;
+				std::chrono::steady_clock::time_point stream_started;
+				std::uint64_t row_sequence = 0U;
 			};
-			Context context{ external, writer.get(), sharded_writer.get(), strategy.data(), actions.data() };
+			Context context{ external, writer.get(), sharded_writer.get(), strategy.data(), actions.data(),
+				&telemetry.external_profile, profile_enabled ? &page_profile : nullptr,
+				profile_enabled ? &writer_profile : nullptr,
+				working_set_monitor_.export_progress_observer,
+				working_set_monitor_.export_progress_context, working_set_monitor_.export_progress_page_interval,
+				profile_enabled && working_set_monitor_.export_progress_observer != nullptr &&
+					working_set_monitor_.export_progress_page_interval != 0U
+					? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{} };
 			const auto write_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 				auto& current = *static_cast<Context*>(opaque);
+				auto& profile = *current.profile;
+				OptionalExportTimer visitor_timer(profile.enabled, profile.visitor_nanoseconds);
 				MultiwaySparseRowShape shape{};
 				shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
 				shape.bucket_count = binding.bucket_count();
 				shape.action_count = binding.action_count();
 				std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> menu_actions{};
 				std::size_t action_count = 0U;
-				if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, menu_actions.data(),
-					menu_actions.size(), action_count))
-					throw std::invalid_argument("external blueprint row has no published action menu");
+				{
+					OptionalExportTimer menu_timer(profile.enabled, profile.menu_nanoseconds);
+					if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, menu_actions.data(),
+						menu_actions.size(), action_count))
+						throw std::invalid_argument("external blueprint row has no published action menu");
+				}
 				const MultiwayPackedMenuView menu{ menu_actions.data(),
 					static_cast<std::uint8_t>(action_count), menu_actions[0].action_menu_id };
 				validate_export_menu(shape, menu);
 				std::uint32_t first_bucket = 0U;
 				while (first_bucket < shape.bucket_count)
 				{
-					auto pinned = current.storage->compact_storage().pin_bucket(binding, first_bucket, false);
+					auto pinned = [&]() {
+						OptionalExportTimer pin_timer(profile.enabled, profile.pin_nanoseconds);
+						return current.storage->compact_storage().pin_bucket_profiled(
+							binding, first_bucket, false, current.page_profile);
+					}();
 					try
 					{
 						const auto page_bucket_count = pinned.page.bucket_count;
@@ -1381,34 +1507,99 @@ namespace texas::solver::multiway
 						{
 							const auto bucket = first_bucket + local_bucket;
 							pinned.local_bucket = local_bucket;
-							current.storage->compact_storage().average_strategy_into(
-								pinned, current.strategy, shape.action_count);
-							quantize_compact_strategy(current.strategy, shape.action_count, menu,
-								current.actions);
+							const bool sample = profile.enabled && ((current.row_sequence++ & 255U) == 0U);
+							if (sample) ++profile.sampled_rows;
+							if (sample)
+							{
+								OptionalExportTimer timer(sample, profile.sampled_average_nanoseconds);
+								current.storage->compact_storage().average_strategy_into(
+									pinned, current.strategy, shape.action_count);
+							}
+							else
+								current.storage->compact_storage().average_strategy_into(
+									pinned, current.strategy, shape.action_count);
+							if (sample)
+							{
+								OptionalExportTimer timer(sample, profile.sampled_quantize_nanoseconds);
+								quantize_compact_strategy(current.strategy, shape.action_count, menu,
+									current.actions);
+							}
+							else
+								quantize_compact_strategy(current.strategy, shape.action_count, menu,
+									current.actions);
 							MultiwayFullBlueprintRowView row;
 							row.infoset = shape.infoset;
 							row.bucket = bucket;
 							row.action_menu_id = menu.action_menu_id;
 							row.actions = current.actions;
 							row.action_count = shape.action_count;
-							if (current.sharded_writer != nullptr)
-								current.sharded_writer->write_row(row);
+							const auto write = [&]() {
+								if (current.sharded_writer != nullptr)
+									current.sharded_writer->write_row(row);
+								else
+									current.writer->write_row(row);
+							};
+							if (sample)
+							{
+								OptionalExportTimer timer(sample, profile.sampled_writer_nanoseconds);
+								write();
+							}
 							else
-								current.writer->write_row(row);
+								write();
 						}
 						first_bucket += page_bucket_count;
+						if (profile.enabled)
+						{
+							++profile.pages;
+							profile.rows += page_bucket_count;
+							profile.actions += static_cast<std::uint64_t>(page_bucket_count) * shape.action_count;
+						}
 					}
 					catch (...)
 					{
 						current.storage->compact_storage().unpin_bucket(pinned);
 						throw;
 					}
-					current.storage->compact_storage().unpin_bucket(pinned);
+					{
+						OptionalExportTimer unpin_timer(profile.enabled, profile.unpin_nanoseconds);
+						current.storage->compact_storage().unpin_bucket(pinned);
+					}
+					if (profile.enabled && current.progress != nullptr && current.progress_interval != 0U &&
+						profile.pages % current.progress_interval == 0U)
+					{
+						copy_page_profile(profile, *current.page_profile);
+						copy_writer_profile(profile, *current.writer_profile);
+						const auto bytes = current.sharded_writer != nullptr
+							? current.sharded_writer->progress() : current.writer->progress();
+						profile.encoded_bytes = bytes.encoded_bytes;
+						profile.stream_write_bytes = bytes.stream_write_bytes;
+						const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - current.stream_started).count());
+						current.progress(profile, elapsed, current.progress_context);
+					}
 				}
+				if (profile.enabled) ++profile.shapes;
 				return true;
 			};
-			if (!external->compact_storage().visit_ordered_rows(write_external_row, &context))
-				throw std::runtime_error("external blueprint ordered export stopped unexpectedly");
+			{
+				OptionalExportTimer visit_timer(telemetry.external_profile.enabled,
+					telemetry.external_profile.ordered_visit_nanoseconds);
+				if (!external->compact_storage().visit_ordered_rows(write_external_row, &context))
+					throw std::runtime_error("external blueprint ordered export stopped unexpectedly");
+			}
+			if (profile_enabled)
+			{
+				copy_page_profile(telemetry.external_profile, page_profile);
+				const auto bytes = sharded_writer != nullptr ? sharded_writer->progress() : writer->progress();
+				telemetry.external_profile.encoded_bytes = bytes.encoded_bytes;
+				telemetry.external_profile.stream_write_bytes = bytes.stream_write_bytes;
+				telemetry.external_profile.catalog = export_counter_delta(
+					catalog_before, external->catalog().stats());
+				telemetry.external_profile.row_index = export_counter_delta(
+					rows_before, external->compact_storage().row_index_stats());
+				telemetry.external_profile.page_store = export_counter_delta(
+					pages_before, external->compact_storage().page_store_stats());
+			}
 		}
 		else if (compact != nullptr)
 		{
@@ -1424,22 +1615,30 @@ namespace texas::solver::multiway
 		std::uint64_t result_bytes = 0U;
 		std::uint64_t result_manifest_bytes = 0U;
 		std::uint64_t result_shard_count = 0U;
-		if (sharded_output)
 		{
-			const auto result = sharded_writer->finish();
-			stream_result.row_count = result.row_count;
-			stream_result.action_count = result.action_count;
-			stream_result.serialized_bytes = result.serialized_bytes;
-			stream_result.policy_content_hash = result.policy_content_hash;
-			stream_result.publication_mode = result.publication_mode;
-			result_bytes = result.serialized_bytes;
-			result_manifest_bytes = result.manifest_bytes;
-			result_shard_count = result.shard_count;
+			OptionalExportTimer finish_timer(telemetry.external_profile.enabled,
+				telemetry.external_profile.finish_nanoseconds);
+			if (sharded_output)
+			{
+				const auto result = sharded_writer->finish();
+				stream_result.row_count = result.row_count;
+				stream_result.action_count = result.action_count;
+				stream_result.serialized_bytes = result.serialized_bytes;
+				stream_result.policy_content_hash = result.policy_content_hash;
+				stream_result.publication_mode = result.publication_mode;
+				result_bytes = result.serialized_bytes;
+				result_manifest_bytes = result.manifest_bytes;
+				result_shard_count = result.shard_count;
+			}
+			else
+			{
+				stream_result = writer->finish();
+				result_bytes = stream_result.serialized_bytes;
+			}
 		}
-		else
+		if (profile_enabled)
 		{
-			stream_result = writer->finish();
-			result_bytes = stream_result.serialized_bytes;
+			copy_writer_profile(telemetry.external_profile, writer_profile);
 		}
 		const auto after_export = working_set_monitor_.export_process_observer == nullptr
 			? capture_multiway_process_memory_snapshot()

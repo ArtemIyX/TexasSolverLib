@@ -41,6 +41,13 @@ namespace texas::solver::multiway
 		[[nodiscard]] static std::unique_ptr<MultiwayMappedShardedBlueprintProvider> load_verified(
 			const std::filesystem::path& manifest_path,
 			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static std::unique_ptr<MultiwayMappedShardedBlueprintProvider> load_verified_for_policy_lookup(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static std::unique_ptr<MultiwayMappedShardedBlueprintProvider> load_verified(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity,
+			bool allow_runtime_identity_difference);
 		~MultiwayMappedShardedBlueprintProvider();
 		MultiwayMappedShardedBlueprintProvider(const MultiwayMappedShardedBlueprintProvider&) = delete;
 		MultiwayMappedShardedBlueprintProvider& operator=(const MultiwayMappedShardedBlueprintProvider&) = delete;

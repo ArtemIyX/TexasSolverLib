@@ -8,8 +8,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -156,6 +159,77 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 		EXPECT_TRUE(reopened.cache_capacity_records() > 0U);
 		EXPECT_TRUE(reopened.cache_bytes() <= config(directory.path()).cache_bytes);
 	}
+}
+
+TEST_CASE(multiway_external_profiled_record_lookup_preserves_newest_generation_and_cache)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 2U);
+	store.append_batch(1U, 0x111U, { { 1U, { 1U, 10U } }, { 4U, { 4U, 10U } } });
+	store.append_batch(2U, 0x222U, { { 3U, { 3U, 20U } }, { 4U, { 4U, 20U } } });
+	MultiwayExternalRecordLookupProfile profile;
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(store.lookup_profiled(4U, payload, profile));
+	EXPECT_EQ(payload[1], 20U);
+	EXPECT_EQ(profile.index_opens, 1U);
+	EXPECT_EQ(profile.data_opens, 1U);
+	EXPECT_TRUE(store.lookup_profiled(4U, payload, profile));
+	EXPECT_EQ(profile.index_opens, 1U);
+	EXPECT_TRUE(store.lookup_profiled(1U, payload, profile));
+	EXPECT_EQ(payload[1], 10U);
+	EXPECT_EQ(profile.index_opens, 2U);
+	EXPECT_EQ(profile.data_opens, 2U);
+	EXPECT_EQ(profile.run_range_skips, 1U);
+	EXPECT_TRUE(!store.lookup_profiled(999U, payload, profile));
+	EXPECT_EQ(profile.index_opens, 2U);
+	EXPECT_EQ(profile.data_opens, 2U);
+	EXPECT_EQ(profile.run_range_skips, 3U);
+	EXPECT_TRUE(store.lookup(4U, payload));
+	EXPECT_EQ(payload[1], 20U);
+	store.append_batch(3U, 0x333U, { { 4U, { 4U, 30U } } });
+	EXPECT_TRUE(store.lookup_profiled(4U, payload, profile));
+	EXPECT_EQ(payload[1], 30U);
+	EXPECT_EQ(profile.index_opens, 3U);
+	EXPECT_EQ(profile.data_opens, 3U);
+	EXPECT_EQ(profile.run_range_skips, 3U);
+	MultiwayExternalRecordStore reopened(config(directory.path()), 2U);
+	MultiwayExternalRecordLookupProfile reopened_profile;
+	EXPECT_TRUE(reopened.lookup_profiled(1U, payload, reopened_profile));
+	EXPECT_EQ(payload[1], 10U);
+	EXPECT_EQ(reopened_profile.index_opens, 1U);
+	EXPECT_EQ(reopened_profile.run_range_skips, 2U);
+}
+
+TEST_CASE(multiway_external_profiled_record_lookup_rejects_truncated_newest_run)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 2U);
+	store.append_batch(1U, 0x111U, { { 4U, { 4U, 10U } } });
+	store.append_batch(2U, 0x222U, { { 4U, { 4U, 20U } } });
+	std::filesystem::resize_file(directory.path() / "run_2.dat", 0U);
+	MultiwayExternalRecordLookupProfile profile;
+	std::vector<std::uint8_t> payload;
+	EXPECT_THROW(store.lookup_profiled(4U, payload, profile), std::runtime_error);
+	EXPECT_EQ(profile.index_opens, 1U);
+	EXPECT_EQ(profile.data_reads, 1U);
+}
+
+TEST_CASE(multiway_external_profiled_record_lookup_rejects_truncated_newest_index)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 2U);
+	store.append_batch(1U, 0x111U, { { 4U, { 4U, 10U } } });
+	store.append_batch(2U, 0x222U, { { 4U, { 4U, 20U } } });
+	std::filesystem::resize_file(directory.path() / "run_2.idx", 0U);
+	MultiwayExternalRecordLookupProfile profile;
+	std::vector<std::uint8_t> payload;
+	EXPECT_THROW(store.lookup_profiled(4U, payload, profile), std::runtime_error);
+	EXPECT_EQ(profile.index_opens, 1U);
+	EXPECT_EQ(profile.index_reads, 1U);
+	EXPECT_EQ(profile.data_opens, 0U);
 }
 
 TEST_CASE(multiway_external_storage_reports_cache_compaction_and_disk_metrics)
@@ -1399,6 +1473,104 @@ TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)
 	}
 }
 
+TEST_CASE(multiway_external_sparse_page_lookup_fixture)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	{
+		MultiwayExternalCompactPages pages(page_config, 16U, 32000U);
+		for (std::uint64_t generation = 1U; generation <= 24U; ++generation)
+		{
+			pages.begin_batch(generation, generation);
+			for (const auto id : std::array<std::uint64_t, 3U>{ generation * 100U,
+				generation * 100U + 3000U, 6000U })
+			{
+				auto page = pages.pin(id, { id }, 0, 0U, 1U, 2U);
+				pages.mark_dirty(id);
+				page.strategy_masses[0] = generation;
+				pages.unpin(id);
+			}
+			pages.commit_batch();
+		}
+	}
+	MultiwayExternalCompactPages pages(page_config, 16U, 10000U);
+	const bool filter_enabled = std::getenv("TEXASSOLVER_PB12_FILTER") != nullptr;
+	const auto fixture_started = std::chrono::steady_clock::now();
+	if (filter_enabled) pages.begin_export_filter();
+	const auto filter_finished = std::chrono::steady_clock::now();
+	MultiwayExternalPageProfile profile;
+	for (const auto request : { std::pair<std::uint64_t, std::uint64_t>{ 100U, 1U },
+		std::pair<std::uint64_t, std::uint64_t>{ 6000U, 24U } })
+	{
+		auto page = pages.pin_profiled(request.first, { request.first }, 0, 0U, 1U, 2U, &profile);
+		EXPECT_EQ(page.strategy_masses[0], request.second);
+		pages.unpin(request.first);
+	}
+	std::uint64_t hits = 0U;
+	const auto* extended = std::getenv("TEXASSOLVER_PB12_EXTENDED");
+	const std::uint64_t request_count = extended != nullptr ? 50000U : 1000U;
+	for (std::uint64_t i = 0U; i < request_count; ++i)
+	{
+		const auto id = 1U + ((i * 7919U) % 5500U);
+		auto page = pages.pin_profiled(id, { id }, 0, 0U, 1U, 2U, &profile);
+		const auto expected = id % 100U == 0U && id >= 100U && id <= 2400U
+			? id / 100U : (id % 100U == 0U && id >= 3100U && id <= 5400U
+				? (id - 3000U) / 100U : 0U);
+		EXPECT_EQ(page.strategy_masses[0], expected);
+		hits += expected != 0U;
+		pages.unpin(id);
+	}
+	EXPECT_TRUE(profile.record_lookup.index_opens > 0U);
+	EXPECT_TRUE(profile.zero_pages > profile.decoded_pages);
+	if (filter_enabled) EXPECT_TRUE(profile.record_lookup.membership_misses > 0U);
+	std::cout << "PB12_SPARSE_PAGE_PROFILE index_opens=" << profile.record_lookup.index_opens
+		<< " index_reads=" << profile.record_lookup.index_reads
+		<< " range_skips=" << profile.record_lookup.run_range_skips
+		<< " membership_misses=" << profile.record_lookup.membership_misses
+		<< " filter_build_ns=" << std::chrono::duration_cast<std::chrono::nanoseconds>(filter_finished - fixture_started).count()
+		<< " data_reads=" << profile.record_lookup.data_reads
+		<< " zero_pages=" << profile.zero_pages << " hits=" << hits << '\n';
+	if (filter_enabled) pages.end_export_filter();
+}
+
+TEST_CASE(multiway_external_export_filter_rejects_corruption_and_allows_retry)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 2U);
+	store.append_batch(1U, 1U, { { 4U, { 4U, 10U } }, { 8U, { 8U, 20U } } });
+	std::filesystem::resize_file(directory.path() / "run_1.idx", 0U);
+	EXPECT_THROW(store.begin_export_filter(), std::invalid_argument);
+	EXPECT_THROW(store.begin_export_filter(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_external_export_filter_preserves_lookup_and_blocks_mutation)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 2U);
+	store.append_batch(1U, 1U, { { 4U, { 4U, 10U } }, { 8U, { 8U, 10U } } });
+	store.append_batch(2U, 2U, { { 4U, { 4U, 20U } }, { 9U, { 9U, 20U } } });
+	store.begin_export_filter();
+	MultiwayExternalRecordLookupProfile profile;
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(store.lookup_profiled(4U, payload, profile));
+	EXPECT_EQ(payload[1], 20U);
+	EXPECT_TRUE(store.lookup_profiled(8U, payload, profile));
+	EXPECT_EQ(payload[1], 10U);
+	EXPECT_TRUE(!store.lookup_profiled(7U, payload, profile));
+	EXPECT_EQ(profile.membership_misses, 1U);
+	EXPECT_THROW(store.append_batch(3U, 3U, { { 7U, { 7U, 30U } } }), std::logic_error);
+	EXPECT_THROW(store.compact(), std::logic_error);
+	store.end_export_filter();
+	store.append_batch(3U, 3U, { { 7U, { 7U, 30U } } });
+	EXPECT_TRUE(store.lookup(7U, payload));
+	EXPECT_EQ(payload[1], 30U);
+}
+
 TEST_CASE(multiway_external_compact_pages_match_reference_cell_encoding)
 {
 	using namespace texas::solver::multiway;
@@ -1550,11 +1722,11 @@ TEST_CASE(multiway_external_pinned_page_average_matches_bucket_order)
 	page_config.maximum_wal_bytes = 65536U;
 	page_config.segment_target_bytes = 65536U;
 	const auto row_config = config(directory.path() / "rows");
-	constexpr std::uint32_t bucket_count = 17U;
+	constexpr std::uint32_t bucket_count = 18U;
 	constexpr std::uint32_t page_width = 16U;
 	constexpr std::uint8_t action_count = 3U;
 	const MultiwaySparseRowShape shape{ { { 42U }, 3 }, bucket_count, action_count };
-	MultiwayCompactStorage reference(1U, 51U, page_width);
+	MultiwayCompactStorage reference(1U, 54U, page_width);
 	reference.admit_row(shape);
 	MultiwayExternalCompactStorage external(row_config, page_config, page_width, 16000U);
 	external.admit_rows(1U, 0xdefU, { shape });
@@ -1563,6 +1735,9 @@ TEST_CASE(multiway_external_pinned_page_average_matches_bucket_order)
 	external.begin_batch(1U, 0xdefU);
 	for (std::uint32_t bucket = 0U; bucket < bucket_count; ++bucket)
 	{
+		// Leave one bucket in each page at zero mass to cover uniform fallback.
+		if (bucket == 0U || bucket == page_width)
+			continue;
 		for (std::uint8_t action = 0U; action < action_count; ++action)
 		{
 			const auto strategy_sum = static_cast<double>((bucket + 1U) * (action + 1U));
@@ -1614,6 +1789,124 @@ TEST_CASE(multiway_external_pinned_page_average_matches_bucket_order)
 	}
 	EXPECT_EQ(next_bucket, bucket_count);
 	EXPECT_EQ(page_count, 2U);
+}
+
+TEST_CASE(multiway_external_page_profile_distinguishes_absent_cached_and_reopened_pages)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path() / "pages");
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	const auto row_config = config(directory.path() / "rows");
+	const MultiwaySparseRowShape shape{ { { 51U }, 0 }, 1U, 2U };
+	{
+		MultiwayExternalCompactStorage storage(row_config, page_config, 16U, 16000U);
+		storage.admit_rows(1U, 0x123U, { shape });
+		MultiwayExternalRowBinding binding;
+		EXPECT_TRUE(storage.lookup_row(shape.infoset, binding));
+		MultiwayExternalPageProfile profile;
+		auto first = storage.pin_bucket_profiled(binding, 0U, false, &profile);
+		std::array<double, 2U> average{};
+		storage.average_strategy_into(first, average.data(), average.size());
+		EXPECT_EQ(average[0], 0.5);
+		EXPECT_EQ(average[1], 0.5);
+		storage.unpin_bucket(first);
+		EXPECT_EQ(profile.zero_pages, 1U);
+		EXPECT_EQ(profile.decoded_pages, 0U);
+		auto cached = storage.pin_bucket_profiled(binding, 0U, false, &profile);
+		storage.unpin_bucket(cached);
+		EXPECT_EQ(profile.zero_pages, 1U);
+		storage.begin_batch(1U, 0x123U);
+		storage.apply_delta(binding, 0U, 0U, 0.0, 1.0);
+		storage.commit_batch();
+	}
+	{
+		MultiwayExternalCompactStorage reopened(row_config, page_config, 16U, 16000U);
+		MultiwayExternalRowBinding binding;
+		EXPECT_TRUE(reopened.lookup_row(shape.infoset, binding));
+		MultiwayExternalPageProfile profile;
+		auto page = reopened.pin_bucket_profiled(binding, 0U, false, &profile);
+		std::array<double, 2U> average{};
+		reopened.average_strategy_into(page, average.data(), average.size());
+		reopened.unpin_bucket(page);
+		EXPECT_EQ(profile.decoded_pages, 1U);
+		EXPECT_EQ(profile.zero_pages, 0U);
+		EXPECT_EQ(profile.record_lookup.index_opens, 1U);
+		EXPECT_EQ(profile.record_lookup.index_reads, 2U);
+		EXPECT_EQ(profile.record_lookup.data_opens, 1U);
+		EXPECT_EQ(profile.record_lookup.data_reads, 1U);
+		EXPECT_TRUE(profile.record_lookup.requested_bytes > 16U);
+		EXPECT_EQ(average[0], 1.0);
+		EXPECT_EQ(average[1], 0.0);
+		EXPECT_THROW(reopened.pin_bucket_profiled(binding, 1U, false, &profile), std::out_of_range);
+		EXPECT_THROW(reopened.pin_bucket_profiled(binding, 0U, true, &profile), std::logic_error);
+		// Compaction requires every page to be unpinned and clean.
+		reopened.compact();
+	}
+}
+
+TEST_CASE(multiway_external_profiled_page_rejects_wrong_cached_identity)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	MultiwayExternalCompactPages pages(page_config, 16U, 16000U);
+	MultiwayExternalPageProfile profile;
+	auto first = pages.pin_profiled(1U, { 51U }, 0, 0U, 1U, 2U, &profile);
+	pages.unpin(first.page_id);
+	EXPECT_THROW(pages.pin_profiled(1U, { 52U }, 0, 0U, 1U, 2U, &profile), std::invalid_argument);
+	EXPECT_EQ(profile.zero_pages, 1U);
+	EXPECT_EQ(profile.decoded_pages, 0U);
+	auto again = pages.pin_profiled(1U, { 51U }, 0, 0U, 1U, 2U, &profile);
+	pages.unpin(again.page_id);
+	pages.compact();
+}
+
+TEST_CASE(multiway_external_profiled_pin_rejects_corrupt_page_without_leaking_pin)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path() / "pages");
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	const auto row_config = config(directory.path() / "rows");
+	const MultiwaySparseRowShape shape{ { { 52U }, 0 }, 1U, 2U };
+	{
+		MultiwayExternalCompactStorage storage(row_config, page_config, 16U, 16000U);
+		storage.admit_rows(1U, 0x124U, { shape });
+		MultiwayExternalRowBinding binding;
+		EXPECT_TRUE(storage.lookup_row(shape.infoset, binding));
+		storage.begin_batch(1U, 0x124U);
+		storage.apply_delta(binding, 0U, 0U, 0.0, 1.0);
+		storage.commit_batch();
+	}
+	{
+		MultiwayExternalCompactStorage reopened(row_config, page_config, 16U, 16000U);
+		MultiwayExternalRowBinding binding;
+		EXPECT_TRUE(reopened.lookup_row(shape.infoset, binding));
+		std::fstream file(directory.path() / "pages" / "run_1.dat",
+			std::ios::binary | std::ios::in | std::ios::out);
+		EXPECT_TRUE(static_cast<bool>(file));
+		file.seekg(16);
+		char byte = 0;
+		file.read(&byte, 1);
+		EXPECT_TRUE(static_cast<bool>(file));
+		byte ^= 1;
+		file.seekp(16);
+		file.write(&byte, 1);
+		file.close();
+		EXPECT_TRUE(static_cast<bool>(file));
+		MultiwayExternalPageProfile profile;
+		EXPECT_THROW(reopened.pin_bucket_profiled(binding, 0U, false, &profile), std::invalid_argument);
+		EXPECT_THROW(reopened.pin_bucket_profiled(binding, 0U, false, &profile), std::invalid_argument);
+		EXPECT_EQ(profile.zero_pages, 0U);
+		EXPECT_EQ(profile.decoded_pages, 0U);
+		EXPECT_EQ(profile.record_lookup.data_reads, 1U);
+		reopened.compact();
+	}
 }
 
 TEST_CASE(multiway_external_record_store_compacts_deterministically)

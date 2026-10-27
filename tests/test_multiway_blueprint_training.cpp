@@ -10,14 +10,20 @@
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
+#include <array>
 #include <stdexcept>
 #include <cstddef>
 #include <utility>
 #include <limits>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
+#include <tuple>
+#include <vector>
 
 namespace
 {
@@ -77,14 +83,16 @@ namespace
 	}
 
 	texas::MultiwaySolverLimits export_limits(texas::MultiwaySolverLimits::StorageBackend backend,
-		const std::filesystem::path& external_directory = {})
+		const std::filesystem::path& external_directory = {},
+		std::uint64_t row_page_cache_bytes = 2U * 1024U * 1024U,
+		const std::filesystem::path& identity_directory = {}, bool large = false)
 	{
 		texas::MultiwaySolverLimits limits;
 		limits.worker_count = 1U;
 		limits.trajectories_per_batch = 4U;
 		limits.max_public_states = 128U;
 		limits.max_sparse_rows = 128U;
-		limits.max_sparse_values = 1024U;
+		limits.max_sparse_values = large ? 8192U : 1024U;
 		limits.max_worker_delta_entries = 2048U;
 		limits.max_discovery_entries = 8192U;
 		limits.max_batches = 32U;
@@ -92,8 +100,9 @@ namespace
 		if (backend == texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 		{
 			limits.external_storage.directory = external_directory;
+			limits.external_storage.identity_directory = identity_directory;
 			limits.external_storage.public_catalog_cache_bytes = 4096U;
-			limits.external_storage.row_page_cache_bytes = 2U * 1024U * 1024U;
+			limits.external_storage.row_page_cache_bytes = row_page_cache_bytes;
 			limits.external_storage.maximum_wal_bytes = 1024U * 1024U;
 			limits.external_storage.segment_target_bytes = 1024U * 1024U;
 			limits.external_storage.compaction_fan_in = 4U;
@@ -104,10 +113,12 @@ namespace
 	}
 
 	texas::MultiwayModelIdentity export_identity(texas::MultiwaySolverLimits::StorageBackend backend,
-		const std::filesystem::path& external_directory = {})
+		const std::filesystem::path& external_directory = {},
+		std::uint64_t row_page_cache_bytes = 2U * 1024U * 1024U,
+		const std::filesystem::path& identity_directory = {}, bool large = false)
 	{
 		texas::MultiwayBlueprintTrainingConfig config;
-		config.limits = export_limits(backend, external_directory);
+		config.limits = export_limits(backend, external_directory, row_page_cache_bytes, identity_directory, large);
 		return config.identity();
 	}
 
@@ -126,8 +137,10 @@ namespace
 		explicit StreamingExportFixture(
 			texas::MultiwaySolverLimits::StorageBackend backend,
 			texas::MultiwayWorkingSetMonitor monitor = {},
-			const std::filesystem::path& external_directory = {})
-			: root(export_root(abstraction)), request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend, external_directory)), coordinator(request), buckets({ texas::MultiwayBucketTable(export_identity(backend, external_directory), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }), evaluator{ export_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }), trainer(export_identity(backend, external_directory), runner, coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor)
+			const std::filesystem::path& external_directory = {},
+			std::uint64_t row_page_cache_bytes = 2U * 1024U * 1024U,
+			const std::filesystem::path& identity_directory = {}, bool large = false)
+			: root(export_root(abstraction)), request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend, external_directory, row_page_cache_bytes, identity_directory, large)), coordinator(request), buckets({ texas::MultiwayBucketTable(export_identity(backend, external_directory, row_page_cache_bytes, identity_directory, large), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }), evaluator{ export_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }), trainer(export_identity(backend, external_directory, row_page_cache_bytes, identity_directory, large), runner, coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor)
 		{
 		}
 	};
@@ -138,6 +151,32 @@ namespace
 		std::uint64_t after_bytes = 150U;
 		std::uint32_t calls = 0U;
 	};
+
+	struct ExportProgressState
+	{
+		std::uint64_t calls = 0U;
+		std::uint64_t last_pages = 0U;
+		std::uint64_t last_rows = 0U;
+		std::uint64_t last_encoded_bytes = 0U;
+		std::uint64_t last_writer_samples = 0U;
+		std::uint64_t last_flushes = 0U;
+		bool ordered = true;
+	};
+
+	void export_progress_observer(const texas::solver::multiway::MultiwayExternalExportProfile& profile,
+		std::uint64_t, void* context) noexcept
+	{
+		auto& state = *static_cast<ExportProgressState*>(context);
+		state.ordered = state.ordered && profile.pages == state.last_pages + 1U &&
+			profile.rows > state.last_rows && profile.encoded_bytes > state.last_encoded_bytes &&
+			profile.stream_write_bytes <= profile.encoded_bytes;
+		++state.calls;
+		state.last_pages = profile.pages;
+		state.last_rows = profile.rows;
+		state.last_encoded_bytes = profile.encoded_bytes;
+		state.last_writer_samples = profile.writer_sampled_rows;
+		state.last_flushes = profile.writer_flushes;
+	}
 
 	texas::MultiwayProcessMemorySnapshot export_process_observer(const void* context) noexcept
 	{
@@ -174,6 +213,20 @@ namespace
 		return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
 	}
 
+	std::vector<std::pair<std::string, std::string>> snapshot_tree_bytes(
+		const std::filesystem::path& root)
+	{
+		std::vector<std::pair<std::string, std::string>> result;
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+			if (entry.is_regular_file())
+				result.emplace_back(entry.path().lexically_relative(root).generic_string(),
+					read_bytes(entry.path()));
+		std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+			return left.first < right.first;
+		});
+		return result;
+	}
+
 } // namespace
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts)
@@ -203,6 +256,19 @@ TEST_CASE(multiway_training_identity_binds_storage_backend)
 	EXPECT_TRUE(reference.identity() != compact.identity());
 }
 
+TEST_CASE(multiway_external_snapshot_runtime_path_preserves_model_identity)
+{
+	using Backend = texas::MultiwaySolverLimits::StorageBackend;
+	texas::MultiwayBlueprintTrainingConfig source;
+	source.limits = export_limits(Backend::ExternalCompactInt32, "source-store");
+	const auto source_identity = source.identity();
+
+	auto isolated = source;
+	isolated.limits.external_storage.identity_directory = source.limits.external_storage.directory;
+	isolated.limits.external_storage.directory = "isolated-store-copy";
+	EXPECT_EQ(isolated.identity(), source_identity);
+}
+
 TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_export)
 {
 	using namespace texas::solver::multiway;
@@ -210,6 +276,7 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 		("texas_solver_external_training_resume_" + std::to_string(
 			std::chrono::steady_clock::now().time_since_epoch().count()));
 	const auto storage_directory = base / "storage";
+	const auto isolated_storage_directory = base / "isolated-storage";
 	const auto checkpoint_path = base / "latest.mwec";
 	const auto policy_path = base / "resumed.mwfb";
 	const auto reference_storage = base / "reference_storage";
@@ -221,6 +288,7 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 	MultiwayWorkingSetMonitor sharded_monitor;
 	sharded_monitor.single_file_blueprint_limit_bytes = 1U;
 	sharded_monitor.shard_max_serialized_bytes = 1024U * 1024U;
+	sharded_monitor.profile_external_export = true;
 	MultiwayExternalCheckpointManifest checkpoint;
 	{
 		StreamingExportFixture first(backend, {}, storage_directory);
@@ -238,11 +306,14 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 			throw std::runtime_error(std::string("first external batch/checkpoint: ") + error.what());
 		}
 	}
+	const auto source_store_before = snapshot_tree_bytes(storage_directory);
+	std::filesystem::copy(storage_directory, isolated_storage_directory,
+		std::filesystem::copy_options::recursive);
 	MultiwayExternalCheckpointManifest restored;
 	try
 	{
 		restored = restore_multiway_external_checkpoint(
-		checkpoint_path, storage_directory, identity.combined_hash, workflow_hash,
+		checkpoint_path, isolated_storage_directory, identity.combined_hash, workflow_hash,
 		storage_hash, MultiwayBlueprintIterationSchedule{}.identity(), true);
 	}
 	catch (const std::exception& error)
@@ -254,7 +325,8 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 	std::uint64_t resumed_policy_hash = 0U;
 	try
 	{
-		StreamingExportFixture resumed(backend, sharded_monitor, storage_directory);
+		StreamingExportFixture resumed(backend, sharded_monitor, isolated_storage_directory,
+			2U * 1024U * 1024U, storage_directory);
 		try { resumed.trainer.resume_from_external_checkpoint(restored, workflow_hash, storage_hash); }
 		catch (const std::exception& error) { throw std::runtime_error(std::string("resume: ") + error.what()); }
 		EXPECT_EQ(resumed.trainer.batches(), 1U);
@@ -264,6 +336,12 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 		try { output = resumed.trainer.save_full_policy_atomic(policy_path); }
 		catch (const std::exception& error) { throw std::runtime_error(std::string("resumed export: ") + error.what()); }
 		EXPECT_TRUE(output.sharded);
+		const auto& profile = resumed.trainer.status().export_telemetry.external_profile;
+		EXPECT_TRUE(profile.enabled);
+		EXPECT_EQ(profile.rows, output.plan.row_count);
+		EXPECT_EQ(profile.actions, output.plan.action_count);
+		EXPECT_EQ(profile.page_decoded_count + profile.page_zero_count,
+			profile.page_store.page_misses);
 		resumed_policy_hash = output.policy_content_hash;
 	}
 	catch (const std::exception& error)
@@ -284,6 +362,47 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 		throw std::runtime_error(std::string("external uninterrupted/export: ") + error.what());
 	}
 	EXPECT_EQ(resumed_policy_hash, uninterrupted_policy_hash);
+	EXPECT_EQ(snapshot_tree_bytes(storage_directory), source_store_before);
+	std::filesystem::remove_all(base);
+}
+
+TEST_CASE(multiway_external_profiled_resume_matches_unprofiled_bytes)
+{
+	using namespace texas::solver::multiway;
+	const auto base = std::filesystem::temp_directory_path() /
+		("texas_solver_profiled_resume_" + std::to_string(
+			std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto storage = base / "storage";
+	const auto checkpoint_path = base / "latest.mwec";
+	const auto baseline_path = base / "baseline.mwfb";
+	const auto profiled_path = base / "profiled.mwfb";
+	const auto backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	const auto identity = export_identity(backend, storage);
+	constexpr std::uint64_t workflow_hash = 0x7182U;
+	constexpr std::uint64_t storage_hash = 0x8293U;
+	std::uint64_t baseline_hash = 0U;
+	{
+		StreamingExportFixture first(backend, {}, storage);
+		first.trainer.run_batches(1U, 4U, 0x77U);
+		(void)first.trainer.save_external_checkpoint_atomic(checkpoint_path, workflow_hash, storage_hash);
+		const auto result = first.trainer.save_full_policy_atomic(baseline_path);
+		EXPECT_TRUE(!result.sharded);
+		baseline_hash = result.policy_content_hash;
+	}
+	const auto checkpoint = restore_multiway_external_checkpoint(checkpoint_path, storage,
+		identity.combined_hash, workflow_hash, storage_hash,
+		MultiwayBlueprintIterationSchedule{}.identity(), true);
+	{
+		MultiwayWorkingSetMonitor monitor;
+		monitor.profile_external_export = true;
+		StreamingExportFixture resumed(backend, monitor, storage);
+		resumed.trainer.resume_from_external_checkpoint(checkpoint, workflow_hash, storage_hash);
+		const auto result = resumed.trainer.save_full_policy_atomic(profiled_path);
+		EXPECT_TRUE(!result.sharded);
+		EXPECT_TRUE(resumed.trainer.status().export_telemetry.external_profile.enabled);
+		EXPECT_EQ(result.policy_content_hash, baseline_hash);
+		EXPECT_EQ(read_bytes(profiled_path), read_bytes(baseline_path));
+	}
 	std::filesystem::remove_all(base);
 }
 
@@ -568,6 +687,327 @@ TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repea
 	EXPECT_EQ(read_bytes(streamed_path), first_bytes);
 	std::filesystem::remove(streamed_path);
 	std::filesystem::remove(materialized_path);
+}
+
+TEST_CASE(multiway_streaming_external_and_compact_policy_content_match)
+{
+	using Backend = texas::MultiwaySolverLimits::StorageBackend;
+	const auto base = std::filesystem::temp_directory_path() /
+		("texas_solver_external_compact_export_" + std::to_string(
+			std::chrono::steady_clock::now().time_since_epoch().count()));
+	{
+		StreamingExportFixture compact(Backend::CompactInt32);
+		ExportProgressState disabled_progress;
+		texas::MultiwayWorkingSetMonitor disabled_monitor;
+		disabled_monitor.export_progress_observer = &export_progress_observer;
+		disabled_monitor.export_progress_context = &disabled_progress;
+		disabled_monitor.export_progress_page_interval = 1U;
+		StreamingExportFixture external(Backend::ExternalCompactInt32, disabled_monitor, base / "storage");
+		compact.trainer.run_batches(1U, 4U, 0x77U);
+		external.trainer.run_batches(1U, 4U, 0x77U);
+		const auto compact_result = compact.trainer.save_full_policy_atomic(base / "compact.bin");
+		const auto external_result = external.trainer.save_full_policy_atomic(base / "external.bin");
+		EXPECT_TRUE(!external.trainer.status().export_telemetry.external_profile.enabled);
+		EXPECT_EQ(disabled_progress.calls, 0U);
+		EXPECT_TRUE(compact_result.plan.row_count > 0U);
+		EXPECT_EQ(compact_result.plan.row_count, external_result.plan.row_count);
+		EXPECT_EQ(compact_result.plan.action_count, external_result.plan.action_count);
+		EXPECT_EQ(compact_result.serialized_bytes, external_result.serialized_bytes);
+		EXPECT_EQ(compact_result.policy_content_hash, external_result.policy_content_hash);
+		const auto compact_artifact = texas::MultiwayFullBlueprintArtifacts::load_verified(
+			base / "compact.bin", compact_result.plan.identity);
+		const auto external_artifact = texas::MultiwayFullBlueprintArtifacts::load_verified(
+			base / "external.bin", external_result.plan.identity);
+		EXPECT_EQ(compact_artifact.rows.size(), external_artifact.rows.size());
+		for (std::size_t row = 0U; row < compact_artifact.rows.size(); ++row)
+		{
+			const auto& expected = compact_artifact.rows[row];
+			const auto& actual = external_artifact.rows[row];
+			if (row != 0U)
+			{
+				const auto& previous = external_artifact.rows[row - 1U];
+				EXPECT_TRUE(std::tie(previous.infoset.public_state.value, previous.infoset.seat,
+					previous.bucket, previous.action_menu_id) < std::tie(actual.infoset.public_state.value,
+					actual.infoset.seat, actual.bucket, actual.action_menu_id));
+			}
+			EXPECT_EQ(expected.infoset.public_state.value, actual.infoset.public_state.value);
+			EXPECT_EQ(expected.infoset.seat, actual.infoset.seat);
+			EXPECT_EQ(expected.bucket, actual.bucket);
+			EXPECT_EQ(expected.action_menu_id, actual.action_menu_id);
+			EXPECT_EQ(expected.actions.size(), actual.actions.size());
+			for (std::size_t action = 0U; action < expected.actions.size(); ++action)
+			{
+				EXPECT_EQ(expected.actions[action].action.action, actual.actions[action].action.action);
+				EXPECT_EQ(expected.actions[action].action.action_index, actual.actions[action].action.action_index);
+				EXPECT_EQ(expected.actions[action].action.target_street_contribution,
+					actual.actions[action].action.target_street_contribution);
+				EXPECT_EQ(expected.actions[action].action.action_menu_id, actual.actions[action].action.action_menu_id);
+				EXPECT_EQ(expected.actions[action].probability, actual.actions[action].probability);
+			}
+		}
+		const auto repeated = external.trainer.save_full_policy_atomic(base / "repeat.bin");
+		EXPECT_EQ(repeated.policy_content_hash, external_result.policy_content_hash);
+		EXPECT_EQ(read_bytes(base / "repeat.bin"), read_bytes(base / "external.bin"));
+		texas::MultiwayWorkingSetMonitor monitor;
+		ExportProgressState progress;
+		monitor.profile_external_export = true;
+		monitor.export_progress_observer = &export_progress_observer;
+		monitor.export_progress_context = &progress;
+		monitor.export_progress_page_interval = 1U;
+		StreamingExportFixture profiled(Backend::ExternalCompactInt32, monitor, base / "profiled_storage");
+		profiled.trainer.run_batches(1U, 4U, 0x77U);
+		const auto profiled_result = profiled.trainer.save_full_policy_atomic(base / "profiled.bin");
+		const auto& profile = profiled.trainer.status().export_telemetry.external_profile;
+		EXPECT_TRUE(profile.enabled);
+		EXPECT_EQ(profile.shapes, profiled_result.plan.shape_count);
+		EXPECT_EQ(profile.rows, profiled_result.plan.row_count);
+		EXPECT_EQ(profile.actions, profiled_result.plan.action_count);
+		EXPECT_TRUE(!profiled_result.sharded);
+		EXPECT_EQ(profile.encoded_bytes + 8U, profiled_result.serialized_bytes);
+		EXPECT_TRUE(profile.stream_write_bytes <= profile.encoded_bytes);
+		EXPECT_EQ(profile.sampled_rows, (profile.rows + 255U) / 256U);
+		EXPECT_EQ(profile.writer_sampled_rows, profile.sampled_rows);
+		EXPECT_TRUE(profile.writer_flushes > 0U);
+		EXPECT_EQ(profile.catalog.lookups, profile.shapes);
+		EXPECT_EQ(profile.page_store.page_hits + profile.page_store.page_misses, profile.pages);
+		EXPECT_EQ(profile.page_store.lookups, profile.page_store.page_misses);
+		EXPECT_EQ(profile.page_decoded_count + profile.page_zero_count,
+			profile.page_store.page_misses);
+		EXPECT_TRUE(progress.ordered);
+		EXPECT_EQ(progress.calls, profile.pages);
+		EXPECT_EQ(progress.last_rows, profile.rows);
+		EXPECT_EQ(progress.last_encoded_bytes, profile.encoded_bytes);
+		EXPECT_EQ(progress.last_writer_samples, profile.writer_sampled_rows);
+		EXPECT_TRUE(progress.last_flushes <= profile.writer_flushes);
+		EXPECT_EQ(profiled_result.policy_content_hash, external_result.policy_content_hash);
+		EXPECT_EQ(profiled_result.serialized_bytes, external_result.serialized_bytes);
+		const auto* fixture_profile = std::getenv("TEXASSOLVER_PB12_FIXTURE_PROFILE");
+		if (fixture_profile != nullptr && std::string(fixture_profile) == "1")
+		{
+			std::cout << "PB12_FIXTURE_PROFILE"
+				<< " rows=" << profile.rows << " actions=" << profile.actions << " pages=" << profile.pages
+				<< " export_total_ns=" << profiled.trainer.status().export_telemetry.duration_nanoseconds
+				<< " encoded_bytes=" << profile.encoded_bytes
+				<< " stream_write_bytes=" << profile.stream_write_bytes
+				<< " ordered_visit_ns=" << profile.ordered_visit_nanoseconds
+				<< " visitor_ns=" << profile.visitor_nanoseconds
+				<< " menu_ns=" << profile.menu_nanoseconds << " pin_ns=" << profile.pin_nanoseconds
+				<< " locate_ns=" << profile.page_locate_nanoseconds
+				<< " cache_find_ns=" << profile.page_cache_find_nanoseconds
+				<< " victim_ns=" << profile.page_victim_nanoseconds
+				<< " store_lookup_ns=" << profile.page_store_lookup_nanoseconds
+				<< " decode_ns=" << profile.page_decode_nanoseconds
+				<< " zero_ns=" << profile.page_zero_nanoseconds
+				<< " decoded_pages=" << profile.page_decoded_count << " zero_pages=" << profile.page_zero_count
+				<< " index_opens=" << profile.page_index_opens << " index_reads=" << profile.page_index_reads
+				<< " data_opens=" << profile.page_data_opens << " data_reads=" << profile.page_data_reads
+				<< " requested_read_bytes=" << profile.page_requested_read_bytes
+				<< " index_open_ns=" << profile.page_index_open_nanoseconds
+				<< " index_search_ns=" << profile.page_index_search_nanoseconds
+				<< " data_open_ns=" << profile.page_data_open_nanoseconds
+				<< " data_read_ns=" << profile.page_data_read_nanoseconds
+				<< " sampled_rows=" << profile.sampled_rows
+				<< " average_sample_ns=" << profile.sampled_average_nanoseconds
+				<< " quantize_sample_ns=" << profile.sampled_quantize_nanoseconds
+				<< " writer_sample_ns=" << profile.sampled_writer_nanoseconds
+				<< " writer_samples=" << profile.writer_sampled_rows
+				<< " validation_sample_ns=" << profile.writer_sampled_validation_nanoseconds
+				<< " payload_hash_sample_ns=" << profile.writer_sampled_payload_hash_nanoseconds
+				<< " policy_hash_sample_ns=" << profile.writer_sampled_policy_hash_nanoseconds
+				<< " encoding_sample_ns=" << profile.writer_sampled_encoding_nanoseconds
+				<< " flushes=" << profile.writer_flushes
+				<< " catalog_run_probes=" << profile.catalog.run_probes
+				<< " page_run_probes=" << profile.page_store.run_probes
+				<< " policy_hash=" << profiled_result.policy_content_hash << '\n';
+		}
+	}
+	std::filesystem::remove_all(base);
+}
+
+TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
+{
+	using Backend = texas::MultiwaySolverLimits::StorageBackend;
+	const auto base = std::filesystem::temp_directory_path() /
+		("texas_solver_synthetic_external_export_" + std::to_string(
+			std::chrono::steady_clock::now().time_since_epoch().count()));
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.profile_external_export = true;
+	const auto* measurement_mode = std::getenv("TEXASSOLVER_PB12_EXPORT_MODE");
+	if (measurement_mode != nullptr)
+		monitor.external_export_membership_filter = std::string(measurement_mode) == "filter";
+	// Hold a small number of dirty pages while constructing overlapping runs.
+	constexpr std::uint64_t kSmallRowPageCacheBytes = 32'768U;
+	const std::filesystem::path identity_directory = "pb12-synthetic-identity";
+	StreamingExportFixture fixture(Backend::ExternalCompactInt32, monitor, base / "storage",
+		kSmallRowPageCacheBytes, identity_directory, true);
+
+	const auto& root = fixture.request.root().public_state;
+	std::size_t check_index = root.legal_actions.size();
+	for (std::size_t index = 0U; index < root.legal_actions.size(); ++index)
+	{
+		if (root.legal_actions[index].action == texas::MultiwayAction::Check)
+		{
+			check_index = index;
+			break;
+		}
+	}
+	EXPECT_TRUE(check_index < root.legal_actions.size());
+	if (check_index >= root.legal_actions.size())
+		return;
+
+	const auto& check = root.legal_actions[check_index];
+	const auto child_betting = texas::MultiwayState::from_snapshot(root.betting)
+		.apply(check.action, check.target_street_contribution).snapshot();
+	const auto child_actions = fixture.abstraction.make_legal_actions(child_betting);
+	const auto child = texas::MultiwayPublicBuilder::make_action_child(
+		root, check_index, child_betting, child_actions);
+	fixture.coordinator.admit_public_state(child);
+
+	std::vector<texas::MultiwaySparseRowShape> ordered_shapes = {
+		{ fixture.request.root().root_infoset, 1025U,
+			static_cast<std::uint8_t>(root.legal_actions.size()) },
+		{ { child.id, child.betting.current_player }, 513U,
+			static_cast<std::uint8_t>(child.legal_actions.size()) }
+	};
+	std::sort(ordered_shapes.begin(), ordered_shapes.end(), [](const auto& left, const auto& right) {
+		return std::tie(left.infoset.public_state.value, left.infoset.seat) <
+			std::tie(right.infoset.public_state.value, right.infoset.seat);
+	});
+	EXPECT_TRUE(ordered_shapes[0].infoset.public_state.value < ordered_shapes[1].infoset.public_state.value);
+	fixture.coordinator.admit_infoset_row(ordered_shapes[1]);
+	fixture.coordinator.admit_infoset_row(ordered_shapes[0]);
+
+	std::array<std::uint64_t, 2U> first_pages{};
+	{
+		auto lease = fixture.coordinator.acquire_export_lease();
+		const auto* external = lease.external_storage();
+		EXPECT_TRUE(external != nullptr);
+		if (external == nullptr)
+			return;
+		for (std::size_t index = 0U; index < ordered_shapes.size(); ++index)
+		{
+			texas::MultiwayExternalRowBinding binding;
+			EXPECT_TRUE(external->compact_storage().lookup_row(ordered_shapes[index].infoset, binding));
+			first_pages[index] = binding.first_page_id();
+		}
+	}
+	EXPECT_TRUE(first_pages[0] > first_pages[1]);
+
+	const auto merge_two_deltas = [&](const texas::MultiwaySparseRowShape& shape,
+		std::uint32_t bucket, std::uint64_t trajectory_id)
+	{
+		std::vector<texas::MultiwayWorkerDeltaStream> streams;
+		streams.emplace_back(0U, 2U);
+		EXPECT_TRUE(streams[0].try_append({ shape.infoset, bucket, 0U,
+			static_cast<double>(trajectory_id) / 10.0, 1.0, trajectory_id }));
+		EXPECT_TRUE(streams[0].try_append({ shape.infoset, 1024U, 0U,
+			static_cast<double>(trajectory_id) / 10.0, 1.0, trajectory_id }));
+		streams[0].sort_fixed_order();
+		fixture.coordinator.merge_worker_streams(streams);
+	};
+	for (std::uint32_t page = 0U; page < 12U; ++page)
+		merge_two_deltas(ordered_shapes[0].bucket_count == 1025U ? ordered_shapes[0] : ordered_shapes[1],
+			page * 16U, static_cast<std::uint64_t>(page) + 1U);
+	const auto checkpoint = fixture.trainer.save_external_checkpoint_atomic(base / "fixture.mwec", 1U, 2U);
+	StreamingExportFixture reopened(Backend::ExternalCompactInt32, monitor, base / "storage",
+		kSmallRowPageCacheBytes, identity_directory, true);
+	reopened.trainer.resume_from_external_checkpoint(checkpoint, 1U, 2U);
+
+	const auto output_path = base / "synthetic_external.bin";
+	const auto result = reopened.trainer.save_full_policy_atomic(output_path);
+	const auto& profile = reopened.trainer.status().export_telemetry.external_profile;
+	EXPECT_TRUE(profile.enabled);
+	EXPECT_EQ(profile.shapes, std::uint64_t{ 2U });
+	EXPECT_EQ(profile.rows, std::uint64_t{ 1538U });
+	EXPECT_EQ(profile.pages, std::uint64_t{ 98U });
+	EXPECT_EQ(profile.rows, result.plan.row_count);
+	EXPECT_EQ(profile.shapes, result.plan.shape_count);
+	EXPECT_TRUE(profile.page_store.page_misses > 0U);
+	EXPECT_EQ(profile.page_store.page_hits + profile.page_store.page_misses, profile.pages);
+	EXPECT_TRUE(profile.page_decoded_count > 0U);
+	EXPECT_TRUE(profile.page_zero_count > 0U);
+	if (monitor.external_export_membership_filter) EXPECT_TRUE(profile.page_membership_misses > 0U);
+	EXPECT_EQ(profile.page_decoded_count + profile.page_zero_count, profile.page_store.page_misses);
+	EXPECT_TRUE(profile.page_store.run_probes > 0U);
+
+	if (const auto* fixture_profile = std::getenv("TEXASSOLVER_PB12_FIXTURE_PROFILE");
+		fixture_profile != nullptr && std::string(fixture_profile) == "1")
+	{
+		std::cout << "PB12_FIXTURE_PROFILE"
+			<< " rows=" << profile.rows << " actions=" << profile.actions << " pages=" << profile.pages
+			<< " encoded_bytes=" << profile.encoded_bytes
+			<< " ordered_visit_ns=" << profile.ordered_visit_nanoseconds
+			<< " export_total_ns=" << reopened.trainer.status().export_telemetry.duration_nanoseconds
+			<< " decoded_pages=" << profile.page_decoded_count << " zero_pages=" << profile.page_zero_count
+			<< " page_hits=" << profile.page_store.page_hits
+			<< " page_misses=" << profile.page_store.page_misses
+			<< " page_lookups=" << profile.page_store.lookups
+			<< " page_run_probes=" << profile.page_store.run_probes
+			<< " index_opens=" << profile.page_index_opens
+			<< " index_reads=" << profile.page_index_reads
+			<< " range_skips=" << profile.page_run_range_skips
+			<< " membership_misses=" << profile.page_membership_misses
+			<< " data_reads=" << profile.page_data_reads
+			<< " row_index_run_probes=" << profile.row_index.run_probes
+			<< " catalog_run_probes=" << profile.catalog.run_probes
+			<< " policy_hash=" << result.policy_content_hash
+			<< " serialized_bytes=" << result.serialized_bytes << '\n';
+	}
+	if (measurement_mode != nullptr)
+	{
+		const auto* saved_output = std::getenv("TEXASSOLVER_PB12_EXPORT_OUTPUT");
+		if (saved_output != nullptr)
+			std::filesystem::copy_file(output_path, saved_output);
+		std::filesystem::remove_all(base);
+		return;
+	}
+
+	monitor.external_export_membership_filter = false;
+	texas::MultiwayBlueprintTrainer repeated(export_identity(Backend::ExternalCompactInt32,
+		base / "storage", kSmallRowPageCacheBytes, identity_directory, true),
+		reopened.runner, reopened.coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor);
+	const auto repeated_result = repeated.save_full_policy_atomic(base / "repeated.bin");
+	EXPECT_TRUE(repeated.status().export_telemetry.external_profile.enabled);
+	EXPECT_EQ(repeated.status().export_telemetry.external_profile.page_membership_misses, 0U);
+	EXPECT_EQ(repeated_result.plan.row_count, result.plan.row_count);
+	EXPECT_EQ(repeated_result.plan.action_count, result.plan.action_count);
+	EXPECT_EQ(repeated_result.policy_content_hash, result.policy_content_hash);
+	EXPECT_EQ(repeated_result.serialized_bytes, result.serialized_bytes);
+	EXPECT_EQ(read_bytes(base / "repeated.bin"), read_bytes(output_path));
+	std::filesystem::path data_path;
+	std::uint64_t latest_generation = 0U;
+	for (const auto& entry : std::filesystem::directory_iterator(base / "storage" / "pages"))
+	{
+		const auto name = entry.path().stem().string();
+		if (entry.path().extension() != ".dat" || name.rfind("run_", 0U) != 0U) continue;
+		const auto generation = std::stoull(name.substr(4U));
+		if (generation > latest_generation) { latest_generation = generation; data_path = entry.path(); }
+	}
+	EXPECT_TRUE(!data_path.empty());
+	auto saved_data = read_bytes(data_path);
+	EXPECT_TRUE(!saved_data.empty());
+	{
+		std::fstream data(data_path, std::ios::binary | std::ios::in | std::ios::out);
+		data.put(static_cast<char>(saved_data[0] ^ 1U));
+		EXPECT_TRUE(static_cast<bool>(data));
+	}
+	monitor.external_export_membership_filter = true;
+	texas::MultiwayBlueprintTrainer corrupt(export_identity(Backend::ExternalCompactInt32,
+		base / "storage", kSmallRowPageCacheBytes, identity_directory, true),
+		reopened.runner, reopened.coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor);
+	const auto failed_path = base / "failed.bin";
+	EXPECT_THROW(corrupt.save_full_policy_atomic(failed_path), std::invalid_argument);
+	EXPECT_TRUE(!std::filesystem::exists(failed_path));
+	EXPECT_TRUE(!std::filesystem::exists(failed_path.string() + ".tmp"));
+	{
+		std::ofstream data(data_path, std::ios::binary | std::ios::trunc);
+		data.write(reinterpret_cast<const char*>(saved_data.data()), static_cast<std::streamsize>(saved_data.size()));
+		EXPECT_TRUE(static_cast<bool>(data));
+	}
+	const auto recovered = corrupt.save_full_policy_atomic(base / "recovered.bin");
+	EXPECT_EQ(recovered.policy_content_hash, result.policy_content_hash);
+	EXPECT_EQ(read_bytes(base / "recovered.bin"), read_bytes(output_path));
+	std::filesystem::remove_all(base);
 }
 
 TEST_CASE(multiway_streaming_export_float64_uses_bounded_order_indexes_and_matches_bytes)

@@ -99,4 +99,26 @@ namespace texas::solver::multiway
 		return identity;
 	}
 
+	bool multiway_policy_identity_compatible(
+		const MultiwayModelIdentity& actual,
+		const MultiwayModelIdentity& expected) noexcept
+	{
+		auto combined_hash = texas::core::fingerprint::FNV1A_OFFSET;
+		visit_multiway_model_identity_components(actual, [&](std::uint64_t field) {
+			append_u64(combined_hash, field);
+		});
+		return finish(combined_hash) == actual.combined_hash &&
+			actual.rules_hash == expected.rules_hash &&
+			actual.rules_schema_hash == expected.rules_schema_hash &&
+			actual.action_abstraction_hash == expected.action_abstraction_hash &&
+			actual.bucket_model_hash == expected.bucket_model_hash &&
+			actual.terminal_model_hash == expected.terminal_model_hash &&
+			actual.resolver_schema_hash == expected.resolver_schema_hash &&
+			actual.code_schema_hash == expected.code_schema_hash &&
+			actual.range_semantics_hash == expected.range_semantics_hash &&
+			actual.future_bucket_model_hash == expected.future_bucket_model_hash &&
+			actual.off_tree_policy_hash == expected.off_tree_policy_hash &&
+			actual.continuation_policy_hash == expected.continuation_policy_hash;
+	}
+
 } // namespace texas::solver::multiway

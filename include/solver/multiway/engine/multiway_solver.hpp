@@ -376,6 +376,8 @@ namespace texas::solver::multiway
 		struct ExternalStorage
 		{
 			std::filesystem::path directory;
+			// Optional logical path used for checkpoint/model identity while I/O uses directory.
+			std::filesystem::path identity_directory;
 			std::uint64_t public_catalog_cache_bytes = 0U;
 			std::uint64_t row_page_cache_bytes = 0U;
 			std::uint64_t maximum_wal_bytes = 0U;

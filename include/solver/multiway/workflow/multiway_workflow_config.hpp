@@ -53,6 +53,8 @@ namespace texas::solver::multiway
 		std::uint32_t preflop_classes = 0U;
 		std::string storage_backend;
 		std::filesystem::path storage_directory;
+		// Runtime-only identity path when storage_directory points at an isolated copy.
+		std::filesystem::path identity_storage_directory;
 		std::uint64_t public_catalog_cache_bytes = 0U;
 		std::uint64_t row_page_cache_bytes = 0U;
 		std::uint64_t maximum_wal_bytes = 0U;

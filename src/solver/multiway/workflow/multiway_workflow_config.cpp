@@ -281,7 +281,9 @@ namespace texas::solver::multiway
 			core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
 		if (storage_backend == "ExternalCompactInt32")
 		{
-			const auto directory = storage_directory.lexically_normal().generic_u8string();
+			const auto& identity_directory = identity_storage_directory.empty()
+				? storage_directory : identity_storage_directory;
+			const auto directory = identity_directory.lexically_normal().generic_u8string();
 			append(directory.size());
 			for (const auto character : directory)
 				core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
@@ -336,7 +338,9 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external storage identity requires ExternalCompactInt32");
 		auto hash = core::fingerprint::FNV1A_OFFSET;
 		const auto append = [&hash](std::uint64_t value) noexcept { core::fingerprint::append_u64(hash, value); };
-		const auto directory = storage_directory.lexically_normal().generic_u8string();
+		const auto& identity_directory = identity_storage_directory.empty()
+			? storage_directory : identity_storage_directory;
+		const auto directory = identity_directory.lexically_normal().generic_u8string();
 		for (const auto character : directory)
 			core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
 		append(public_catalog_cache_bytes);

@@ -1,6 +1,7 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 
 #include "core/atomic_publish.hpp"
@@ -35,6 +36,41 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+		std::uint64_t export_filter_hash(std::uint64_t key) noexcept
+		{
+			key ^= key >> 30U; key *= 0xbf58476d1ce4e5b9ULL;
+			key ^= key >> 27U; key *= 0x94d049bb133111ebULL;
+			return key ^ (key >> 31U);
+		}
+
+		bool export_filter_maybe_contains(const std::uint64_t* filter, std::uint64_t key) noexcept
+		{
+			constexpr auto mask = MultiwayExternalRecordStore::export_filter_bytes * 8U - 1U;
+			const auto hash = export_filter_hash(key);
+			const auto a = hash & mask;
+			const auto b = (hash >> 23U) & mask;
+			return (filter[a / 64U] & (1ULL << (a % 64U))) != 0U &&
+				(filter[b / 64U] & (1ULL << (b % 64U))) != 0U;
+		}
+		class OptionalExternalTimer
+		{
+		public:
+			explicit OptionalExternalTimer(std::uint64_t* target) noexcept
+				: target_(target), started_(target != nullptr ? std::chrono::steady_clock::now()
+					: std::chrono::steady_clock::time_point{}) {}
+			~OptionalExternalTimer() noexcept
+			{
+				if (target_ == nullptr) return;
+				const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started_).count());
+				*target_ = elapsed > std::numeric_limits<std::uint64_t>::max() - *target_
+					? std::numeric_limits<std::uint64_t>::max() : *target_ + elapsed;
+			}
+		private:
+			std::uint64_t* target_;
+			std::chrono::steady_clock::time_point started_;
+		};
+
 		constexpr std::array<std::uint8_t, 8U> kManifestMagic = { 'T','X','M','W','E','X','T','1' };
 		constexpr std::array<std::uint8_t, 8U> kWalMagic = { 'T','X','M','W','W','A','L','1' };
 		constexpr std::uint32_t kSchema = 1U;
@@ -1858,6 +1894,46 @@ namespace texas::solver::multiway
 
 	MultiwayExternalRecordStore::~MultiwayExternalRecordStore() = default;
 
+	void MultiwayExternalRecordStore::begin_export_filter() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (failed_ || export_filter_) throw std::logic_error("external export filter cannot be started");
+		constexpr auto words = export_filter_bytes / sizeof(std::uint64_t);
+		auto filter = std::make_unique<std::uint64_t[]>(words);
+		constexpr auto mask = export_filter_bytes * 8U - 1U;
+		for (const auto& run : runs_)
+		{
+			if (std::filesystem::file_size(run.index_path) != run.record_count * 8U ||
+				std::filesystem::file_size(run.data_path) != record_bytes(run.record_count, payload_bytes_) ||
+				run_hash(run) != run.content_hash)
+				throw std::invalid_argument("external export filter run validation failed");
+			std::ifstream index(run.index_path, std::ios::binary);
+			if (!index) throw std::runtime_error("external index run cannot be opened");
+			std::uint64_t previous = 0U;
+			for (std::uint64_t i = 0U; i < run.record_count; ++i)
+			{
+				std::array<std::uint8_t, 8U> bytes{};
+				index.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+				if (!index) throw std::runtime_error("external index run is truncated");
+				const auto key = read_u64(bytes.data());
+				if (i != 0U && key <= previous)
+					throw std::invalid_argument("external index run is not strictly ordered");
+				previous = key;
+				const auto hash = export_filter_hash(key);
+				const auto a = hash & mask, b = (hash >> 23U) & mask;
+				filter[a / 64U] |= 1ULL << (a % 64U);
+				filter[b / 64U] |= 1ULL << (b % 64U);
+			}
+		}
+		export_filter_ = std::move(filter);
+	}
+
+	void MultiwayExternalRecordStore::end_export_filter() const noexcept
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		export_filter_.reset();
+	}
+
 	void MultiwayExternalRecordStore::check_disk_reserve(std::uint64_t additional_bytes) const
 	{
 		std::error_code error;
@@ -1955,6 +2031,7 @@ namespace texas::solver::multiway
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
+		if (export_filter_) throw std::logic_error("external storage cannot mutate during export filter session");
 		if ((allow_same_batch ? batch_number < last_batch_number_ : batch_number <= last_batch_number_) || records.empty())
 			throw std::invalid_argument("external storage batch number must increase and contain records");
 		for (std::size_t index = 0U; index < records.size(); ++index)
@@ -1999,6 +2076,8 @@ namespace texas::solver::multiway
 				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 			flush_directory();
 			Run run{ next_generation, records.size(), 0U, data_path, index_path };
+			run.minimum_key = records.front().key;
+			run.maximum_key = records.back().key;
 			run.content_hash = run_hash(run);
 			auto next_runs = runs_;
 			next_runs.push_back(run);
@@ -2041,6 +2120,51 @@ namespace texas::solver::multiway
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
 		return lookup_unlocked(key, payload, payload_size);
+	}
+
+	bool MultiwayExternalRecordStore::lookup_profiled(std::uint64_t key,
+		std::vector<std::uint8_t>& payload, MultiwayExternalRecordLookupProfile& profile) const
+	{
+		payload.resize(payload_bytes_);
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
+		++stats_.lookups;
+		auto& cached = cache_[external_cache_slot(key, cache_.size())];
+		if (cached.valid && cached.key == key)
+		{
+			++stats_.cache_hits;
+			std::copy_n(cached.payload.data(), payload_bytes_, payload.data());
+			return true;
+		}
+		++stats_.cache_misses;
+		if (export_filter_ && !export_filter_maybe_contains(export_filter_.get(), key))
+		{
+			++profile.membership_misses;
+			return false;
+		}
+		const auto started = std::chrono::steady_clock::now();
+		for (auto run = runs_.rbegin(); run != runs_.rend(); ++run)
+		{
+			if (key < run->minimum_key || key > run->maximum_key)
+			{
+				profile.run_range_skips = multiway_memory_saturating_add(
+					profile.run_range_skips, 1U);
+				continue;
+			}
+			++stats_.disk_reads;
+			if (!lookup_run_profiled(*run, key, payload.data(), payload.size(), profile)) continue;
+			auto& entry = cache_[external_cache_slot(key, cache_.size())];
+			if (entry.valid) ++stats_.cache_evictions;
+			entry.key = key;
+			entry.valid = true;
+			std::copy_n(payload.data(), payload_bytes_, entry.payload.data());
+			stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - started).count());
+			return true;
+		}
+		stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::steady_clock::now() - started).count());
+		return false;
 	}
 
 	bool MultiwayExternalRecordStore::visit_ordered_records(
@@ -2158,9 +2282,12 @@ namespace texas::solver::multiway
 			return true;
 		}
 		++stats_.cache_misses;
+		if (export_filter_ && !export_filter_maybe_contains(export_filter_.get(), key)) return false;
 		const auto started = std::chrono::steady_clock::now();
 		for (auto run = runs_.rbegin(); run != runs_.rend(); ++run)
 		{
+			if (key < run->minimum_key || key > run->maximum_key)
+				continue;
 			++stats_.disk_reads;
 			if (!lookup_run(*run, key, payload, payload_size)) continue;
 			auto& entry = cache_[external_cache_slot(key, cache_.size())];
@@ -2204,6 +2331,94 @@ namespace texas::solver::multiway
 		data.read(reinterpret_cast<char*>(payload), static_cast<std::streamsize>(payload_size));
 		if (!data) throw std::runtime_error("external data segment is truncated");
 		return true;
+	}
+
+	bool MultiwayExternalRecordStore::lookup_run_profiled(const Run& run, std::uint64_t key,
+		std::uint8_t* payload, std::size_t payload_size, MultiwayExternalRecordLookupProfile& profile) const
+	{
+		std::ifstream index;
+		{
+			OptionalExternalTimer timer(&profile.index_open_nanoseconds);
+			++profile.index_opens;
+			index.open(run.index_path, std::ios::binary);
+			if (!index) throw std::runtime_error("external index run cannot be opened");
+		}
+		std::uint64_t first = 0U, last = run.record_count;
+		{
+			OptionalExternalTimer timer(&profile.index_search_nanoseconds);
+			while (first < last)
+			{
+				const auto middle = first + (last - first) / 2U;
+				index.seekg(static_cast<std::streamoff>(middle * 8U));
+				std::array<std::uint8_t, 8U> bytes{};
+				++profile.index_reads;
+				profile.requested_bytes = multiway_memory_saturating_add(profile.requested_bytes, bytes.size());
+				index.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+				if (!index) throw std::runtime_error("external index run is truncated");
+				const auto candidate = read_u64(bytes.data());
+				if (candidate < key) first = middle + 1U;
+				else last = middle;
+			}
+			if (first == run.record_count) return false;
+			index.clear(); index.seekg(static_cast<std::streamoff>(first * 8U));
+			std::array<std::uint8_t, 8U> key_bytes{};
+			++profile.index_reads;
+			profile.requested_bytes = multiway_memory_saturating_add(profile.requested_bytes, key_bytes.size());
+			index.read(reinterpret_cast<char*>(key_bytes.data()), key_bytes.size());
+			if (!index) throw std::runtime_error("external index run is truncated");
+			if (read_u64(key_bytes.data()) != key) return false;
+		}
+		std::ifstream data;
+		{
+			OptionalExternalTimer timer(&profile.data_open_nanoseconds);
+			++profile.data_opens;
+			data.open(run.data_path, std::ios::binary);
+			if (!data) throw std::runtime_error("external data segment cannot be opened");
+		}
+		{
+			OptionalExternalTimer timer(&profile.data_read_nanoseconds);
+			const auto width = payload_bytes_ + 8U;
+			data.seekg(static_cast<std::streamoff>(first * width + 8U));
+			++profile.data_reads;
+			profile.requested_bytes = multiway_memory_saturating_add(profile.requested_bytes, payload_size);
+			data.read(reinterpret_cast<char*>(payload), static_cast<std::streamsize>(payload_size));
+			if (!data) throw std::runtime_error("external data segment is truncated");
+		}
+		return true;
+	}
+
+	void MultiwayExternalRecordStore::load_run_key_range(Run& run) const
+	{
+		if (run.record_count == 0U || run.record_count >
+			(std::numeric_limits<std::uint64_t>::max() / 8U))
+			throw std::invalid_argument("external index run key range has an invalid record count");
+		const auto last_offset = (run.record_count - 1U) * 8U;
+		if (last_offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max()))
+			throw std::length_error("external index run key range offset overflows stream offset");
+		std::ifstream index(run.index_path, std::ios::binary);
+		if (!index)
+			throw std::runtime_error("external index run cannot be opened for key range");
+		std::array<std::uint8_t, 8U> first_key{};
+		index.read(reinterpret_cast<char*>(first_key.data()),
+			static_cast<std::streamsize>(first_key.size()));
+		if (!index)
+			throw std::runtime_error("external index run is truncated at its first key");
+		run.minimum_key = read_u64(first_key.data());
+		if (run.record_count == 1U)
+		{
+			run.maximum_key = run.minimum_key;
+			return;
+		}
+		index.clear();
+		index.seekg(static_cast<std::streamoff>(last_offset));
+		std::array<std::uint8_t, 8U> last_key{};
+		index.read(reinterpret_cast<char*>(last_key.data()),
+			static_cast<std::streamsize>(last_key.size()));
+		if (!index)
+			throw std::runtime_error("external index run is truncated at its last key");
+		run.maximum_key = read_u64(last_key.data());
+		if (run.minimum_key >= run.maximum_key)
+			throw std::invalid_argument("external index run key range is not strictly increasing");
 	}
 
 	void MultiwayExternalRecordStore::publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number)
@@ -2271,6 +2486,7 @@ namespace texas::solver::multiway
 				std::filesystem::file_size(run.index_path) != run.record_count * 8U)
 				throw std::invalid_argument("external storage run length is invalid");
 			if (run_hash(run) != run.content_hash) throw std::invalid_argument("external storage run checksum mismatch");
+			load_run_key_range(run);
 			total_records = checked_add(total_records, run.record_count);
 			runs.push_back(std::move(run));
 		}
@@ -2464,6 +2680,7 @@ namespace texas::solver::multiway
 	void MultiwayExternalRecordStore::compact(bool retain_input_runs)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
+		if (export_filter_) throw std::logic_error("external storage cannot mutate during export filter session");
 		if (runs_.size() < config_.compaction_fan_in) return;
 		if (generation_ == std::numeric_limits<std::uint64_t>::max()) throw std::overflow_error("external storage generation overflows");
 		cleanup_orphans();
@@ -2537,6 +2754,9 @@ namespace texas::solver::multiway
 		std::ofstream index(index_temp, std::ios::binary | std::ios::trunc);
 		if (!data || !index) throw std::runtime_error("external compaction output cannot be opened");
 		std::uint64_t compacted_count = 0U;
+		std::uint64_t minimum_key = 0U;
+		std::uint64_t maximum_key = 0U;
+		bool has_key_range = false;
 		while (!queue.empty())
 		{
 			const auto item = queue.top(); queue.pop();
@@ -2548,6 +2768,12 @@ namespace texas::solver::multiway
 				queue.pop();
 			}
 			const auto& newest = cursors[item.cursor];
+			if (!has_key_range)
+			{
+				minimum_key = item.key;
+				has_key_range = true;
+			}
+			maximum_key = item.key;
 			write_u64(data, item.key); data.write(reinterpret_cast<const char*>(newest.payload.data()), static_cast<std::streamsize>(payload_bytes_));
 			write_u64(index, item.key);
 			++compacted_count;
@@ -2568,6 +2794,10 @@ namespace texas::solver::multiway
 		texas::core::publish_atomic_replace(data_temp, data_path, "external compacted segment publish failed", texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		texas::core::publish_atomic_replace(index_temp, index_path, "external compacted index publish failed", texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		Run merged{ next_generation, compacted_count, 0U, data_path, index_path };
+		if (!has_key_range)
+			throw std::logic_error("external compaction produced an empty run");
+		merged.minimum_key = minimum_key;
+		merged.maximum_key = maximum_key;
 		merged.content_hash = run_hash(merged);
 		auto next_runs = runs_;
 		next_runs.erase(next_runs.begin() + static_cast<std::ptrdiff_t>(input_start), next_runs.end());
@@ -3445,6 +3675,114 @@ namespace texas::solver::multiway
 			action_count, page_width_ };
 	}
 
+	MultiwayExternalCompactPages::PageView MultiwayExternalCompactPages::pin_profiled(
+		std::uint64_t page_id, MultiwayPublicStateId state, std::int32_t seat,
+		std::uint32_t page_index, std::uint32_t bucket_count, std::uint8_t action_count,
+		MultiwayExternalPageProfile* profile)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U ||
+			bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
+		Page* cached = nullptr;
+		if (profile != nullptr)
+		{
+			OptionalExternalTimer timer(&profile->cache_find_nanoseconds);
+			cached = find(page_id);
+		}
+		else
+			cached = find(page_id);
+		if (cached != nullptr)
+		{
+			++page_cache_hits_;
+			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index ||
+				cached->bucket_count != bucket_count || cached->action_count != action_count)
+				throw std::invalid_argument("external compact page identity disagrees with row metadata");
+			if (cached->pin_count == std::numeric_limits<std::uint32_t>::max())
+				throw std::overflow_error("external compact page pin count overflows");
+			++cached->pin_count;
+			return { page_id, cached->regrets.data(), cached->strategy_masses.data(), bucket_count,
+				action_count, page_width_ };
+		}
+		++page_cache_misses_;
+		Page* selected = nullptr;
+		const auto select_victim = [&]() {
+			for (std::size_t offset = 0U; offset < pages_.size(); ++offset)
+			{
+				const auto index = (next_victim_ + offset) % pages_.size();
+				auto& candidate = pages_[index];
+				if (!candidate.valid || (candidate.pin_count == 0U && !candidate.dirty))
+				{
+					selected = &candidate;
+					next_victim_ = (index + 1U) % pages_.size();
+					break;
+				}
+			}
+		};
+		if (profile != nullptr)
+		{
+			OptionalExternalTimer timer(&profile->victim_nanoseconds);
+			select_victim();
+		}
+		else
+			select_victim();
+		if (selected == nullptr) throw std::length_error("external compact page cache has no clean unpinned page");
+		if (selected->valid) ++page_cache_evictions_;
+		selected->valid = false;
+		bool found = false;
+		if (profile != nullptr)
+		{
+			OptionalExternalTimer timer(&profile->store_lookup_nanoseconds);
+			found = store_->lookup_profiled(page_id, lookup_scratch_, profile->record_lookup);
+		}
+		else
+			found = store_->lookup(page_id, lookup_scratch_);
+		if (found)
+		{
+			const auto decode = [&]() {
+				decode_page(lookup_scratch_.data(), *selected);
+				if (selected->page_id != page_id || selected->state_id != state.value || selected->seat != seat ||
+					selected->page_index != page_index || selected->bucket_count != bucket_count ||
+					selected->action_count != action_count)
+					throw std::invalid_argument("external compact page identity disagrees with requested row");
+			};
+			if (profile != nullptr)
+			{
+				OptionalExternalTimer timer(&profile->decode_nanoseconds);
+				decode();
+				++profile->decoded_pages;
+			}
+			else
+				decode();
+		}
+		else
+		{
+			const auto zero = [&]() {
+				std::fill(selected->regrets.begin(), selected->regrets.end(), 0);
+				std::fill(selected->strategy_masses.begin(), selected->strategy_masses.end(), 0U);
+				selected->page_id = page_id;
+				selected->state_id = state.value;
+				selected->seat = seat;
+				selected->page_index = page_index;
+				selected->bucket_count = bucket_count;
+				selected->action_count = action_count;
+			};
+			if (profile != nullptr)
+			{
+				OptionalExternalTimer timer(&profile->zero_nanoseconds);
+				zero();
+				++profile->zero_pages;
+			}
+			else
+				zero();
+		}
+		selected->valid = true;
+		selected->dirty = false;
+		selected->pin_count = 1U;
+		return { page_id, selected->regrets.data(), selected->strategy_masses.data(), bucket_count,
+			action_count, page_width_ };
+	}
+
 	void MultiwayExternalCompactPages::unpin(std::uint64_t page_id)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -3659,6 +3997,43 @@ namespace texas::solver::multiway
 		result.writable = writable;
 		result.page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
 			row_page.page_index, row_page.bucket_count, row_page.action_count);
+		if (writable)
+		{
+			try
+			{
+				pages_.mark_dirty(row_page.page_id);
+			}
+			catch (...)
+			{
+				pages_.unpin(row_page.page_id);
+				throw;
+			}
+		}
+		return result;
+	}
+
+	MultiwayExternalCompactStorage::PinnedBucket MultiwayExternalCompactStorage::pin_bucket_profiled(
+		const MultiwayExternalRowBinding& binding, std::uint32_t bucket, bool writable,
+		MultiwayExternalPageProfile* profile) const
+	{
+		if (profile == nullptr) return pin_bucket(binding, bucket, writable);
+		MultiwayExternalRowPage row_page{};
+		bool located = false;
+		if (profile != nullptr)
+		{
+			OptionalExternalTimer timer(&profile->locate_nanoseconds);
+			located = rows_.locate_bucket(binding, bucket, row_page);
+		}
+		else
+			located = rows_.locate_bucket(binding, bucket, row_page);
+		if (!located)
+			throw std::out_of_range("external compact row or bucket is unavailable");
+		PinnedBucket result;
+		result.owner = this;
+		result.local_bucket = bucket % page_width_;
+		result.writable = writable;
+		result.page = pages_.pin_profiled(row_page.page_id, { binding.state_id_ }, binding.seat_,
+			row_page.page_index, row_page.bucket_count, row_page.action_count, profile);
 		if (writable)
 		{
 			try

@@ -1,5 +1,82 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External policy lookup coverage diagnosis
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Compared the deterministic 1,000-trajectory replay with the exported policy. The provider reported 25,149 absent infosets, with zero missing-bucket and action-menu mismatches. The policy hash validated and both replay fingerprints matched.
+- The export contains 31,070 admitted public rows across streets from 1,000 accepted training trajectories. The misses are consistent with replay reaching branches absent from this sampled policy, rather than an artifact or bucket/menu mismatch.
+
+### Files
+
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Evaluator replay: 14,601 hits, 25,149 missing infosets, zero missing buckets, zero action-menu mismatches; qualification failed its zero-miss gate.
+- Prepared plan, policy artifact, and protected bucket SHA-256 hashes matched their recorded values.
+
+### Limitations
+
+- The report stores aggregate miss categories, not individual missing keys, so a subset-specific state-key mismatch cannot be fully excluded.
+- Any new production export requires separate authorization.
+
+## PB-12 External policy lookup identity compatibility
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added an explicit policy-lookup verification path that validates artifact contents and model-semantic identity while allowing training runtime identity to differ.
+- Lookup qualification accepts the base model identity used by bucket artifacts. Exact artifact verification remains strict.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_model_identity.hpp`
+- `src/solver/multiway/abstraction/multiway_model_identity.cpp`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- `git diff --check` passed.
+- `scripts/python/compact_build.py --parallel 4`: Debug build passed.
+- Evaluator replay ran 1,000 trajectories against the preserved policy. The policy hash matched; replay fingerprints matched. Qualification reported 14,601 hits and 25,149 missing infosets, so it failed the required zero-miss gate.
+- The preserved policy and bucket SHA-256 hashes matched their recorded values.
+- CTest was not run.
+
+### Limitations
+
+- The existing export does not cover every lookup requested by the 1,000-trajectory replay. A new production export requires separate authorization.
+
+## PB-12 External checkpoint export report telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Allowed checkpoint-only external resumes to omit per-worker trajectory counts that are not stored in the checkpoint. Present vectors still require the effective worker count; added regression coverage.
+- Completed the prepared export. The artifact report matched the expected policy hash, trajectory counts, row/action counts, and serialized bytes. The artifact loader validated payload and policy hashes.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/python/full_build.py`: Debug build and full CTest passed.
+- Prepared export: exit 0, no watchdog guard, all six output targets matched.
+- Protected plan hashes and Git status matched after export.
+
+### Limitations
+
+- The standalone evaluator replay did not complete because its model-only expected identity differs from the artifact's training identity. The loader validated the artifact payload and policy hashes before rejecting that identity comparison.
+
 ## PB-12 External orphan-check lookup optimization
 
 **Status:** Complete
@@ -93,6 +170,144 @@
 
 - Measurements use synthetic, recently written files and sampled whole-process memory. Production-scale construction cost, cold-cache behavior, full export throughput and policy equivalence remain unverified.
 - The harness depends on the pre-existing uncommitted filter implementation, which is not included in this measurement commit.
+
+## PB-12 External export membership filter
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added a bounded export-session page membership filter with checksum-verified construction, preflight accounting, mutation exclusion and scoped cleanup. Negative probes avoid run scans; positive probes retain newest-generation lookup and page validation.
+- Exposed range skips and filter negatives in export telemetry. Added reopened sparse page-store and end-to-end export fixtures with overlapping runs and nonmonotonic page requests.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `scripts/run/measure_pb12_sparse_pages.ps1`
+- `scripts/run/measure_pb12_end_to_end.ps1`
+- `docs/md/PB12_EXTERNAL_EXPORT_READINESS_ASSESSMENT.md`
+
+### Validation
+
+- Serial Debug full build passed and full CTest passed 119/119; focused CTest passed 3/3. Builds and tests had 900-second watchdogs. An eight-job full build failed in concurrent DLL deployment with Windows error 32; the serial retry passed.
+- Paired 120-second-bounded synthetic measurements retained identical end-to-end artifact bytes and reduced index opens from 65 to 13. The sparse page fixture reduced opens from 922,459 to 2,923. No timeout occurred. Static C++ review found no actionable findings.
+
+### Limitations
+
+- Production-sized filter saturation, checksum-construction cost, peak memory and completed throughput are unmeasured. The stopped production export remains incomplete; policy equivalence and completion time are not established. A production attempt requires separate authorization.
+
+## PB-12 External record-store range pruning
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added per-run minimum and maximum keys to External record lookup. Appends and compaction populate the bounds; manifest loading derives them from checksum-verified index endpoints. Lookups skip runs that cannot contain the requested key, preserving newest-generation precedence.
+- The isolated partial export profile identified page-store lookup as the hot path: at 40,960 pages it recorded 334,554,606 index opens and 627,401,739 index reads. This is an incomplete-run profile, not a complete throughput result.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/md/PB12_EXTERNAL_EXPORT_PERFORMANCE_HANDOFF.md`
+
+### Validation
+
+- Focused Debug build passed for the four requested targets; focused CTest passed 4/4.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- The bounded fixture runner passed with exit code 0 in 614,747,800 ns. Its profiled export had one row, one page and zero page-store index opens, so it did not exercise the production lookup bottleneck.
+- C++ review found no actionable findings in the range-pruning change.
+
+### Limitations
+
+- The production export was stopped before completion. The expected policy hash, trajectory totals, row/action totals, serialized size and production throughput remain unverified. The range-pruning change has not yet been measured on a complete production export.
+
+## PB-12 Isolated External checkpoint resume preparation
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added `--external-storage-snapshot-dir` for checkpoint-only External resume. Runtime store I/O targets the separate copy while model, workflow and storage identities retain the configured source path.
+- The guard requires `--batches 0 --resume`, rejects source/runtime overlap and known root/component transaction, rollback and temporary pin markers, and leaves existing admission and provenance gates active.
+- Created and SHA-256-verified an isolated 16,669-file, 47,203,419-byte copy. Source pointer hashes were unchanged across the copy. At completion of this preparation entry, no production checkpoint restore or export had been run.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `scripts/run/measure_pb12_export_fixture.ps1`
+- `docs/md/PB12_EXPORT_STATIC_PREPARATION.md`
+
+### Validation
+
+- Focused Debug build passed for the four requested targets; focused CTest passed 4/4.
+- `texas_multiway_train` Debug build passed; `test_multiway_workflow_boundary` passed 1/1.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- `cmake -S . -B build -DVCPKG_MANIFEST_INSTALL=OFF` configured the existing tree without installing dependencies. `cmake --build build --config Debug --target texas_multiway_train` passed, and `--provenance` matches `HEAD` (`4f0874ee77384ab7c02e1ecb55adb85a05e79537`, dirty, Debug).
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run/measure_pb12_export_fixture.ps1 -Executable build/Debug/test_multiway_blueprint_training.exe -BuildConfiguration Debug -MaximumSeconds 120` passed with exit code 0 after correcting its selector to the three-session, four-trajectory fixture. Process time was 666,469,100 ns including setup and training; the profiled export reported 1 row, 3 actions, 1 page, 261 encoded bytes and policy hash `4103060085492157644`.
+- The isolated store copy was compared file-by-file with source by length and SHA-256; source pointer hashes matched before and after.
+- `git diff --check` passed with only line-ending warnings.
+
+### Limitations
+
+- At completion of this preparation entry, the production checkpoint export had not run. The later isolated attempt and its incomplete profile are recorded in the newer range-pruning entry; target policy/count/size equivalence remains unverified.
+
+## PB-12 External export profiling and regression coverage
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added opt-in External export profiling for restore/resume, ordered visits, page and record lookups, writer stages, and periodic progress reporting. Added deterministic regressions for profiled output equivalence, storage reopen/corruption, and writer failures.
+- Updated the workflow boundary assertion for the writer options argument while retaining the gate-before-writer ordering check.
+- Added a synthetic External export fixture with no training or checkpoint restore. It checks ordered rows, cache hits and misses, decoded and zero-filled pages, multiple run probes, and byte-identical repeated output.
+- Reworked the bounded fixture runner to collect child stdout, stderr, and exit status directly from its process handle; kept resource reserve and fail-closed checks.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/test_multiway_artifact.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `scripts/analyze/summarize_pb12_export.ps1`
+- `scripts/run/measure_pb12_export_fixture.ps1`
+- `docs/md/PB12_EXTERNAL_EXPORT_FIX_PLAN.md`
+- `docs/md/PB12_EXPORT_STATIC_PREPARATION.md`
+
+### Validation
+
+- Focused Debug build passed for the four requested targets.
+- Focused CTest passed 4/4; `test_multiway_workflow_boundary` passed 1/1 after its assertion update.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run/measure_pb12_export_fixture.ps1 -Executable build/Debug/test_multiway_blueprint_training.exe -BuildConfiguration Debug -MaximumSeconds 120` passed with exit code 0. The synthetic fixture reported 100 rows, 300 actions, 8 pages, 1 cache hit, 7 misses, 4 decoded pages, 3 zero-filled pages, and 14 page-run probes.
+
+### Limitations
+
+- At completion of this profiling entry, the production bottleneck was unmeasured and no production checkpoint export had run because restore and checkpoint capture mutate the original store. A later isolated attempt measured repeated page-store index lookups but did not complete; policy equivalence and speed improvement remain unverified.
+- The synthetic process timing includes fixture setup and storage writes; it is not production export throughput or evidence of a speed improvement. The runner only checks that the executable hash stayed constant during the run; it does not verify source-to-binary correspondence.
 
 ## PB-12 External page-pinned policy export validation
 

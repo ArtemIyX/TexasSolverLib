@@ -518,6 +518,72 @@ namespace texas::solver::multiway
 	[[nodiscard]] const char* multiway_export_system_rejection_reason_name(
 		MultiwayExportSystemRejectionReason reason) noexcept;
 
+	struct MultiwayExportStorageCounters
+	{
+		std::uint64_t lookups = 0U;
+		std::uint64_t cache_hits = 0U;
+		std::uint64_t cache_misses = 0U;
+		std::uint64_t run_probes = 0U;
+		std::uint64_t read_nanoseconds = 0U;
+		std::uint64_t page_hits = 0U;
+		std::uint64_t page_misses = 0U;
+	};
+
+	// Fixed-size, opt-in diagnostics. Times are inclusive unless named otherwise.
+	struct MultiwayExternalExportProfile
+	{
+		bool enabled = false;
+		std::uint64_t shapes = 0U;
+		std::uint64_t pages = 0U;
+		std::uint64_t rows = 0U;
+		std::uint64_t actions = 0U;
+		std::uint64_t encoded_bytes = 0U;
+		std::uint64_t stream_write_bytes = 0U;
+		std::uint64_t ordered_visit_nanoseconds = 0U;
+		std::uint64_t visitor_nanoseconds = 0U;
+		std::uint64_t menu_nanoseconds = 0U;
+		std::uint64_t pin_nanoseconds = 0U;
+		std::uint64_t unpin_nanoseconds = 0U;
+		std::uint64_t page_locate_nanoseconds = 0U;
+		std::uint64_t page_cache_find_nanoseconds = 0U;
+		std::uint64_t page_victim_nanoseconds = 0U;
+		std::uint64_t page_store_lookup_nanoseconds = 0U;
+		std::uint64_t page_decode_nanoseconds = 0U;
+		std::uint64_t page_zero_nanoseconds = 0U;
+		std::uint64_t page_decoded_count = 0U;
+		std::uint64_t page_zero_count = 0U;
+		std::uint64_t page_index_opens = 0U;
+		std::uint64_t page_index_reads = 0U;
+		std::uint64_t page_run_range_skips = 0U;
+		std::uint64_t page_membership_misses = 0U;
+		std::uint64_t page_data_opens = 0U;
+		std::uint64_t page_data_reads = 0U;
+		std::uint64_t page_requested_read_bytes = 0U;
+		std::uint64_t page_index_open_nanoseconds = 0U;
+		std::uint64_t page_index_search_nanoseconds = 0U;
+		std::uint64_t page_data_open_nanoseconds = 0U;
+		std::uint64_t page_data_read_nanoseconds = 0U;
+		std::uint64_t finish_nanoseconds = 0U;
+		std::uint64_t sampled_rows = 0U;
+		std::uint64_t sampled_average_nanoseconds = 0U;
+		std::uint64_t sampled_quantize_nanoseconds = 0U;
+		std::uint64_t sampled_writer_nanoseconds = 0U;
+		std::uint64_t writer_sampled_rows = 0U;
+		std::uint64_t writer_sampled_validation_nanoseconds = 0U;
+		std::uint64_t writer_sampled_payload_hash_nanoseconds = 0U;
+		std::uint64_t writer_sampled_policy_hash_nanoseconds = 0U;
+		std::uint64_t writer_sampled_encoding_nanoseconds = 0U;
+		std::uint64_t writer_flushes = 0U;
+		MultiwayExportStorageCounters catalog{};
+		MultiwayExportStorageCounters row_index{};
+		MultiwayExportStorageCounters page_store{};
+	};
+
+	// Invoked after a page is unpinned. The view is transient; do not re-enter storage.
+	using MultiwayExternalExportProgressObserver = void (*)(
+		const MultiwayExternalExportProfile&, std::uint64_t elapsed_nanoseconds,
+		void* context) noexcept;
+
 	struct MultiwayExportTelemetry
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -539,6 +605,7 @@ namespace texas::solver::multiway
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t duration_nanoseconds = 0U;
+		MultiwayExternalExportProfile external_profile{};
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 
 		void validate() const;
@@ -812,6 +879,11 @@ namespace texas::solver::multiway
 		MultiwaySystemMemoryObserver system_memory_observer = nullptr;
 		const void* export_observer_context = nullptr;
 		const void* system_memory_observer_context = nullptr;
+		bool profile_external_export = false;
+		bool external_export_membership_filter = true;
+		MultiwayExternalExportProgressObserver export_progress_observer = nullptr;
+		void* export_progress_context = nullptr;
+		std::uint64_t export_progress_page_interval = 4096U;
 
 		void validate() const;
 	};

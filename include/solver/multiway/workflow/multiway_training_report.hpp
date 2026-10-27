@@ -140,6 +140,9 @@ namespace texas::solver::multiway
 		std::uint32_t checkpoint_schema_version = 5U;
 		std::uint64_t external_checkpoint_generation = 0U;
 		std::uint64_t external_checkpoint_segment_count = 0U;
+		bool external_checkpoint_restore_profiled = false;
+		std::uint64_t external_checkpoint_restore_nanoseconds = 0U;
+		std::uint64_t external_checkpoint_session_resume_nanoseconds = 0U;
 		std::uint64_t external_storage_identity_hash = 0U;
 		std::uint64_t external_storage_disk_preflight_bytes = 0U;
 		std::uint64_t external_storage_cache_bytes = 0U;

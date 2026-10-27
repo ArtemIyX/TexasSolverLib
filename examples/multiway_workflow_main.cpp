@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstdio>
 #include <exception>
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
@@ -39,6 +40,51 @@
 
 namespace
 {
+	void report_external_export_progress(
+		const texas::solver::multiway::MultiwayExternalExportProfile& profile,
+		std::uint64_t elapsed_nanoseconds, void*) noexcept
+	{
+		std::fprintf(stderr,
+			"external_export_progress elapsed_ns=%llu pages=%llu rows=%llu actions=%llu encoded_bytes=%llu stream_write_bytes=%llu pin_ns=%llu unpin_ns=%llu locate_ns=%llu cache_find_ns=%llu victim_ns=%llu store_lookup_ns=%llu decode_ns=%llu zero_ns=%llu decoded_pages=%llu zero_pages=%llu index_opens=%llu index_reads=%llu range_skips=%llu membership_misses=%llu data_opens=%llu data_reads=%llu requested_read_bytes=%llu index_open_ns=%llu index_search_ns=%llu data_open_ns=%llu data_read_ns=%llu sampled_rows=%llu average_sample_ns=%llu quantize_sample_ns=%llu writer_sample_ns=%llu writer_samples=%llu validation_sample_ns=%llu payload_hash_sample_ns=%llu policy_hash_sample_ns=%llu encoding_sample_ns=%llu flushes=%llu\n",
+			static_cast<unsigned long long>(elapsed_nanoseconds),
+			static_cast<unsigned long long>(profile.pages),
+			static_cast<unsigned long long>(profile.rows),
+			static_cast<unsigned long long>(profile.actions),
+			static_cast<unsigned long long>(profile.encoded_bytes),
+			static_cast<unsigned long long>(profile.stream_write_bytes),
+			static_cast<unsigned long long>(profile.pin_nanoseconds),
+			static_cast<unsigned long long>(profile.unpin_nanoseconds),
+			static_cast<unsigned long long>(profile.page_locate_nanoseconds),
+			static_cast<unsigned long long>(profile.page_cache_find_nanoseconds),
+			static_cast<unsigned long long>(profile.page_victim_nanoseconds),
+			static_cast<unsigned long long>(profile.page_store_lookup_nanoseconds),
+			static_cast<unsigned long long>(profile.page_decode_nanoseconds),
+			static_cast<unsigned long long>(profile.page_zero_nanoseconds),
+			static_cast<unsigned long long>(profile.page_decoded_count),
+			static_cast<unsigned long long>(profile.page_zero_count),
+			static_cast<unsigned long long>(profile.page_index_opens),
+			static_cast<unsigned long long>(profile.page_index_reads),
+			static_cast<unsigned long long>(profile.page_run_range_skips),
+			static_cast<unsigned long long>(profile.page_membership_misses),
+			static_cast<unsigned long long>(profile.page_data_opens),
+			static_cast<unsigned long long>(profile.page_data_reads),
+			static_cast<unsigned long long>(profile.page_requested_read_bytes),
+			static_cast<unsigned long long>(profile.page_index_open_nanoseconds),
+			static_cast<unsigned long long>(profile.page_index_search_nanoseconds),
+			static_cast<unsigned long long>(profile.page_data_open_nanoseconds),
+			static_cast<unsigned long long>(profile.page_data_read_nanoseconds),
+			static_cast<unsigned long long>(profile.sampled_rows),
+			static_cast<unsigned long long>(profile.sampled_average_nanoseconds),
+			static_cast<unsigned long long>(profile.sampled_quantize_nanoseconds),
+			static_cast<unsigned long long>(profile.sampled_writer_nanoseconds),
+			static_cast<unsigned long long>(profile.writer_sampled_rows),
+			static_cast<unsigned long long>(profile.writer_sampled_validation_nanoseconds),
+			static_cast<unsigned long long>(profile.writer_sampled_payload_hash_nanoseconds),
+			static_cast<unsigned long long>(profile.writer_sampled_policy_hash_nanoseconds),
+			static_cast<unsigned long long>(profile.writer_sampled_encoding_nanoseconds),
+			static_cast<unsigned long long>(profile.writer_flushes));
+		std::fflush(stderr);
+	}
 
 	enum class Workflow
 	{
@@ -121,11 +167,13 @@ namespace
 		if (workflow == Workflow::Train)
 		{
 			std::cout << "  --batches <integer>    Bounded training batch count (0 with --resume exports the checkpoint)\n"
+					  << "  --profile-external-export  Collect bounded External export timings\n"
 					  << "  --input <path>         Verified bucket artifact\n"
 					  << "  --output <path>        Full blueprint artifact\n"
 					  << "  --report <path>        JSON training report\n"
 					  << "  --checkpoint-dir <dir> Output directory for incomplete runs\n"
 					  << "  --resume <path>        Checkpoint to resume\n"
+				  << "  --external-storage-snapshot-dir <dir>  Isolated External store copy for checkpoint-only resume\n"
 					  << "  --progress <true|false>  Print training progress (default true)\n"
 					  << "  --progress-every <N>  Print training progress every N batches\n"
 					  << "  --progress-memory <true|false>  Show working-set telemetry\n"
@@ -650,6 +698,7 @@ namespace
 		std::filesystem::path report_path,
 		std::filesystem::path checkpoint_dir,
 		std::filesystem::path resume_path,
+		std::filesystem::path external_storage_snapshot_directory,
 		std::uint32_t worker_override,
 		bool pin_workers,
 		bool progress_enabled,
@@ -660,7 +709,8 @@ namespace
 		bool scheduler_specified,
 		std::uint32_t dynamic_chunk_size,
 		bool dynamic_chunk_size_specified,
-		bool authorize_50m_stage)
+		bool authorize_50m_stage,
+		bool profile_external_export)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -715,6 +765,44 @@ namespace
 		if (workflow.storage_backend == "ExternalCompactInt32")
 			workflow.storage_directory = authorize_multiway_workflow_path(
 				path_policy, workflow.storage_directory, MultiwayWorkflowPathKind::OutputDirectory);
+		if (!external_storage_snapshot_directory.empty())
+		{
+			if (workflow.storage_backend != "ExternalCompactInt32" || !batches_specified || batches != 0U || resume_path.empty())
+				throw std::invalid_argument("External storage snapshots require --batches 0 and --resume with ExternalCompactInt32");
+			workflow.identity_storage_directory = workflow.storage_directory;
+			external_storage_snapshot_directory = authorize_multiway_workflow_path(
+				path_policy, external_storage_snapshot_directory, MultiwayWorkflowPathKind::OutputDirectory);
+			if (!std::filesystem::is_directory(external_storage_snapshot_directory) ||
+				!std::filesystem::exists(external_storage_snapshot_directory / "TRAINING_CURRENT") ||
+				!std::filesystem::exists(external_storage_snapshot_directory / "catalog" / "CURRENT") ||
+				!std::filesystem::exists(external_storage_snapshot_directory / "rows" / "CURRENT") ||
+				!std::filesystem::exists(external_storage_snapshot_directory / "pages" / "CURRENT"))
+				throw std::invalid_argument("External storage snapshot is missing a committed generation pointer");
+			for (const auto* journal : { "TRAINING_BATCH.wal", "TRAINING_BATCH.tmp",
+				"CHECKPOINT_RESTORE.wal", "CHECKPOINT_RESTORE.wal.tmp", "TRAINING_CURRENT.tmp",
+				"CHECKPOINT_TRAINING_ROLLBACK.tmp", "CATALOG_CURRENT.previous",
+				"ROWS_CURRENT.previous", "PAGES_CURRENT.previous",
+				"CHECKPOINT_CATALOG.previous", "CHECKPOINT_ROWS.previous",
+				"CHECKPOINT_PAGES.previous", "CHECKPOINT_TRAINING.previous" })
+				if (std::filesystem::exists(external_storage_snapshot_directory / journal))
+					throw std::invalid_argument("External storage snapshot contains unfinished transaction state");
+			for (const auto* component : { "catalog", "rows", "pages" })
+			{
+				const auto component_directory = external_storage_snapshot_directory / component;
+				for (const auto* journal : { "BATCH.wal", "CURRENT.tmp", "CURRENT.restore.tmp",
+					"CHECKPOINT_CURRENT.tmp", "CHECKPOINT_ROLLBACK.tmp" })
+					if (std::filesystem::exists(component_directory / journal))
+						throw std::invalid_argument("External storage snapshot contains unfinished component transaction state");
+				for (const auto& entry : std::filesystem::directory_iterator(component_directory))
+				{
+					const auto name = entry.path().filename().string();
+					if (name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 18U &&
+						name.substr(name.size() - 8U) == ".PIN.tmp")
+						throw std::invalid_argument("External storage snapshot contains an unfinished checkpoint pin");
+				}
+			}
+			workflow.storage_directory = std::move(external_storage_snapshot_directory);
+		}
 		std::uint64_t external_storage_disk_preflight_bytes = 0U;
 		if (input_path == output_path || input_path == report_path || output_path == report_path)
 			throw std::invalid_argument("training input and output paths must be distinct");
@@ -755,6 +843,26 @@ namespace
 				checkpoint_path, resume_path })
 			if (!artifact.empty() && overlaps(workflow.storage_directory, artifact))
 				throw std::invalid_argument("external storage path aliases a training artifact");
+			if (!workflow.identity_storage_directory.empty())
+			{
+				if (overlaps(workflow.identity_storage_directory, workflow.storage_directory))
+					throw std::invalid_argument("External storage snapshot overlaps its source store");
+				std::error_code isolation_error;
+				if (!std::filesystem::is_directory(workflow.identity_storage_directory, isolation_error) || isolation_error)
+					throw std::invalid_argument("External storage snapshot source is unavailable");
+				const auto source_canonical = std::filesystem::weakly_canonical(
+					workflow.identity_storage_directory, isolation_error);
+				if (isolation_error)
+					throw std::invalid_argument("External storage snapshot source cannot be canonicalized");
+				const auto snapshot_canonical = std::filesystem::weakly_canonical(
+					workflow.storage_directory, isolation_error);
+				if (isolation_error || overlaps(source_canonical, snapshot_canonical))
+					throw std::invalid_argument("External storage snapshot is not path-isolated from its source");
+				for (const auto& artifact : { input_path, output_path, report_path, log_path,
+					checkpoint_path, resume_path })
+				if (!artifact.empty() && overlaps(workflow.identity_storage_directory, artifact))
+					throw std::invalid_argument("external storage source path aliases a training artifact");
+			}
 			std::error_code space_error;
 			const auto space_path = std::filesystem::exists(workflow.storage_directory, space_error)
 				? workflow.storage_directory : workflow.storage_directory.parent_path();
@@ -819,6 +927,10 @@ namespace
 		log_line("binary provenance: source_commit=" + std::string(binary.source_commit) + " dirty_state=" + std::string(binary.dirty_state) + " compiler=" + std::string(binary.compiler_identity) + " build_configuration=" + std::string(binary.build_configuration));
 		log_line("run checkout identity: commit=" + std::string(run_checkout_commit == nullptr ? "unknown" : run_checkout_commit));
 		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " scheduler=" + std::string(multiway_scheduler_mode_name(effective_scheduler_mode)) + " dynamic_chunk_size=" + std::to_string(effective_dynamic_chunk_size) + " placement_policy=" + std::string(multiway_worker_placement_policy_name(workflow.placement_policy)) + " pin_workers=" + (pin_workers ? "true" : "false"));
+		if (!workflow.identity_storage_directory.empty())
+			log_line("external storage snapshot: source_identity_directory=" +
+				workflow.identity_storage_directory.string() + " runtime_directory=" +
+				workflow.storage_directory.string());
 		log_line("training initialization: validating resolved capacities");
 		log_line("training initialization: loading bucket artifact");
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeBucketMap))
@@ -902,6 +1014,7 @@ namespace
 		if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 		{
 			config.limits.external_storage.directory = workflow.storage_directory;
+			config.limits.external_storage.identity_directory = workflow.identity_storage_directory;
 			config.limits.external_storage.public_catalog_cache_bytes = workflow.public_catalog_cache_bytes;
 			config.limits.external_storage.row_page_cache_bytes = workflow.row_page_cache_bytes;
 			config.limits.external_storage.maximum_wal_bytes = workflow.maximum_wal_bytes;
@@ -981,6 +1094,9 @@ namespace
 			workflow.process_working_set_resident_allowance_bytes,
 			MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES
 		};
+		config.working_set_monitor.profile_external_export = profile_external_export;
+		if (profile_external_export)
+			config.working_set_monitor.export_progress_observer = &report_external_export_progress;
 		config.working_set_monitor.system_memory_guard = {
 			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES
 		};
@@ -1005,6 +1121,9 @@ namespace
 			config.blueprint.action_abstraction_version, config.blueprint.terminal_model_version);
 		log_line("training initialization: constructing training session and worker pool");
 		std::optional<MultiwayExternalCheckpointManifest> external_resume;
+		std::uint64_t external_restore_nanoseconds = 0U;
+		std::uint64_t external_session_resume_nanoseconds = 0U;
+		bool external_restore_profiled = false;
 		const auto workflow_identity_hash = workflow.fingerprint();
 		const auto storage_identity_hash = workflow.storage_backend == "ExternalCompactInt32"
 			? workflow.external_storage_fingerprint() : 0U;
@@ -1012,10 +1131,20 @@ namespace
 			config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 		{
 			const auto identity = config.identity();
+			const auto restore_started = profile_external_export ? std::chrono::steady_clock::now()
+				: std::chrono::steady_clock::time_point{};
 			external_resume = restore_multiway_external_checkpoint(
 				resume_path, workflow.storage_directory, identity.combined_hash,
 				workflow_identity_hash, storage_identity_hash, config.schedule.identity(),
 				workflow.synchronous_durability);
+			if (profile_external_export)
+			{
+				external_restore_nanoseconds = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - restore_started).count());
+				log_line("external checkpoint restore completed: duration_nanoseconds=" +
+					std::to_string(external_restore_nanoseconds));
+			}
 		}
 		const auto populate_storage_report = [&](MultiwayTrainingReport& report,
 			const MultiwayBlueprintTrainingSession* active_session) {
@@ -1058,6 +1187,9 @@ namespace
 			}
 			if (external_resume.has_value())
 			{
+				report.external_checkpoint_restore_profiled = external_restore_profiled;
+				report.external_checkpoint_restore_nanoseconds = external_restore_nanoseconds;
+				report.external_checkpoint_session_resume_nanoseconds = external_session_resume_nanoseconds;
 				report.external_checkpoint_generation = external_resume->generation.generation;
 				for (const auto& component : external_resume->segments)
 					report.external_checkpoint_segment_count = multiway_memory_saturating_add(
@@ -1081,8 +1213,21 @@ namespace
 		{
 			log_line("training initialization: loading checkpoint");
 			if (external_resume.has_value())
+			{
+				const auto resume_started = profile_external_export ? std::chrono::steady_clock::now()
+					: std::chrono::steady_clock::time_point{};
 				session.resume_from_external_checkpoint(*external_resume,
 					workflow_identity_hash, storage_identity_hash);
+				if (profile_external_export)
+				{
+					external_session_resume_nanoseconds = static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - resume_started).count());
+					external_restore_profiled = true;
+					log_line("external checkpoint session resume completed: duration_nanoseconds=" +
+						std::to_string(external_session_resume_nanoseconds));
+				}
+			}
 			else
 				session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 					resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
@@ -1307,7 +1452,6 @@ namespace
 		{
 			throw std::invalid_argument("evaluate requires a sizing-frozen workflow configuration");
 		}
-		const auto identity = make_multiway_model_identity(workflow.model);
 		const auto buckets = load_multiway_bucket_registry(buckets_path);
 		MultiwayBlueprintTrainingConfig config;
 		config.blueprint = workflow.model;
@@ -1329,6 +1473,7 @@ namespace
 		config.limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_public_state_capacity());
 		config.limits.max_discovery_rows_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_row_capacity());
 		config.limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
+		const auto identity = config.identity();
 		MultiwayPrivateConfig ranges;
 		ranges.ranges.resize(6U);
 		for (auto& range : ranges.ranges)
@@ -1349,7 +1494,7 @@ namespace
 		MultiwayLookupQualificationReport repeat;
 		if (MultiwayFullBlueprintArtifacts::is_sharded_manifest(blueprint_path))
 		{
-			const auto blueprint = MultiwayMappedShardedBlueprintProvider::load_verified(
+			const auto blueprint = MultiwayMappedShardedBlueprintProvider::load_verified_for_policy_lookup(
 				blueprint_path, identity);
 			report = qualify_multiway_required_lookups(
 				config, root, buckets, *blueprint, trajectories, evidence);
@@ -1358,7 +1503,7 @@ namespace
 		}
 		else
 		{
-			const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified(
+			const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified_for_policy_lookup(
 				blueprint_path, identity);
 			report = qualify_multiway_required_lookups(
 				config, root, buckets, blueprint, trajectories, evidence);
@@ -1435,6 +1580,7 @@ namespace
 		std::filesystem::path report_path;
 		std::filesystem::path checkpoint_dir;
 		std::filesystem::path resume_path;
+		std::filesystem::path external_storage_snapshot_directory;
 		std::filesystem::path artifacts_path;
 		std::filesystem::path bucket_report;
 		std::filesystem::path training_report;
@@ -1455,6 +1601,7 @@ namespace
 		bool threads_specified = false;
 		bool pin_workers = false;
 		bool authorize_50m_stage = false;
+		bool profile_external_export = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
 		bool scheduler_specified = false;
 		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
@@ -1495,7 +1642,12 @@ namespace
 				authorize_50m_stage = true;
 				continue;
 			}
-			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
+			if (argument == "--profile-external-export")
+			{
+				profile_external_export = true;
+				continue;
+			}
+			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--external-storage-snapshot-dir" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
 				{
@@ -1514,6 +1666,8 @@ namespace
 					checkpoint_dir = argv[index];
 				if (argument == "--resume")
 					resume_path = argv[index];
+				if (argument == "--external-storage-snapshot-dir")
+					external_storage_snapshot_directory = argv[index];
 				if (argument == "--artifacts")
 					artifacts_path = argv[index];
 				if (argument == "--batches")
@@ -1647,6 +1801,9 @@ namespace
 			std::cerr << "unknown option: " << argument << "\n";
 			return EXIT_FAILURE;
 		}
+		if (!external_storage_snapshot_directory.empty() &&
+			(workflow != Workflow::Train || config_path.empty()))
+			throw std::invalid_argument("--external-storage-snapshot-dir requires train and --config");
 		if (workflow != Workflow::Finalize && !config_path.empty())
 		{
 			const auto path_policy = texas::solver::multiway::make_default_multiway_workflow_path_policy();
@@ -1674,9 +1831,11 @@ namespace
 		{
 			return run_train(config_path, input_path, output_path, batches, batches_specified,
 				report_path, checkpoint_dir,
-				resume_path, threads_specified ? threads : 0U, pin_workers, progress_enabled,
+				resume_path, external_storage_snapshot_directory,
+				threads_specified ? threads : 0U, pin_workers, progress_enabled,
 				training_progress_interval, progress_memory, progress_speed, scheduler_mode, scheduler_specified,
-				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage);
+				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage,
+				profile_external_export);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{

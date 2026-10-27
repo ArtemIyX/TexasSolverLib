@@ -406,10 +406,30 @@ namespace texas::solver::multiway
 			return bytes;
 		}
 
+		class OptionalWriterTimer
+		{
+		public:
+			OptionalWriterTimer(bool enabled, std::uint64_t* target) noexcept
+				: target_(enabled ? target : nullptr), started_(target_ != nullptr
+					? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}) {}
+			~OptionalWriterTimer() noexcept
+			{
+				if (target_ == nullptr) return;
+				const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started_).count());
+				*target_ = elapsed > std::numeric_limits<std::uint64_t>::max() - *target_
+					? std::numeric_limits<std::uint64_t>::max() : *target_ + elapsed;
+			}
+		private:
+			std::uint64_t* target_;
+			std::chrono::steady_clock::time_point started_;
+		};
+
 		class BufferedEncoder
 		{
 		public:
-			explicit BufferedEncoder(std::ofstream& out) noexcept : out_(out) {}
+			explicit BufferedEncoder(std::ofstream& out, MultiwayFullBlueprintWriterProfile* profile) noexcept
+				: out_(out), profile_(profile) {}
 
 			void bytes(const char* data, std::size_t count)
 			{
@@ -453,12 +473,15 @@ namespace texas::solver::multiway
 				if (!out_)
 					throw std::runtime_error("multiway full blueprint write failed");
 				used_ = 0U;
+				if (profile_ != nullptr) ++profile_->flushes;
 			}
 
 			[[nodiscard]] std::uint64_t encoded_bytes() const noexcept { return encoded_bytes_; }
+			[[nodiscard]] std::uint64_t stream_write_bytes() const noexcept { return encoded_bytes_ - used_; }
 
 		private:
 			std::ofstream& out_;
+			MultiwayFullBlueprintWriterProfile* profile_;
 			std::array<char, kStreamBufferBytes> buffer_{};
 			std::size_t used_ = 0U;
 			std::uint64_t encoded_bytes_ = 0U;
@@ -827,7 +850,7 @@ namespace texas::solver::multiway
 			const std::filesystem::path& destination_path,
 			const MultiwayFullBlueprintStreamPlan& stream_plan,
 			MultiwayFullBlueprintStreamOptions stream_options)
-			: destination(destination_path), temporary(destination_path.string() + ".tmp"), plan(stream_plan), options(stream_options), encoder(output)
+			: destination(destination_path), temporary(destination_path.string() + ".tmp"), plan(stream_plan), options(stream_options), encoder(output, options.profile)
 		{
 			plan.validate();
 			cleanup = std::make_unique<TemporaryFileCleanup>(temporary);
@@ -931,6 +954,12 @@ namespace texas::solver::multiway
 
 	MultiwayFullBlueprintStreamWriter::~MultiwayFullBlueprintStreamWriter() = default;
 
+	MultiwayFullBlueprintStreamProgress MultiwayFullBlueprintStreamWriter::progress() const noexcept
+	{
+		if (impl_ == nullptr) return {};
+		return { impl_->encoder.encoded_bytes(), impl_->encoder.stream_write_bytes() };
+	}
+
 	void MultiwayFullBlueprintStreamWriter::write_row(
 		const MultiwayFullBlueprintRowView& row)
 	{
@@ -938,22 +967,74 @@ namespace texas::solver::multiway
 			throw std::logic_error("multiway full blueprint stream is already finished");
 		if (impl_->options.failure_point == MultiwayFullBlueprintStreamFailurePoint::Write)
 			throw std::runtime_error("injected multiway full blueprint write failure");
-		validate_row(row);
-		if (impl_->row_count >= impl_->plan.row_count)
-			throw std::length_error("multiway full blueprint emitted too many rows");
-		const auto row_actions = static_cast<std::uint64_t>(row.action_count);
-		if (row_actions > impl_->plan.action_count - impl_->action_count)
-			throw std::length_error("multiway full blueprint emitted too many actions");
-		const auto current_key = row_key(row);
-		if (impl_->options.require_strict_row_order && impl_->has_previous_key
-			&& !row_key_less(impl_->previous_key, current_key))
+		auto* const profile = impl_->options.profile;
+		if (profile == nullptr)
 		{
-			throw std::invalid_argument("multiway full blueprint emitted row keys are not strictly increasing");
+			validate_row(row);
+			if (impl_->row_count >= impl_->plan.row_count)
+				throw std::length_error("multiway full blueprint emitted too many rows");
+			const auto row_actions = static_cast<std::uint64_t>(row.action_count);
+			if (row_actions > impl_->plan.action_count - impl_->action_count)
+				throw std::length_error("multiway full blueprint emitted too many actions");
+			const auto current_key = row_key(row);
+			if (impl_->options.require_strict_row_order && impl_->has_previous_key &&
+				!row_key_less(impl_->previous_key, current_key))
+				throw std::invalid_argument("multiway full blueprint emitted row keys are not strictly increasing");
+			impl_->hasher.append_row(row);
+			impl_->policy_hasher.append_row(row);
+			write_stream_row(impl_->encoder, row);
+			impl_->previous_key = current_key;
+			impl_->has_previous_key = true;
+			++impl_->row_count;
+			impl_->action_count += row_actions;
+			return;
 		}
+		const bool sampled = (impl_->row_count & 255U) == 0U;
+		if (sampled) ++profile->sampled_rows;
+		const auto row_actions = static_cast<std::uint64_t>(row.action_count);
+		RowKey current_key{};
+		const auto validate = [&]() {
+			validate_row(row);
+			if (impl_->row_count >= impl_->plan.row_count)
+				throw std::length_error("multiway full blueprint emitted too many rows");
+			if (row_actions > impl_->plan.action_count - impl_->action_count)
+				throw std::length_error("multiway full blueprint emitted too many actions");
+			current_key = row_key(row);
+			if (impl_->options.require_strict_row_order && impl_->has_previous_key
+				&& !row_key_less(impl_->previous_key, current_key))
+			{
+				throw std::invalid_argument("multiway full blueprint emitted row keys are not strictly increasing");
+			}
+		};
+		if (sampled)
+		{
+			OptionalWriterTimer timer(true, &profile->sampled_validation_nanoseconds);
+			validate();
+		}
+		else
+			validate();
 
-		impl_->hasher.append_row(row);
-		impl_->policy_hasher.append_row(row);
-		write_stream_row(impl_->encoder, row);
+		if (sampled)
+		{
+			OptionalWriterTimer timer(true, &profile->sampled_payload_hash_nanoseconds);
+			impl_->hasher.append_row(row);
+		}
+		else
+			impl_->hasher.append_row(row);
+		if (sampled)
+		{
+			OptionalWriterTimer timer(true, &profile->sampled_policy_hash_nanoseconds);
+			impl_->policy_hasher.append_row(row);
+		}
+		else
+			impl_->policy_hasher.append_row(row);
+		if (sampled)
+		{
+			OptionalWriterTimer timer(true, &profile->sampled_encoding_nanoseconds);
+			write_stream_row(impl_->encoder, row);
+		}
+		else
+			write_stream_row(impl_->encoder, row);
 		impl_->previous_key = current_key;
 		impl_->has_previous_key = true;
 		++impl_->row_count;
@@ -1119,6 +1200,19 @@ namespace texas::solver::multiway
 	}
 
 	MultiwayFullBlueprintShardedStreamWriter::~MultiwayFullBlueprintShardedStreamWriter() = default;
+
+	MultiwayFullBlueprintStreamProgress MultiwayFullBlueprintShardedStreamWriter::progress() const noexcept
+	{
+		if (impl_ == nullptr) return {};
+		const auto current = impl_->shard_writer == nullptr
+			? MultiwayFullBlueprintStreamProgress{} : impl_->shard_writer->progress();
+		const auto add = [](std::uint64_t left, std::uint64_t right) noexcept {
+			return right > std::numeric_limits<std::uint64_t>::max() - left
+				? std::numeric_limits<std::uint64_t>::max() : left + right;
+		};
+		return { add(impl_->total_serialized_bytes, current.encoded_bytes),
+			add(impl_->total_serialized_bytes, current.stream_write_bytes) };
+	}
 
 	void MultiwayFullBlueprintShardedStreamWriter::write_row(const MultiwayFullBlueprintRowView& row)
 	{
@@ -1308,6 +1402,21 @@ namespace texas::solver::multiway
 		const std::filesystem::path& manifest_path,
 		const MultiwayModelIdentity& expected_identity)
 	{
+		return load_sharded_manifest(manifest_path, expected_identity, false);
+	}
+
+	MultiwayFullBlueprintShardManifest MultiwayFullBlueprintArtifacts::load_sharded_manifest_for_policy_lookup(
+		const std::filesystem::path& manifest_path,
+		const MultiwayModelIdentity& expected_identity)
+	{
+		return load_sharded_manifest(manifest_path, expected_identity, true);
+	}
+
+	MultiwayFullBlueprintShardManifest MultiwayFullBlueprintArtifacts::load_sharded_manifest(
+		const std::filesystem::path& manifest_path,
+		const MultiwayModelIdentity& expected_identity,
+		bool allow_runtime_identity_difference)
+	{
 		constexpr std::uint64_t maximum_manifest_bytes = 64U * 1024U * 1024U;
 		std::error_code size_error;
 		const auto file_bytes = std::filesystem::file_size(manifest_path, size_error);
@@ -1357,7 +1466,10 @@ namespace texas::solver::multiway
 			throw std::runtime_error("multiway blueprint shard manifest has trailing or missing data");
 		manifest.validate();
 		expected_identity.validate();
-		if (manifest.identity != expected_identity || shard_manifest_hash(manifest) != stored_hash)
+		const auto identity_matches = allow_runtime_identity_difference
+			? multiway_policy_identity_compatible(manifest.identity, expected_identity)
+			: manifest.identity == expected_identity;
+		if (!identity_matches || shard_manifest_hash(manifest) != stored_hash)
 			throw std::invalid_argument("multiway blueprint shard manifest identity or hash mismatch");
 		return manifest;
 	}
@@ -1473,6 +1585,21 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path,
 		const MultiwayModelIdentity& expected_identity)
 	{
+		return load_verified(path, expected_identity, false);
+	}
+
+	MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified_for_policy_lookup(
+		const std::filesystem::path& path,
+		const MultiwayModelIdentity& expected_identity)
+	{
+		return load_verified(path, expected_identity, true);
+	}
+
+	MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(
+		const std::filesystem::path& path,
+		const MultiwayModelIdentity& expected_identity,
+		bool allow_runtime_identity_difference)
+	{
 		expected_identity.validate();
 		std::error_code file_error;
 		const auto file_bytes = std::filesystem::file_size(path, file_error);
@@ -1534,7 +1661,10 @@ namespace texas::solver::multiway
 		if (in.peek() != std::char_traits<char>::eof())
 			throw std::runtime_error("multiway full blueprint has trailing data");
 		artifact.validate();
-		if (artifact.identity != expected_identity)
+		const auto identity_matches = allow_runtime_identity_difference
+			? multiway_policy_identity_compatible(artifact.identity, expected_identity)
+			: artifact.identity == expected_identity;
+		if (!identity_matches)
 		{
 			throw std::invalid_argument("multiway full blueprint identity does not match");
 		}

@@ -141,10 +141,39 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("invalid authoritative multiway phase telemetry");
 		}
-		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(placement_policy) > static_cast<unsigned>(MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache) || static_cast<unsigned>(system_memory_guard.status) > static_cast<unsigned>(MultiwaySystemMemoryGuardStatus::Unavailable))
-		{
-			throw std::invalid_argument("invalid multiway training telemetry");
-		}
+		if (peak_process_rss_bytes < current_process_rss_bytes)
+			throw std::invalid_argument("multiway training peak RSS is below current RSS");
+		if (requested_worker_count > 16U || effective_worker_count > requested_worker_count ||
+			((requested_worker_count != 0U || effective_worker_count != 0U) &&
+				(requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)))
+			throw std::invalid_argument("invalid multiway training worker counts");
+		if (minimum_worker_trajectories > maximum_worker_trajectories)
+			throw std::invalid_argument("invalid multiway worker trajectory range");
+		if (minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds)
+			throw std::invalid_argument("invalid multiway worker active-time range");
+		if (barrier_wait_nanoseconds > coordinator_wait_nanoseconds)
+			throw std::invalid_argument("multiway barrier wait exceeds coordinator wait");
+		if (!worker_vectors_match())
+			throw std::invalid_argument("multiway per-worker telemetry vector sizes differ");
+		const bool external_checkpoint_has_no_worker_counts =
+			external_checkpoint_generation != 0U && worker_trajectory_counts.empty();
+		if (batches != 0U && effective_worker_count != 0U &&
+			worker_trajectory_counts.size() != effective_worker_count && !external_checkpoint_has_no_worker_counts)
+			throw std::invalid_argument("multiway worker trajectory vector size differs from worker count");
+		if (!std::isfinite(trajectories_per_second()))
+			throw std::invalid_argument("multiway training throughput is not finite");
+		if (static_cast<unsigned>(placement_policy) > static_cast<unsigned>(MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity))
+			throw std::invalid_argument("invalid multiway worker placement policy");
+		if (static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery))
+			throw std::invalid_argument("invalid multiway capacity exhaustion stage");
+		if (static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime))
+			throw std::invalid_argument("invalid multiway working-set gate phase");
+		if (static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable))
+			throw std::invalid_argument("invalid multiway working-set gate status");
+		if (static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache))
+			throw std::invalid_argument("invalid multiway working-set admission stage");
+		if (static_cast<unsigned>(system_memory_guard.status) > static_cast<unsigned>(MultiwaySystemMemoryGuardStatus::Unavailable))
+			throw std::invalid_argument("invalid multiway system memory guard status");
 		for (std::size_t index = 1U; index < admitted_rows_per_batch.size(); ++index)
 		{
 			if (admitted_rows_per_batch[index] < admitted_rows_per_batch[index - 1U])
@@ -476,6 +505,65 @@ namespace texas::solver::multiway
 			   << ",\n  \"export_result_payload_hash\": " << report.export_telemetry.payload_hash
 			   << ",\n  \"export_policy_content_hash\": " << report.export_telemetry.policy_content_hash
 			   << ",\n  \"export_duration_nanoseconds\": " << report.export_telemetry.duration_nanoseconds
+			   << ",\n  \"external_export_profile_enabled\": " << (report.export_telemetry.external_profile.enabled ? "true" : "false")
+			   << ",\n  \"external_export_profile_shapes\": " << report.export_telemetry.external_profile.shapes
+			   << ",\n  \"external_export_profile_pages\": " << report.export_telemetry.external_profile.pages
+			   << ",\n  \"external_export_profile_rows\": " << report.export_telemetry.external_profile.rows
+			   << ",\n  \"external_export_profile_actions\": " << report.export_telemetry.external_profile.actions
+			   << ",\n  \"external_export_profile_encoded_bytes\": " << report.export_telemetry.external_profile.encoded_bytes
+			   << ",\n  \"external_export_profile_stream_write_bytes\": " << report.export_telemetry.external_profile.stream_write_bytes
+			   << ",\n  \"external_export_ordered_visit_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.ordered_visit_nanoseconds
+			   << ",\n  \"external_export_visitor_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.visitor_nanoseconds
+			   << ",\n  \"external_export_menu_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.menu_nanoseconds
+			   << ",\n  \"external_export_pin_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.pin_nanoseconds
+			   << ",\n  \"external_export_unpin_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.unpin_nanoseconds
+			   << ",\n  \"external_export_page_locate_nanoseconds\": " << report.export_telemetry.external_profile.page_locate_nanoseconds
+			   << ",\n  \"external_export_page_cache_find_nanoseconds\": " << report.export_telemetry.external_profile.page_cache_find_nanoseconds
+			   << ",\n  \"external_export_page_victim_nanoseconds\": " << report.export_telemetry.external_profile.page_victim_nanoseconds
+			   << ",\n  \"external_export_page_store_lookup_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.page_store_lookup_nanoseconds
+			   << ",\n  \"external_export_page_decode_validation_nanoseconds\": " << report.export_telemetry.external_profile.page_decode_nanoseconds
+			   << ",\n  \"external_export_page_zero_nanoseconds\": " << report.export_telemetry.external_profile.page_zero_nanoseconds
+			   << ",\n  \"external_export_page_decoded_count\": " << report.export_telemetry.external_profile.page_decoded_count
+			   << ",\n  \"external_export_page_zero_count\": " << report.export_telemetry.external_profile.page_zero_count
+			   << ",\n  \"external_export_page_index_opens\": " << report.export_telemetry.external_profile.page_index_opens
+			   << ",\n  \"external_export_page_index_reads\": " << report.export_telemetry.external_profile.page_index_reads
+			   << ",\n  \"external_export_page_run_range_skips\": " << report.export_telemetry.external_profile.page_run_range_skips
+			   << ",\n  \"external_export_page_membership_misses\": " << report.export_telemetry.external_profile.page_membership_misses
+			   << ",\n  \"external_export_page_data_opens\": " << report.export_telemetry.external_profile.page_data_opens
+			   << ",\n  \"external_export_page_data_reads\": " << report.export_telemetry.external_profile.page_data_reads
+			   << ",\n  \"external_export_page_requested_read_bytes\": " << report.export_telemetry.external_profile.page_requested_read_bytes
+			   << ",\n  \"external_export_page_index_open_nanoseconds\": " << report.export_telemetry.external_profile.page_index_open_nanoseconds
+			   << ",\n  \"external_export_page_index_search_nanoseconds\": " << report.export_telemetry.external_profile.page_index_search_nanoseconds
+			   << ",\n  \"external_export_page_data_open_nanoseconds\": " << report.export_telemetry.external_profile.page_data_open_nanoseconds
+			   << ",\n  \"external_export_page_data_read_nanoseconds\": " << report.export_telemetry.external_profile.page_data_read_nanoseconds
+			   << ",\n  \"external_export_finish_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.finish_nanoseconds
+			   << ",\n  \"external_export_sampled_rows\": " << report.export_telemetry.external_profile.sampled_rows
+			   << ",\n  \"external_export_sampled_average_nanoseconds\": " << report.export_telemetry.external_profile.sampled_average_nanoseconds
+			   << ",\n  \"external_export_sampled_quantize_nanoseconds\": " << report.export_telemetry.external_profile.sampled_quantize_nanoseconds
+			   << ",\n  \"external_export_sampled_writer_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.sampled_writer_nanoseconds
+			   << ",\n  \"external_export_writer_sampled_rows\": " << report.export_telemetry.external_profile.writer_sampled_rows
+			   << ",\n  \"external_export_writer_sampled_validation_nanoseconds\": " << report.export_telemetry.external_profile.writer_sampled_validation_nanoseconds
+			   << ",\n  \"external_export_writer_sampled_payload_hash_nanoseconds\": " << report.export_telemetry.external_profile.writer_sampled_payload_hash_nanoseconds
+			   << ",\n  \"external_export_writer_sampled_policy_hash_nanoseconds\": " << report.export_telemetry.external_profile.writer_sampled_policy_hash_nanoseconds
+			   << ",\n  \"external_export_writer_sampled_encoding_inclusive_nanoseconds\": " << report.export_telemetry.external_profile.writer_sampled_encoding_nanoseconds
+			   << ",\n  \"external_export_writer_flushes\": " << report.export_telemetry.external_profile.writer_flushes
+			   << ",\n  \"external_export_catalog_lookups\": " << report.export_telemetry.external_profile.catalog.lookups
+			   << ",\n  \"external_export_catalog_cache_hits\": " << report.export_telemetry.external_profile.catalog.cache_hits
+			   << ",\n  \"external_export_catalog_cache_misses\": " << report.export_telemetry.external_profile.catalog.cache_misses
+			   << ",\n  \"external_export_catalog_run_probes\": " << report.export_telemetry.external_profile.catalog.run_probes
+			   << ",\n  \"external_export_catalog_miss_nanoseconds\": " << report.export_telemetry.external_profile.catalog.read_nanoseconds
+			   << ",\n  \"external_export_row_index_lookups\": " << report.export_telemetry.external_profile.row_index.lookups
+			   << ",\n  \"external_export_row_index_cache_hits\": " << report.export_telemetry.external_profile.row_index.cache_hits
+			   << ",\n  \"external_export_row_index_cache_misses\": " << report.export_telemetry.external_profile.row_index.cache_misses
+			   << ",\n  \"external_export_row_index_run_probes\": " << report.export_telemetry.external_profile.row_index.run_probes
+			   << ",\n  \"external_export_row_index_miss_nanoseconds\": " << report.export_telemetry.external_profile.row_index.read_nanoseconds
+			   << ",\n  \"external_export_page_store_lookups\": " << report.export_telemetry.external_profile.page_store.lookups
+			   << ",\n  \"external_export_page_store_cache_hits\": " << report.export_telemetry.external_profile.page_store.cache_hits
+			   << ",\n  \"external_export_page_store_cache_misses\": " << report.export_telemetry.external_profile.page_store.cache_misses
+			   << ",\n  \"external_export_page_store_run_probes\": " << report.export_telemetry.external_profile.page_store.run_probes
+			   << ",\n  \"external_export_page_store_miss_nanoseconds\": " << report.export_telemetry.external_profile.page_store.read_nanoseconds
+			   << ",\n  \"external_export_page_cache_hits\": " << report.export_telemetry.external_profile.page_store.page_hits
+			   << ",\n  \"external_export_page_cache_misses\": " << report.export_telemetry.external_profile.page_store.page_misses
 			   << ",\n  \"export_publication_mode\": \"" << core::atomic_publish_mode_name(report.export_telemetry.publication_mode) << "\""
 			   << ",\n  \"process_rss_available\": " << (report.process_rss_available ? "true" : "false")
 			   << ",\n  \"started_at_preflop\": " << (report.started_at_preflop ? "true" : "false")
@@ -930,6 +1018,9 @@ namespace texas::solver::multiway
 		   << ",\n  \"external_storage_live_segment_bytes\": " << report.external_storage_live_segment_bytes
 		   << ",\n  \"external_storage_retained_segment_bytes\": " << report.external_storage_retained_segment_bytes
 		   << ",\n  \"external_storage_counter_scope\": \"" << report.external_storage_counter_scope << "\""
+		   << ",\n  \"external_checkpoint_restore_profiled\": " << (report.external_checkpoint_restore_profiled ? "true" : "false")
+		   << ",\n  \"external_checkpoint_restore_nanoseconds\": " << report.external_checkpoint_restore_nanoseconds
+		   << ",\n  \"external_checkpoint_session_resume_nanoseconds\": " << report.external_checkpoint_session_resume_nanoseconds
 			   << ",\n  \"checkpoint_planned_bytes\": " << report.checkpoint_planned_bytes
 			   << ",\n  \"checkpoint_scratch_bytes\": " << report.checkpoint_scratch_bytes
 			   << ",\n  \"checkpoint_payload_hash\": " << report.checkpoint_payload_hash

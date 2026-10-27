@@ -287,7 +287,23 @@ namespace texas::solver::multiway
 		const std::filesystem::path& manifest_path,
 		const MultiwayModelIdentity& expected_identity)
 	{
-		const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, expected_identity);
+		return load_verified(manifest_path, expected_identity, false);
+	}
+
+	std::unique_ptr<MultiwayMappedShardedBlueprintProvider> MultiwayMappedShardedBlueprintProvider::load_verified_for_policy_lookup(
+		const std::filesystem::path& manifest_path,
+		const MultiwayModelIdentity& expected_identity)
+	{
+		return load_verified(manifest_path, expected_identity, true);
+	}
+
+	std::unique_ptr<MultiwayMappedShardedBlueprintProvider> MultiwayMappedShardedBlueprintProvider::load_verified(
+		const std::filesystem::path& manifest_path,
+		const MultiwayModelIdentity& expected_identity,
+		bool allow_runtime_identity_difference)
+	{
+		const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(
+			manifest_path, expected_identity, allow_runtime_identity_difference);
 		auto impl = std::make_unique<Impl>();
 		impl->identity = manifest.identity;
 		impl->policy_content_hash = manifest.policy_content_hash;

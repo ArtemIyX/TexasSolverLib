@@ -127,6 +127,28 @@ TEST_CASE(multiway_workflow_config_binds_external_storage_identity_and_resources
 	EXPECT_THROW(config.validate(disk_limits), std::invalid_argument);
 }
 
+TEST_CASE(multiway_workflow_snapshot_runtime_path_preserves_checkpoint_identity)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config);
+	text.replace(text.find("storage_backend=CompactInt32"), std::strlen("storage_backend=CompactInt32"),
+		"storage_backend=ExternalCompactInt32");
+	text += "storage_directory=source-store\npublic_catalog_cache_bytes=4096\nrow_page_cache_bytes=8192\n"
+		"maximum_wal_bytes=65536\nsegment_target_bytes=65536\ncompaction_fan_in=2\n"
+		"compaction_scratch_bytes=4096\ndisk_reserve_bytes=1000000\nsynchronous_durability=false\n"
+		"maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+		"worker_delta_capacity=10000\ndiscovery_capacity=1000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+		"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	const auto source = parse_multiway_workflow_config(text);
+	auto isolated = source;
+	isolated.identity_storage_directory = source.storage_directory;
+	isolated.storage_directory = "isolated-store-copy";
+	EXPECT_EQ(isolated.fingerprint(), source.fingerprint());
+	EXPECT_EQ(isolated.external_storage_fingerprint(), source.external_storage_fingerprint());
+}
+
 TEST_CASE(multiway_workflow_config_rejects_external_storage_without_bounded_resources)
 {
 	auto text = std::string(valid_config);

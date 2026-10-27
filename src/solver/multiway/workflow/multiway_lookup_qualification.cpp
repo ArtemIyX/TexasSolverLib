@@ -25,8 +25,13 @@ namespace texas::solver::multiway
 		{
 			config.validate();
 			root.validate();
-			if (trajectory_count == 0U || blueprint_identity != config.identity() ||
-				buckets.identity() != config.identity() || policy_content_hash == 0U)
+			const auto expected_identity = config.identity();
+			const auto base_model_identity = make_multiway_model_identity(config.blueprint);
+			const auto buckets_match = buckets.identity() == base_model_identity ||
+				multiway_policy_identity_compatible(buckets.identity(), expected_identity);
+			if (trajectory_count == 0U ||
+				!multiway_policy_identity_compatible(blueprint_identity, expected_identity) ||
+				!buckets_match || policy_content_hash == 0U)
 				throw std::invalid_argument("multiway lookup qualification inputs are incompatible");
 			if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 				throw std::invalid_argument("ExternalCompactInt32 is not ready for lookup qualification");
@@ -81,8 +86,13 @@ namespace texas::solver::multiway
 		config.validate();
 		root.validate();
 		blueprint.validate();
-		if (trajectory_count == 0U || blueprint.identity != config.identity() ||
-			buckets.identity() != config.identity())
+		const auto expected_identity = config.identity();
+		const auto base_model_identity = make_multiway_model_identity(config.blueprint);
+		const auto buckets_match = buckets.identity() == base_model_identity ||
+			multiway_policy_identity_compatible(buckets.identity(), expected_identity);
+		if (trajectory_count == 0U ||
+			!multiway_policy_identity_compatible(blueprint.identity, expected_identity) ||
+			!buckets_match)
 			throw std::invalid_argument("multiway lookup qualification inputs are incompatible");
 		if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 			throw std::invalid_argument("ExternalCompactInt32 is not ready for lookup qualification");

@@ -214,6 +214,24 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.export_telemetry.payload_hash = 654U;
 	report.export_telemetry.policy_content_hash = 655U;
 	report.export_telemetry.duration_nanoseconds = 987U;
+	report.export_telemetry.external_profile.enabled = true;
+	report.export_telemetry.external_profile.pages = 3U;
+	report.export_telemetry.external_profile.encoded_bytes = 88U;
+	report.export_telemetry.external_profile.stream_write_bytes = 64U;
+	report.export_telemetry.external_profile.catalog.run_probes = 17U;
+	report.export_telemetry.external_profile.page_store.page_misses = 2U;
+	report.export_telemetry.external_profile.page_decoded_count = 1U;
+	report.export_telemetry.external_profile.page_zero_count = 1U;
+	report.export_telemetry.external_profile.page_index_opens = 7U;
+	report.export_telemetry.external_profile.page_run_range_skips = 11U;
+	report.export_telemetry.external_profile.page_membership_misses = 12U;
+	report.export_telemetry.external_profile.page_data_reads = 6U;
+	report.export_telemetry.external_profile.sampled_rows = 1U;
+	report.export_telemetry.external_profile.writer_sampled_rows = 1U;
+	report.export_telemetry.external_profile.writer_flushes = 4U;
+	report.external_checkpoint_restore_profiled = true;
+	report.external_checkpoint_restore_nanoseconds = 123U;
+	report.external_checkpoint_session_resume_nanoseconds = 45U;
 	report.export_telemetry.publication_mode = texas::core::AtomicPublishMode::Rename;
 	report.export_telemetry.validate();
 	auto invalid_amplification = report;
@@ -368,6 +386,24 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"export_result_payload_hash\": 654") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_policy_content_hash\": 655") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_duration_nanoseconds\": 987") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_profile_enabled\": true") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_profile_pages\": 3") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_profile_encoded_bytes\": 88") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_profile_stream_write_bytes\": 64") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_catalog_run_probes\": 17") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_cache_misses\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_decoded_count\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_zero_count\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_index_opens\": 7") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_run_range_skips\": 11") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_membership_misses\": 12") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_page_data_reads\": 6") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_sampled_rows\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_writer_sampled_rows\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_export_writer_flushes\": 4") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_checkpoint_restore_profiled\": true") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_checkpoint_restore_nanoseconds\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_checkpoint_session_resume_nanoseconds\": 45") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_publication_mode\": \"rename\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
@@ -519,6 +555,41 @@ TEST_CASE(multiway_training_report_calculates_throughput_and_rejects_bad_rss)
 	report.process_memory_snapshots.count = 2U;
 	report.process_memory_snapshots.snapshots[0U].phase_id = MultiwayMemoryPhase::ProcessStart;
 	report.process_memory_snapshots.snapshots[1U].phase_id = MultiwayMemoryPhase::AfterBucketMapMetadata;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_training_report_allows_missing_external_checkpoint_worker_counts)
+{
+	using namespace texas::solver::multiway;
+	MultiwayBlueprintTrainingStatus status;
+	status.batches = 1U;
+	status.trajectories = 4U;
+	status.scheduler_mode = MultiwaySchedulerMode::Dynamic;
+	status.dynamic_chunk_size = 8U;
+	status.requested_worker_count = 4U;
+	status.effective_worker_count = 4U;
+	status.trajectories_per_batch = 4U;
+	MultiwayProducerIdentity identity;
+	identity.git_commit = "test";
+	identity.build_configuration = "Debug";
+	identity.compiler_identity = "test";
+	identity.model_identity = make_multiway_model_identity(MultiwayBlueprintConfig{});
+	identity.workflow_config_fingerprint = 1U;
+	identity.artifact_schemas = { 4U, 2U, 1U };
+	const MultiwayEvidenceHeader evidence{
+		MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+		MultiwayWorkflowProfileKind::Acceptance,
+		identity
+	};
+
+	auto report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
+	EXPECT_THROW(report.validate(), std::invalid_argument);
+	report.external_checkpoint_generation = 9U;
+	report.validate();
+
+	status.worker_trajectory_counts = { 4U, 0U };
+	report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
+	report.external_checkpoint_generation = 9U;
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 

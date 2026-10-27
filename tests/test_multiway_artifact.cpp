@@ -14,6 +14,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -440,6 +441,72 @@ TEST_CASE(multiway_full_blueprint_stream_rejects_order_and_malformed_rows)
 	std::filesystem::remove(path);
 }
 
+TEST_CASE(multiway_full_blueprint_stream_progress_distinguishes_buffered_bytes)
+{
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(identity, {}, 1U, 1U);
+	const auto path = artifact_path("stream_progress");
+	const auto baseline_path = artifact_path("stream_progress_baseline");
+	{
+		texas::solver::multiway::MultiwayFullBlueprintWriterProfile profile;
+		texas::MultiwayFullBlueprintStreamWriter writer(path, plan,
+			{ true, texas::MultiwayFullBlueprintStreamFailurePoint::None, &profile });
+		const auto header = writer.progress();
+		EXPECT_TRUE(header.encoded_bytes > 0U);
+		EXPECT_EQ(header.stream_write_bytes, 0U);
+		writer.write_row(texas::MultiwayFullBlueprintRowView(rows.front()));
+		const auto row = writer.progress();
+		EXPECT_TRUE(row.encoded_bytes > header.encoded_bytes);
+		EXPECT_EQ(row.stream_write_bytes, 0U);
+		const auto result = writer.finish();
+		const auto complete = writer.progress();
+		EXPECT_EQ(complete.encoded_bytes, result.serialized_bytes);
+		EXPECT_EQ(complete.stream_write_bytes, result.serialized_bytes);
+		EXPECT_EQ(profile.sampled_rows, 1U);
+		EXPECT_EQ(profile.flushes, 1U);
+	}
+	{
+		texas::MultiwayFullBlueprintStreamWriter baseline(baseline_path, plan);
+		baseline.write_row(texas::MultiwayFullBlueprintRowView(rows.front()));
+		(void)baseline.finish();
+	}
+	EXPECT_EQ(read_bytes(path), read_bytes(baseline_path));
+	std::filesystem::remove(path);
+	std::filesystem::remove(baseline_path);
+}
+
+TEST_CASE(multiway_sharded_stream_progress_counts_completed_shards)
+{
+	using namespace texas::solver::multiway;
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	const auto plan = make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 2U);
+	const auto single = make_multiway_full_blueprint_stream_plan(identity, {}, 1U, 1U);
+	const auto maximum = make_multiway_full_blueprint_stream_plan(
+		identity, {}, 1U, MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW);
+	auto layout = make_multiway_full_blueprint_shard_layout(plan, maximum.serialized_bytes);
+	const auto path = artifact_path("sharded_stream_progress");
+	{
+		MultiwayFullBlueprintShardedStreamWriter writer(path, plan, std::move(layout), { 1U, 1U });
+		EXPECT_EQ(writer.progress().encoded_bytes, 0U);
+		writer.write_row(MultiwayFullBlueprintRowView(rows[0]));
+		const auto first = writer.progress();
+		EXPECT_EQ(first.encoded_bytes, single.serialized_bytes);
+		EXPECT_EQ(first.stream_write_bytes, single.serialized_bytes);
+		writer.write_row(MultiwayFullBlueprintRowView(rows[1]));
+		const auto second = writer.progress();
+		EXPECT_EQ(second.encoded_bytes, 2U * single.serialized_bytes);
+		EXPECT_EQ(second.stream_write_bytes, second.encoded_bytes);
+		const auto result = writer.finish();
+		EXPECT_EQ(result.serialized_bytes, second.encoded_bytes + result.manifest_bytes);
+	}
+	const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(path, identity);
+	const auto shard_path = path.parent_path() / std::filesystem::u8path(manifest.shards[0].relative_path);
+	std::filesystem::remove_all(shard_path.parent_path());
+	std::filesystem::remove(path);
+}
+
 TEST_CASE(multiway_full_blueprint_stream_failure_points_cleanup_and_preserve_destination)
 {
 	const auto identity = snapshot().identity;
@@ -465,6 +532,42 @@ TEST_CASE(multiway_full_blueprint_stream_failure_points_cleanup_and_preserve_des
 			{
 				writer.write_row(texas::MultiwayFullBlueprintRowView(rows.front()));
 				EXPECT_THROW(writer.finish(), std::runtime_error);
+			}
+		}
+		EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+		const std::vector<std::uint8_t> previous_bytes = { 'p', 'r', 'e', 'v', 'i', 'o', 'u', 's' };
+		EXPECT_EQ(read_bytes(path), previous_bytes);
+		std::filesystem::remove(path);
+	}
+}
+
+TEST_CASE(multiway_profiled_stream_failures_preserve_destination)
+{
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(identity, {}, 1U, 1U);
+	const texas::MultiwayFullBlueprintStreamFailurePoint points[] = {
+		texas::MultiwayFullBlueprintStreamFailurePoint::Write,
+		texas::MultiwayFullBlueprintStreamFailurePoint::Close,
+		texas::MultiwayFullBlueprintStreamFailurePoint::Publication,
+	};
+	for (const auto point : points)
+	{
+		const auto path = artifact_path("profiled_stream_failure");
+		{
+			std::ofstream old_value(path, std::ios::binary);
+			old_value << "previous";
+		}
+		{
+			texas::solver::multiway::MultiwayFullBlueprintWriterProfile profile;
+			texas::MultiwayFullBlueprintStreamWriter writer(path, plan, { true, point, &profile });
+			if (point == texas::MultiwayFullBlueprintStreamFailurePoint::Write)
+				EXPECT_THROW(writer.write_row(texas::MultiwayFullBlueprintRowView(rows.front())), std::runtime_error);
+			else
+			{
+				writer.write_row(texas::MultiwayFullBlueprintRowView(rows.front()));
+				EXPECT_THROW(writer.finish(), std::runtime_error);
+				EXPECT_EQ(profile.sampled_rows, 1U);
 			}
 		}
 		EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));

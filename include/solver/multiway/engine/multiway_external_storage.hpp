@@ -63,6 +63,21 @@ namespace texas::solver::multiway
 		std::uint64_t compaction_written_bytes = 0U;
 	};
 
+	struct MultiwayExternalRecordLookupProfile
+	{
+		std::uint64_t index_opens = 0U;
+		std::uint64_t index_reads = 0U;
+		std::uint64_t run_range_skips = 0U;
+		std::uint64_t membership_misses = 0U;
+		std::uint64_t data_opens = 0U;
+		std::uint64_t data_reads = 0U;
+		std::uint64_t requested_bytes = 0U;
+		std::uint64_t index_open_nanoseconds = 0U;
+		std::uint64_t index_search_nanoseconds = 0U;
+		std::uint64_t data_open_nanoseconds = 0U;
+		std::uint64_t data_read_nanoseconds = 0U;
+	};
+
 	struct MultiwayExternalDiskUsage
 	{
 		std::uint64_t live_segment_bytes = 0U;
@@ -236,6 +251,12 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const;
 		[[nodiscard]] bool lookup(std::uint64_t key, std::uint8_t* payload,
 			std::size_t payload_size) const;
+		[[nodiscard]] bool lookup_profiled(std::uint64_t key, std::vector<std::uint8_t>& payload,
+			MultiwayExternalRecordLookupProfile& profile) const;
+		// Caller budgets this fixed allocation and holds a stable storage lease.
+		static constexpr std::size_t export_filter_bytes = 1024U * 1024U;
+		void begin_export_filter() const;
+		void end_export_filter() const noexcept;
 		// Visits unique keys in ascending order. Payload storage is borrowed and
 		// valid only for the duration of the callback. Run fan-in is bounded by
 		// the configured compaction fan-in; larger sets fail closed.
@@ -264,6 +285,8 @@ namespace texas::solver::multiway
 			std::uint64_t content_hash = 0U;
 			std::filesystem::path data_path;
 			std::filesystem::path index_path;
+			std::uint64_t minimum_key = 0U;
+			std::uint64_t maximum_key = 0U;
 		};
 		struct CacheEntry
 		{
@@ -282,6 +305,9 @@ namespace texas::solver::multiway
 			std::size_t payload_size) const;
 		[[nodiscard]] bool lookup_run(const Run& run, std::uint64_t key,
 			std::uint8_t* payload, std::size_t payload_size) const;
+		[[nodiscard]] bool lookup_run_profiled(const Run& run, std::uint64_t key,
+			std::uint8_t* payload, std::size_t payload_size, MultiwayExternalRecordLookupProfile& profile) const;
+		void load_run_key_range(Run& run) const;
 		[[nodiscard]] std::uint64_t run_hash(const Run& run) const;
 		void check_disk_reserve(std::uint64_t additional_bytes) const;
 		void write_wal(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
@@ -297,6 +323,7 @@ namespace texas::solver::multiway
 		std::uint64_t last_batch_number_ = 0U;
 		std::vector<Run> runs_;
 		mutable std::vector<CacheEntry> cache_;
+		mutable std::unique_ptr<std::uint64_t[]> export_filter_;
 		mutable MultiwayExternalStorageStats stats_{};
 		bool failed_ = false;
 		mutable std::mutex mutex_;
@@ -419,6 +446,19 @@ namespace texas::solver::multiway
 		std::uint64_t next_page_id_ = 1U;
 	};
 
+	struct MultiwayExternalPageProfile
+	{
+		std::uint64_t locate_nanoseconds = 0U;
+		std::uint64_t cache_find_nanoseconds = 0U;
+		std::uint64_t victim_nanoseconds = 0U;
+		std::uint64_t store_lookup_nanoseconds = 0U;
+		std::uint64_t decode_nanoseconds = 0U;
+		std::uint64_t zero_nanoseconds = 0U;
+		std::uint64_t decoded_pages = 0U;
+		std::uint64_t zero_pages = 0U;
+		MultiwayExternalRecordLookupProfile record_lookup{};
+	};
+
 	class MultiwayExternalCompactPages
 	{
 	public:
@@ -443,12 +483,17 @@ namespace texas::solver::multiway
 		[[nodiscard]] PageView pin(std::uint64_t page_id, MultiwayPublicStateId state,
 			std::int32_t seat, std::uint32_t page_index, std::uint32_t bucket_count,
 			std::uint8_t action_count);
+		[[nodiscard]] PageView pin_profiled(std::uint64_t page_id, MultiwayPublicStateId state,
+			std::int32_t seat, std::uint32_t page_index, std::uint32_t bucket_count,
+			std::uint8_t action_count, MultiwayExternalPageProfile* profile);
 		void unpin(std::uint64_t page_id);
 		void mark_dirty(std::uint64_t page_id);
 		void commit_batch();
 		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		void abort_batch();
 		void compact(bool retain_input_runs = false);
+		void begin_export_filter() const { store_->begin_export_filter(); }
+		void end_export_filter() const noexcept { store_->end_export_filter(); }
 		[[nodiscard]] std::uint64_t generation() const { return store_->generation(); }
 		[[nodiscard]] std::uint64_t content_hash() const { return store_->content_hash(); }
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
@@ -525,6 +570,8 @@ namespace texas::solver::multiway
 			MultiwayExternalRowIndex::OrderedRowVisitor visitor, void* context) const;
 		[[nodiscard]] PinnedBucket pin_bucket(const MultiwayExternalRowBinding& row,
 			std::uint32_t bucket, bool writable) const;
+		[[nodiscard]] PinnedBucket pin_bucket_profiled(const MultiwayExternalRowBinding& row,
+			std::uint32_t bucket, bool writable, MultiwayExternalPageProfile* profile) const;
 		void apply_delta(PinnedBucket& bucket, std::uint8_t action,
 			double regret, double strategy_sum);
 		void regret_matched_strategy_into(const PinnedBucket& bucket,
@@ -555,6 +602,10 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t page_generation() const { return pages_.generation(); }
 		[[nodiscard]] std::uint64_t content_hash() const;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
+		[[nodiscard]] MultiwayExternalStorageStats row_index_stats() const { return rows_.stats(); }
+		[[nodiscard]] MultiwayExternalStorageStats page_store_stats() const { return pages_.stats(); }
+		void begin_export_filter() const { pages_.begin_export_filter(); }
+		void end_export_filter() const noexcept { pages_.end_export_filter(); }
 		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const;
 	private:
 		MultiwayExternalRowIndex rows_;
