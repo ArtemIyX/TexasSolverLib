@@ -591,6 +591,39 @@ TEST_CASE(multiway_external_checkpoint_parallel_segment_validation_rejects_corru
 		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U), std::invalid_argument);
 }
 
+TEST_CASE(multiway_external_reopen_removes_only_unreferenced_and_temporary_runs)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	{
+		MultiwayExternalRecordStore store(config(directory.path()), 4U);
+		store.append_batch(1U, 1U, records(1U));
+		store.append_batch(2U, 2U, records(10U));
+		store.append_batch(3U, 3U, records(20U));
+		store.compact();
+	}
+	for (const auto* name : { "run_2.dat", "run_2.idx", "run_01.dat", "run_4.dat.tmp",
+		"run_99.idx", "CURRENT.tmp" })
+	{
+		std::ofstream output(directory.path() / name, std::ios::binary);
+		output.put('x');
+		EXPECT_TRUE(static_cast<bool>(output));
+	}
+	{
+		MultiwayExternalRecordStore reopened(config(directory.path()), 4U);
+		std::vector<std::uint8_t> payload;
+		EXPECT_TRUE(reopened.lookup(1U, payload));
+		EXPECT_EQ(payload[0], 1U);
+		EXPECT_TRUE(reopened.lookup(20U, payload));
+		EXPECT_EQ(payload[0], 20U);
+		for (const auto* name : { "run_1.dat", "run_1.idx", "run_4.dat", "run_4.idx" })
+			EXPECT_TRUE(std::filesystem::exists(directory.path() / name));
+		for (const auto* name : { "run_2.dat", "run_2.idx", "run_01.dat", "run_4.dat.tmp",
+			"run_99.idx", "CURRENT.tmp" })
+			EXPECT_TRUE(!std::filesystem::exists(directory.path() / name));
+	}
+}
+
 TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 {
 	using namespace texas::solver::multiway;
@@ -626,9 +659,17 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 		EXPECT_EQ(store.generation(), 4U);
 		EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_2.dat"));
 	}
+	for (const auto* name : { "run_0002.dat", "run_2.dat.tmp" })
+	{
+		std::ofstream output(component_paths[0] / name, std::ios::binary);
+		output.put('x');
+		EXPECT_TRUE(static_cast<bool>(output));
+	}
 	MultiwayExternalRecordStore reopened(config(component_paths[0]), 4U);
 	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_1.dat"));
 	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_2.dat"));
+	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_0002.dat"));
+	EXPECT_TRUE(!std::filesystem::exists(component_paths[0] / "run_2.dat.tmp"));
 	const auto usage = reopened.disk_usage();
 	EXPECT_TRUE(usage.live_segment_bytes > 0U);
 	EXPECT_EQ(usage.retained_segment_bytes,

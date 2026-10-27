@@ -2312,8 +2312,12 @@ namespace texas::solver::multiway
 				if (suffix != ".dat" && suffix != ".idx" && suffix != ".dat.tmp" && suffix != ".idx.tmp")
 					throw std::invalid_argument("external storage run filename has an invalid suffix");
 				if ((suffix == ".dat" || suffix == ".idx") && run_generation <= generation_)
-					for (const auto& run : runs_)
-						if ((suffix == ".dat" && entry.path() == run.data_path) || (suffix == ".idx" && entry.path() == run.index_path)) keep = true;
+				{
+					const auto run = std::lower_bound(runs_.begin(), runs_.end(), run_generation,
+						[](const Run& candidate, std::uint64_t generation) { return candidate.generation < generation; });
+					if (run != runs_.end() && run->generation == run_generation &&
+						entry.path() == (suffix == ".dat" ? run->data_path : run->index_path)) keep = true;
+				}
 				if ((suffix == ".dat" || suffix == ".idx") &&
 					std::binary_search(pinned_generations.begin(), pinned_generations.end(), run_generation)) keep = true;
 			}

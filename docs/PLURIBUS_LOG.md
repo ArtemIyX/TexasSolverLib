@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External orphan-check lookup optimization
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Replaced the linear active-run scan for each orphan candidate with binary search over the existing sorted generations. Exact path checks, pinned generations and temporary-file cleanup remain unchanged.
+- On the bounded 8,321-run synthetic fixture, reopening fell from 86.321 seconds to 0.911 seconds. This is not a production throughput measurement.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/md/PB12_ORPHAN_LOOKUP_OPTIMIZATION.md`
+
+### Validation
+
+- Focused Debug CTest passed 3/3; the serial full Debug build passed. Full CTest initially passed 118/119 because an artifact test could not open a temporary shard manifest under a long temporary path. That test and a full retry with a shorter temporary path passed, the latter 119/119; the initial cause was not established.
+- The identical 8,321-run synthetic workload completed before the 120-second watchdog before and after the change. Active files, unreferenced files, temporary files, numeric aliases and checkpoint pins are covered by tests. Static C++ review found no actionable findings.
+
+### Limitations
+
+- Synthetic files were recently created and may be cached. Actual production reopen and export throughput, snapshot integrity and policy equivalence remain unverified. No production run was launched.
+
 ## PB-12 Singleton-run filter construction measurement
 
 **Status:** Complete
