@@ -577,6 +577,12 @@ namespace texas::solver::multiway
 			return false;
 		}
 		const auto rollout_count = context.seed_count;
+		const auto board_count = static_cast<std::size_t>(input.board_count);
+		if (board_count > MULTIWAY_ROLLOUT_MAX_BOARD_CARDS)
+		{
+			record_invalid(context.diagnostics);
+			return false;
+		}
 		bool used_exact_runout = false;
 		bool used_seeded_runout = false;
 		for (std::size_t policy_index = 0; policy_index < MULTIWAY_FIXED_CONTINUATION_POLICIES.size(); ++policy_index)
@@ -590,9 +596,9 @@ namespace texas::solver::multiway
 				auto& scratch = *context.scratch;
 				scratch.state = *input.state;
 				scratch.holes = *input.holes;
-				for (std::size_t card = 0; card < input.board_count; ++card)
+				for (std::size_t card = 0; card < board_count; ++card)
 					scratch.board[card] = input.board[card];
-				mark_used(scratch, input.board_count);
+				mark_used(scratch, static_cast<std::uint8_t>(board_count));
 				const auto value = one_rollout(scratch, input, context, MULTIWAY_FIXED_CONTINUATION_POLICIES[policy_index],
 					request.traverser, context.seeds[seed], &actions, &exact_runouts, &capped,
 					&used_exact_runout, &used_seeded_runout);

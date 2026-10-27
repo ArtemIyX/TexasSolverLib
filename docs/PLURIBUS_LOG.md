@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## Bound rollout board copies before scratch writes
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added an explicit scratch-capacity check before copying provider board cards into the fixed five-card rollout buffer. The copy loop now uses the validated bounded count, avoiding GCC's `-Wstringop-overflow` diagnostic and preserving rejection of oversized boards.
+- Added a regression case for a provider returning a board count above the scratch capacity.
+
+### Files
+
+- `src/solver/multiway/continuation/multiway_rollout_leaf.cpp`
+- `tests/test_multiway_rollout_leaf.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the input validation and fixed-capacity copy path. No build or tests were run because the repository C++ and Git skills prohibit them unless explicitly requested.
+
+### Limitations
+
+- The reported Linux/GCC build was not rerun in this environment.
+
 ## Make application logging dependencies optional by default
 
 **Status:** Complete
