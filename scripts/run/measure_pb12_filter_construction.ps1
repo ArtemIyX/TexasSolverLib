@@ -5,7 +5,8 @@ param(
     [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
     [string]$BuildConfiguration,
     [ValidateRange(1, 120)] [int]$MaximumSeconds = 120,
-    [ValidateRange(1000, 1000000)] [int]$Records = 1000
+    [ValidateRange(1, 1000000)] [int]$Records = 1000,
+    [switch]$Singleton
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,6 +50,7 @@ $stopwatch = [Diagnostics.Stopwatch]::StartNew()
 $startInfo = New-Object System.Diagnostics.ProcessStartInfo
 $startInfo.FileName = $binary
 $startInfo.Arguments = '"' + $fixtureTemp + '" ' + $Records
+if ($Singleton) { $startInfo.Arguments += ' singleton' }
 $startInfo.WorkingDirectory = $repoRoot
 $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
@@ -125,7 +127,8 @@ $passed = $null -eq $guardReason -and $exitCode -eq 0 -and $lines.Count -eq 1 -a
 $summary = [ordered]@{
     fixture_only = $true
     filter_enabled = $true
-    fixture_setup = 'Fixed-width synthetic records, reopened storage, one timed filter construction and 10000 absent probes.'
+    fixture_setup = if ($Singleton) { 'Single-record runs with duplicates, reopened storage, one timed filter construction and 10000 absent probes.' } else { 'Fixed-width synthetic records, reopened storage, one timed filter construction and 10000 absent probes.' }
+    singleton_runs = [bool]$Singleton
     run_directory = $runDirectory
     executable = $binary
     binary_sha256 = $binaryHash
@@ -133,7 +136,7 @@ $summary = [ordered]@{
     declared_build_configuration = $BuildConfiguration
     source_revision = $sourceRevision
     source_dirty = ($sourceStatus.Count -gt 0)
-    command = @($binary, $fixtureTemp, $Records)
+    command = @($binary, $fixtureTemp, $Records, $(if ($Singleton) { 'singleton' }))
     stdout_path = $stdoutPath
     stderr_path = $stderrPath
     started_utc = $startedUtc

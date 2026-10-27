@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Singleton-run filter construction measurement
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Measured synthetic storage with 8,321 singleton page runs and 7,016 distinct keys, matching the checkpoint's run and key counts. Filter construction took 0.778 seconds; reopening the store took 86.321 seconds.
+- The reopen phase includes checksum validation and orphan cleanup. Existing cleanup scans the run list per directory entry; the measurement does not isolate that cost from other reopen work.
+
+### Files
+
+- `scripts/benchmark/pb12_filter_construction/main.cpp`
+- `scripts/run/measure_pb12_filter_construction.ps1`
+- `docs/md/PB12_SINGLETON_CONSTRUCTION_MEASUREMENT.md`
+
+### Validation
+
+- Built the standalone Debug harness. Synthetic 1,000-, 3,000- and two 8,321-run measurements completed under their 120-second process-tree watchdogs. No timeout occurred.
+- The full-size fixture was loaded through the actual record-store constructor, which validated the synthetic run checksums. Both present-key lookups passed.
+
+### Limitations
+
+- Inputs were synthetic and recently written, so cache effects and production reopen and export times remain unknown. No production export or solver run was launched.
+- The harness links the existing uncommitted export-filter implementation.
+
 ## PB-12 Checkpoint page-store scale assessment
 
 **Status:** Complete
