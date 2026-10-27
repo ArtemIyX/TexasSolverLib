@@ -53,7 +53,7 @@ option(TEXASSOLVER_TRACY_SAMPLING "Enable Tracy statistical sampling" OFF)
 option(TEXASSOLVER_TRACY_CALLSTACKS "Enable Tracy call stacks" OFF)
 option(TEXASSOLVER_TRACY_LOCKS "Enable selected Tracy lock instrumentation" OFF)
 option(TEXASSOLVER_TRACY_MEMORY "Enable explicit Tracy solver allocation events" OFF)
-option(TEXASSOLVER_ENABLE_LOGGING "Build application logging support" ON)
+option(TEXASSOLVER_ENABLE_LOGGING "Build application logging support" OFF)
 
 if (TEXASSOLVER_ENABLE_LOGGING)
     find_package(spdlog CONFIG REQUIRED)

@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## Make application logging dependencies optional by default
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Made the core build independent of `spdlog` and `tomlplusplus` by default. Logging remains opt-in and is built when enabled with the vcpkg toolchain and manifest dependencies available.
+- Updated the build requirements and CMake option table to document the optional dependency path.
+
+### Files
+
+- `CMakeLists.txt`
+- `README.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the CMake option guard and existing disabled-logging stub target. No configure, build, or tests were run because the repository C++ and Git skills prohibit them unless explicitly requested.
+
+### Limitations
+
+- Existing build directories with `TEXASSOLVER_ENABLE_LOGGING=ON` retain that cached value and still require the vcpkg toolchain or installed packages.
+
 ## PB-12 External policy lookup coverage diagnosis
 
 **Status:** Complete

@@ -142,7 +142,7 @@ Public headers and source files use mirrored ownership paths. The stable install
 - Git submodule support
 - Python 3 for repository helper scripts
 
-The application logging target uses vcpkg packages `spdlog` and `tomlplusplus`. The fixed-size poker hand evaluator is included as a Git submodule. The installed solver package remains independent of these application-only dependencies.
+The optional application logging target uses vcpkg packages `spdlog` and `tomlplusplus`. The default library build does not require these application-only dependencies. To build logging support, configure with `TEXASSOLVER_ENABLE_LOGGING=ON` and the vcpkg CMake toolchain; manifest mode installs the declared packages. The fixed-size poker hand evaluator is included as a Git submodule. The installed solver package remains independent of these application-only dependencies.
 
 ## Clone
 
@@ -198,7 +198,7 @@ powershell -ExecutionPolicy Bypass -File scripts\codex_powershell.ps1 cmake --bu
 | `TEXASSOLVER_BUILD_RESEARCH_EXAMPLES` | `OFF` | Build multiway workflows and benchmark executables; requires examples |
 | `TEXASSOLVER_BUILD_LEGACY_RESEARCH` | `OFF` | Build the legacy vector DCFR reference library |
 | `TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH` | `OFF` | Build fixed-private sampled HUNL reference kernels |
-| `TEXASSOLVER_ENABLE_LOGGING` | `ON` | Build the internal application logging target |
+| `TEXASSOLVER_ENABLE_LOGGING` | `OFF` | Build the internal application logging target; requires `spdlog` and `tomlplusplus` via vcpkg |
 
 ## Use as a CMake package
 
