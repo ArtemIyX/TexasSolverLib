@@ -477,9 +477,7 @@ TEST_CASE(multiway_resolver_uses_verified_mapped_sharded_blueprint)
 	const auto shard_bound = 176U + 8U + 28U + 64U * 19U;
 	const auto layout = texas::make_multiway_full_blueprint_shard_layout(plan, shard_bound);
 	const std::vector<std::uint64_t> shard_actions{ 1U };
-	const auto path = std::filesystem::temp_directory_path() /
-		("texas_solver_resolver_sharded_" + std::to_string(
-			std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_resolver_sharded_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
 	{
 		texas::MultiwayFullBlueprintShardedStreamWriter writer(path, plan, layout, shard_actions);
 		texas::MultiwayFullBlueprintRowView view;
@@ -505,8 +503,7 @@ TEST_CASE(multiway_resolver_uses_verified_mapped_sharded_blueprint)
 		texas::MultiwayResolverEngine::RootExternalSamplingMCCFR);
 	const auto manifest = texas::MultiwayFullBlueprintArtifacts::load_sharded_manifest(path,
 		fixture.identity);
-	std::filesystem::remove_all(path.parent_path() /
-		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path());
+	std::filesystem::remove_all(path.parent_path() / std::filesystem::u8path(manifest.shards.front().relative_path).parent_path());
 	std::filesystem::remove(path);
 }
 

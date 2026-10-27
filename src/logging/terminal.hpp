@@ -20,4 +20,4 @@ namespace texas::logging::detail
 	void add_progress_field(std::uint64_t id, std::string_view name, std::string_view value) noexcept;
 	void set_progress_rate(std::uint64_t id, double value) noexcept;
 	void finish_progress(std::uint64_t id, std::string_view message) noexcept;
-}
+} // namespace texas::logging::detail

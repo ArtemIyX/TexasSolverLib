@@ -50,16 +50,19 @@ namespace texas::solver::multiway
 		{
 		public:
 			OptionalExportTimer(bool enabled, std::uint64_t& target) noexcept
-				: enabled_(enabled), target_(target), started_(enabled
-					? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}) {}
+				: enabled_(enabled), target_(target), started_(enabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}) {}
 			~OptionalExportTimer() noexcept
 			{
-				if (!enabled_) return;
+				if (!enabled_)
+					return;
 				const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - started_).count());
+					std::chrono::steady_clock::now() - started_)
+						.count());
 				target_ = elapsed > std::numeric_limits<std::uint64_t>::max() - target_
-					? std::numeric_limits<std::uint64_t>::max() : target_ + elapsed;
+					? std::numeric_limits<std::uint64_t>::max()
+					: target_ + elapsed;
 			}
+
 		private:
 			bool enabled_;
 			std::uint64_t& target_;
@@ -195,9 +198,7 @@ namespace texas::solver::multiway
 						checked_export_multiply(shape.bucket_count, shape.action_count));
 					return true;
 				};
-				if (!external->compact_storage().visit_ordered_rows(visit_row, &context) ||
-					plan.shape_count != external->current_manifest().row_count ||
-					plan.action_count != external->current_manifest().logical_value_count)
+				if (!external->compact_storage().visit_ordered_rows(visit_row, &context) || plan.shape_count != external->current_manifest().row_count || plan.action_count != external->current_manifest().logical_value_count)
 					throw std::invalid_argument("external blueprint counts disagree with the committed generation");
 				const auto stream = make_multiway_full_blueprint_stream_plan(
 					plan.identity, plan.training, plan.row_count, plan.action_count);
@@ -575,7 +576,8 @@ namespace texas::solver::multiway
 		if (limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 		{
 			const auto& identity_directory = limits.external_storage.identity_directory.empty()
-				? limits.external_storage.directory : limits.external_storage.identity_directory;
+				? limits.external_storage.directory
+				: limits.external_storage.identity_directory;
 			const auto storage_directory = identity_directory.lexically_normal().generic_u8string();
 			append_u64(runtime_hash, storage_directory.size());
 			for (const auto character : storage_directory)
@@ -1185,8 +1187,7 @@ namespace texas::solver::multiway
 		const auto plan = make_export_plan(lease, identity_, training, order);
 		const auto stream_plan = make_multiway_full_blueprint_stream_plan(
 			plan.identity, plan.training, plan.row_count, plan.action_count);
-		const bool sharded_output = plan.row_count != 0U && plan.serialized_bytes >
-			working_set_monitor_.single_file_blueprint_limit_bytes;
+		const bool sharded_output = plan.row_count != 0U && plan.serialized_bytes > working_set_monitor_.single_file_blueprint_limit_bytes;
 		MultiwayFullBlueprintShardLayout shard_layout;
 		std::vector<std::uint64_t> shard_action_counts;
 		MultiwayFullBlueprintShardedSizeEstimate sharded_size{};
@@ -1213,7 +1214,7 @@ namespace texas::solver::multiway
 			{
 				struct Context
 				{
-				const decltype(add_shape)* add_shape;
+					const decltype(add_shape)* add_shape;
 				};
 				Context context{ &add_shape };
 				const auto count_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
@@ -1231,7 +1232,8 @@ namespace texas::solver::multiway
 			else
 			{
 				const auto& export_rows = compact_for_plan != nullptr
-					? compact_for_plan->rows() : lease.storage().rows();
+					? compact_for_plan->rows()
+					: lease.storage().rows();
 				if (compact_for_plan != nullptr)
 				{
 					for (const auto& metadata : export_rows)
@@ -1260,22 +1262,19 @@ namespace texas::solver::multiway
 		std::array<MultiwayQuantizedRootAction, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
 		const auto sharding_metadata_bytes = sharded_output
 			? checked_export_add(
-				checked_export_multiply(static_cast<std::uint64_t>(shard_layout.ranges.capacity()),
-					sizeof(MultiwayFullBlueprintShardRange)),
-				checked_export_multiply(static_cast<std::uint64_t>(shard_action_counts.capacity()),
-					sizeof(std::uint64_t)))
+				  checked_export_multiply(static_cast<std::uint64_t>(shard_layout.ranges.capacity()),
+					  sizeof(MultiwayFullBlueprintShardRange)),
+				  checked_export_multiply(static_cast<std::uint64_t>(shard_action_counts.capacity()),
+					  sizeof(std::uint64_t)))
 			: 0U;
-		const bool profile_enabled = working_set_monitor_.profile_external_export &&
-			lease.external_storage() != nullptr;
+		const bool profile_enabled = working_set_monitor_.profile_external_export && lease.external_storage() != nullptr;
 		// Includes the fixed aggregate, callback context, and nested timer frames.
-		const bool use_export_filter = lease.external_storage() != nullptr &&
-			working_set_monitor_.external_export_membership_filter;
+		const bool use_export_filter = lease.external_storage() != nullptr && working_set_monitor_.external_export_membership_filter;
 		const std::uint64_t filter_bytes = use_export_filter
-			? MultiwayExternalRecordStore::export_filter_bytes + 131072U : 0U;
+			? MultiwayExternalRecordStore::export_filter_bytes + 131072U
+			: 0U;
 		const std::uint64_t profile_bytes = sizeof(MultiwayExternalExportProfile) + 4096U + filter_bytes;
-		const auto peak_scratch_bytes = checked_export_add(profile_bytes, checked_export_add(
-			checked_export_add(checked_export_add(plan.order_index_bytes, sizeof(strategy)),
-				sizeof(actions)), sharding_metadata_bytes));
+		const auto peak_scratch_bytes = checked_export_add(profile_bytes, checked_export_add(checked_export_add(checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions)), sharding_metadata_bytes));
 		MultiwayExportTelemetry telemetry;
 		telemetry.external_profile.enabled = profile_enabled;
 		telemetry.attempted = true;
@@ -1320,12 +1319,12 @@ namespace texas::solver::multiway
 				}
 			}
 		}
-		const auto external_disk_reserve = coordinator_->limits().storage_backend ==
-			MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
+		const auto external_disk_reserve = coordinator_->limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
 			? coordinator_->limits().external_storage.disk_reserve_bytes
 			: 0U;
 		const auto disk_output_bytes = sharded_output
-			? sharded_size.total_bytes : plan.serialized_bytes;
+			? sharded_size.total_bytes
+			: plan.serialized_bytes;
 		telemetry.manifest_bytes = sharded_output ? sharded_size.manifest_bytes : 0U;
 		telemetry.disk_gate = evaluate_multiway_export_disk_gate(
 			disk_output_bytes, sharded_output ? shard_temporary_peak_bytes : disk_output_bytes,
@@ -1387,7 +1386,11 @@ namespace texas::solver::multiway
 		struct ExportFilterGuard
 		{
 			const MultiwayExternalCompactStorage* storage = nullptr;
-			~ExportFilterGuard() { if (storage != nullptr) storage->end_export_filter(); }
+			~ExportFilterGuard()
+			{
+				if (storage != nullptr)
+					storage->end_export_filter();
+			}
 		};
 		ExportFilterGuard filter_guard;
 		if (use_export_filter)
@@ -1467,9 +1470,9 @@ namespace texas::solver::multiway
 				profile_enabled ? &writer_profile : nullptr,
 				working_set_monitor_.export_progress_observer,
 				working_set_monitor_.export_progress_context, working_set_monitor_.export_progress_page_interval,
-				profile_enabled && working_set_monitor_.export_progress_observer != nullptr &&
-					working_set_monitor_.export_progress_page_interval != 0U
-					? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{} };
+				profile_enabled && working_set_monitor_.export_progress_observer != nullptr && working_set_monitor_.export_progress_page_interval != 0U
+					? std::chrono::steady_clock::now()
+					: std::chrono::steady_clock::time_point{} };
 			const auto write_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 				auto& current = *static_cast<Context*>(opaque);
 				auto& profile = *current.profile;
@@ -1483,7 +1486,7 @@ namespace texas::solver::multiway
 				{
 					OptionalExportTimer menu_timer(profile.enabled, profile.menu_nanoseconds);
 					if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, menu_actions.data(),
-						menu_actions.size(), action_count))
+							menu_actions.size(), action_count))
 						throw std::invalid_argument("external blueprint row has no published action menu");
 				}
 				const MultiwayPackedMenuView menu{ menu_actions.data(),
@@ -1500,15 +1503,15 @@ namespace texas::solver::multiway
 					try
 					{
 						const auto page_bucket_count = pinned.page.bucket_count;
-						if (pinned.local_bucket != 0U || page_bucket_count == 0U ||
-							page_bucket_count > shape.bucket_count - first_bucket)
+						if (pinned.local_bucket != 0U || page_bucket_count == 0U || page_bucket_count > shape.bucket_count - first_bucket)
 							throw std::runtime_error("external blueprint page bucket range is invalid");
 						for (std::uint32_t local_bucket = 0U; local_bucket < page_bucket_count; ++local_bucket)
 						{
 							const auto bucket = first_bucket + local_bucket;
 							pinned.local_bucket = local_bucket;
 							const bool sample = profile.enabled && ((current.row_sequence++ & 255U) == 0U);
-							if (sample) ++profile.sampled_rows;
+							if (sample)
+								++profile.sampled_rows;
 							if (sample)
 							{
 								OptionalExportTimer timer(sample, profile.sampled_average_nanoseconds);
@@ -1564,21 +1567,23 @@ namespace texas::solver::multiway
 						OptionalExportTimer unpin_timer(profile.enabled, profile.unpin_nanoseconds);
 						current.storage->compact_storage().unpin_bucket(pinned);
 					}
-					if (profile.enabled && current.progress != nullptr && current.progress_interval != 0U &&
-						profile.pages % current.progress_interval == 0U)
+					if (profile.enabled && current.progress != nullptr && current.progress_interval != 0U && profile.pages % current.progress_interval == 0U)
 					{
 						copy_page_profile(profile, *current.page_profile);
 						copy_writer_profile(profile, *current.writer_profile);
 						const auto bytes = current.sharded_writer != nullptr
-							? current.sharded_writer->progress() : current.writer->progress();
+							? current.sharded_writer->progress()
+							: current.writer->progress();
 						profile.encoded_bytes = bytes.encoded_bytes;
 						profile.stream_write_bytes = bytes.stream_write_bytes;
 						const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-							std::chrono::steady_clock::now() - current.stream_started).count());
+							std::chrono::steady_clock::now() - current.stream_started)
+								.count());
 						current.progress(profile, elapsed, current.progress_context);
 					}
 				}
-				if (profile.enabled) ++profile.shapes;
+				if (profile.enabled)
+					++profile.shapes;
 				return true;
 			};
 			{
@@ -1687,17 +1692,15 @@ namespace texas::solver::multiway
 		status_.working_set_gate = evaluate_multiway_working_set_runtime(
 			process_memory, working_set_monitor_.gate);
 		if (status_.working_set_gate.blocked())
-			throw std::runtime_error(std::string("training checkpoint process gate rejected: ") +
-				status_.working_set_gate.rejected_category);
+			throw std::runtime_error(std::string("training checkpoint process gate rejected: ") + status_.working_set_gate.rejected_category);
 		const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
 			? capture_multiway_system_memory_snapshot()
 			: working_set_monitor_.system_memory_observer(
-				working_set_monitor_.system_memory_observer_context);
+				  working_set_monitor_.system_memory_observer_context);
 		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
 			system_memory, working_set_monitor_.system_memory_guard);
 		if (status_.system_memory_guard.blocked())
-			throw std::runtime_error(std::string("training checkpoint system memory gate rejected: ") +
-				status_.system_memory_guard.rejected_category);
+			throw std::runtime_error(std::string("training checkpoint system memory gate rejected: ") + status_.system_memory_guard.rejected_category);
 		auto lease = coordinator_->acquire_checkpoint_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		const auto coverage = coverage_manifest();
@@ -1727,8 +1730,7 @@ namespace texas::solver::multiway
 		std::uint64_t workflow_identity_hash,
 		std::uint64_t storage_identity_hash) const
 	{
-		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 ||
-			workflow_identity_hash == 0U || storage_identity_hash == 0U)
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 || workflow_identity_hash == 0U || storage_identity_hash == 0U)
 			throw std::invalid_argument("external checkpoint requires the external backend and verified identities");
 		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
 		const auto process_memory = working_set_monitor_.observer == nullptr
@@ -1737,17 +1739,15 @@ namespace texas::solver::multiway
 		status_.working_set_gate = evaluate_multiway_working_set_runtime(
 			process_memory, working_set_monitor_.gate);
 		if (status_.working_set_gate.blocked())
-			throw std::runtime_error(std::string("external checkpoint process gate rejected: ") +
-				status_.working_set_gate.rejected_category);
+			throw std::runtime_error(std::string("external checkpoint process gate rejected: ") + status_.working_set_gate.rejected_category);
 		const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
 			? capture_multiway_system_memory_snapshot()
 			: working_set_monitor_.system_memory_observer(
-				working_set_monitor_.system_memory_observer_context);
+				  working_set_monitor_.system_memory_observer_context);
 		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
 			system_memory, working_set_monitor_.system_memory_guard);
 		if (status_.system_memory_guard.blocked())
-			throw std::runtime_error(std::string("external checkpoint system memory gate rejected: ") +
-				status_.system_memory_guard.rejected_category);
+			throw std::runtime_error(std::string("external checkpoint system memory gate rejected: ") + status_.system_memory_guard.rejected_category);
 		auto lease = coordinator_->acquire_checkpoint_lease();
 		if (lease.external_storage() == nullptr)
 			throw std::logic_error("external checkpoint lease has no external storage");
@@ -1900,15 +1900,7 @@ namespace texas::solver::multiway
 		std::uint64_t workflow_identity_hash,
 		std::uint64_t storage_identity_hash)
 	{
-		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 ||
-			checkpoint.model_identity_hash != identity_.combined_hash ||
-			checkpoint.workflow_identity_hash != workflow_identity_hash ||
-			checkpoint.storage_identity_hash != storage_identity_hash ||
-			checkpoint.schedule_hash != schedule_.identity() ||
-			checkpoint.completed_trajectories < checkpoint.completed_batches ||
-			checkpoint.linear_iteration_weighting != (schedule_.linear_iteration_weighting ? 1U : 0U) ||
-			checkpoint.discounting_enabled != (schedule_.discount_regrets ? 1U : 0U) ||
-			checkpoint.negative_regret_pruning_enabled != (schedule_.prune_negative_regrets ? 1U : 0U))
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 || checkpoint.model_identity_hash != identity_.combined_hash || checkpoint.workflow_identity_hash != workflow_identity_hash || checkpoint.storage_identity_hash != storage_identity_hash || checkpoint.schedule_hash != schedule_.identity() || checkpoint.completed_trajectories < checkpoint.completed_batches || checkpoint.linear_iteration_weighting != (schedule_.linear_iteration_weighting ? 1U : 0U) || checkpoint.discounting_enabled != (schedule_.discount_regrets ? 1U : 0U) || checkpoint.negative_regret_pruning_enabled != (schedule_.prune_negative_regrets ? 1U : 0U))
 			throw std::invalid_argument("external checkpoint identity or schedule does not match the trainer");
 		status_.batches = checkpoint.completed_batches;
 		status_.trajectories = checkpoint.completed_trajectories;

@@ -924,8 +924,7 @@ namespace texas::solver::multiway
 			serialized_output_bytes, temporary_overlap_bytes);
 		result.required_free_bytes = multiway_memory_saturating_add(
 			publication_bytes, reserve_bytes);
-		if (publication_bytes == std::numeric_limits<std::uint64_t>::max() ||
-			result.required_free_bytes == std::numeric_limits<std::uint64_t>::max())
+		if (publication_bytes == std::numeric_limits<std::uint64_t>::max() || result.required_free_bytes == std::numeric_limits<std::uint64_t>::max())
 		{
 			result.status = MultiwayExportDiskGateStatus::Rejected;
 			result.rejection_reason = MultiwayExportDiskRejectionReason::RequiredSpaceOverflow;
@@ -1015,11 +1014,7 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("invalid multiway export telemetry values");
 		if (static_cast<unsigned>(disk_gate.status) > static_cast<unsigned>(MultiwayExportDiskGateStatus::Unavailable) || static_cast<unsigned>(disk_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportDiskRejectionReason::InsufficientFreeSpace))
 			throw std::invalid_argument("invalid multiway export disk gate telemetry");
-		if (disk_gate.status == MultiwayExportDiskGateStatus::Admitted &&
-			((sharded_output ? disk_gate.serialized_output_bytes < plan.serialized_bytes :
-				disk_gate.serialized_output_bytes != plan.serialized_bytes) ||
-				disk_gate.required_free_bytes < disk_gate.serialized_output_bytes ||
-				disk_gate.available_free_bytes < disk_gate.required_free_bytes))
+		if (disk_gate.status == MultiwayExportDiskGateStatus::Admitted && ((sharded_output ? disk_gate.serialized_output_bytes < plan.serialized_bytes : disk_gate.serialized_output_bytes != plan.serialized_bytes) || disk_gate.required_free_bytes < disk_gate.serialized_output_bytes || disk_gate.available_free_bytes < disk_gate.required_free_bytes))
 			throw std::invalid_argument("admitted multiway export disk telemetry is inconsistent");
 		if (sharded_output != (shard_count != 0U) || (!sharded_output && manifest_bytes != 0U))
 			throw std::invalid_argument("multiway export shard telemetry is inconsistent");
@@ -1167,16 +1162,14 @@ namespace texas::solver::multiway
 			result.message = "working-set metric unavailable";
 			return result;
 		}
-		if (config.private_commit_limit_bytes != 0U &&
-			!snapshot.private_committed_available && !snapshot.peak_private_committed_available)
+		if (config.private_commit_limit_bytes != 0U && !snapshot.private_committed_available && !snapshot.peak_private_committed_available)
 		{
 			result.status = MultiwayWorkingSetGateStatus::Unavailable;
 			result.rejected_category = "private commit telemetry";
 			result.message = "private-commit metric unavailable";
 			return result;
 		}
-		if (config.private_commit_limit_bytes != 0U &&
-			result.observed_private_commit_bytes > config.private_commit_limit_bytes)
+		if (config.private_commit_limit_bytes != 0U && result.observed_private_commit_bytes > config.private_commit_limit_bytes)
 		{
 			result.status = MultiwayWorkingSetGateStatus::Rejected;
 			result.rejected_category = "process private commit";
@@ -1207,13 +1200,23 @@ namespace texas::solver::multiway
 		std::uint64_t menu_capacity,
 		std::uint64_t action_capacity) noexcept
 	{
-		struct StateIndexLayout { MultiwayPublicStateId id; std::size_t node_index; };
-		struct MenuIndexLayout { std::uint64_t key; std::uint32_t handle; };
-		struct PendingMenuIndexLayout { std::uint64_t key; std::uint32_t pending_index; };
+		struct StateIndexLayout
+		{
+			MultiwayPublicStateId id;
+			std::size_t node_index;
+		};
+		struct MenuIndexLayout
+		{
+			std::uint64_t key;
+			std::uint32_t handle;
+		};
+		struct PendingMenuIndexLayout
+		{
+			std::uint64_t key;
+			std::uint32_t pending_index;
+		};
 		MultiwayCatalogCapacityEstimate result;
-		if (state_capacity > std::numeric_limits<std::size_t>::max() ||
-			menu_capacity > std::numeric_limits<std::size_t>::max() ||
-			action_capacity > std::numeric_limits<std::size_t>::max())
+		if (state_capacity > std::numeric_limits<std::size_t>::max() || menu_capacity > std::numeric_limits<std::size_t>::max() || action_capacity > std::numeric_limits<std::size_t>::max())
 		{
 			result.node_bytes = result.index_bytes = result.menu_header_bytes =
 				result.menu_action_bytes = result.admission_scratch_bytes = result.total_bytes = std::numeric_limits<std::uint64_t>::max();
@@ -1229,9 +1232,7 @@ namespace texas::solver::multiway
 			static_cast<std::size_t>(menu_capacity), sizeof(std::vector<MultiwayActionDescriptor>));
 		result.menu_action_bytes = multiway_memory_saturating_capacity_bytes(
 			static_cast<std::size_t>(action_capacity), sizeof(MultiwayActionDescriptor));
-		const auto per_state_scratch = sizeof(std::vector<MultiwayActionDescriptor>) +
-			MULTIWAY_MAX_ABSTRACTED_ACTIONS * sizeof(MultiwayActionDescriptor) + sizeof(std::uint64_t) +
-			2U * sizeof(std::uint32_t) + 2U * sizeof(StateIndexLayout);
+		const auto per_state_scratch = sizeof(std::vector<MultiwayActionDescriptor>) + MULTIWAY_MAX_ABSTRACTED_ACTIONS * sizeof(MultiwayActionDescriptor) + sizeof(std::uint64_t) + 2U * sizeof(std::uint32_t) + 2U * sizeof(StateIndexLayout);
 		result.admission_scratch_bytes = multiway_memory_saturating_capacity_bytes(
 			static_cast<std::size_t>(state_capacity), per_state_scratch);
 		result.admission_scratch_bytes = multiway_memory_saturating_add(result.admission_scratch_bytes,
@@ -1296,9 +1297,11 @@ namespace texas::solver::multiway
 		result.estimate.ledger.actual_retained_capacity_bytes = result.estimate.actual_retained_capacity_bytes;
 		const auto state_capacity = static_cast<std::uint64_t>(limits.max_public_states);
 		const auto menu_capacity = inputs.public_catalog_menu_capacity != 0U
-			? inputs.public_catalog_menu_capacity : state_capacity;
+			? inputs.public_catalog_menu_capacity
+			: state_capacity;
 		const auto action_capacity = inputs.public_catalog_action_capacity != 0U
-			? inputs.public_catalog_action_capacity : checked_multiply(state_capacity, MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+			? inputs.public_catalog_action_capacity
+			: checked_multiply(state_capacity, MULTIWAY_MAX_ABSTRACTED_ACTIONS);
 		const auto catalog = estimate_multiway_catalog_capacity(state_capacity, menu_capacity, action_capacity);
 		result.estimate.public_state_bytes = checked_add(catalog.total_bytes, inputs.public_catalog_admission_scratch_bytes);
 		result.estimate.public_catalog_reallocation_peak_bytes = catalog.reallocation_peak_bytes;
@@ -1343,9 +1346,9 @@ namespace texas::solver::multiway
 		result.estimate.merge_scratch_bytes = checked_add(
 			checked_multiply(limits.max_sparse_values, MultiwaySolverCoordinator::pending_merge_cell_size()),
 			checked_add(checked_multiply(
-				aggregate_regret_entries,
-				static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*))),
-			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta))));
+							aggregate_regret_entries,
+							static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*))),
+				checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta))));
 		result.estimate.export_bytes = 0U; // Streamed export uses fixed scratch; output is disk/cache pressure.
 		result.estimate.continuation_cache_bytes = inputs.continuation_cache_bytes;
 		result.estimate.ledger.public_catalog_bytes = result.estimate.public_state_bytes;
@@ -1369,9 +1372,9 @@ namespace texas::solver::multiway
 		result.estimate.compact_reallocation_peak_bytes = inputs.compact_reallocation_peak_bytes != 0U
 			? inputs.compact_reallocation_peak_bytes
 			: checked_add(
-				checked_multiply(result.estimate.sparse_row_bytes, 2U),
-				checked_add(checked_multiply(result.estimate.compact_page_bytes, 2U),
-					result.estimate.sparse_value_bytes));
+				  checked_multiply(result.estimate.sparse_row_bytes, 2U),
+				  checked_add(checked_multiply(result.estimate.compact_page_bytes, 2U),
+					  result.estimate.sparse_value_bytes));
 		result.estimate.file_cache_allowance_bytes = inputs.file_cache_allowance_bytes;
 		result.estimate.disk_output_bytes = inputs.disk_output_bytes;
 		result.estimate.external_storage_cache_bytes = inputs.external_storage_cache_bytes;
@@ -1425,10 +1428,12 @@ namespace texas::solver::multiway
 
 		const auto root_private_stage = checked_add(
 			checked_add(existing_private_committed_bytes,
-				checked_add(root_stage, result.estimate.public_catalog_reallocation_peak_bytes)), inputs.allocator_overhead_bytes);
+				checked_add(root_stage, result.estimate.public_catalog_reallocation_peak_bytes)),
+			inputs.allocator_overhead_bytes);
 		const auto root_working_set_stage = checked_add(
 			checked_add(checked_add(existing_working_set_bytes,
-				checked_add(root_stage, result.estimate.public_catalog_reallocation_peak_bytes)), mapped_resident_allowance_bytes),
+							checked_add(root_stage, result.estimate.public_catalog_reallocation_peak_bytes)),
+				mapped_resident_allowance_bytes),
 			inputs.allocator_overhead_bytes);
 		const auto root_admission_bytes = std::max(root_private_stage, root_working_set_stage);
 		if (root_admission_bytes > budget.operating_bytes || root_admission_bytes >= budget.reject_bytes)

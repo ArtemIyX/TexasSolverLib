@@ -765,8 +765,13 @@ namespace texas::solver::multiway
 			}
 			catch (...)
 			{
-				try { storage.abort_batch(); }
-				catch (...) {}
+				try
+				{
+					storage.abort_batch();
+				}
+				catch (...)
+				{
+				}
 				throw;
 			}
 		}
@@ -850,14 +855,9 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway solver limits require non-zero batch and compact page budgets");
 		}
-		if (storage_backend != StorageBackend::Float64Reference && storage_backend != StorageBackend::CompactInt32 &&
-			storage_backend != StorageBackend::ExternalCompactInt32)
+		if (storage_backend != StorageBackend::Float64Reference && storage_backend != StorageBackend::CompactInt32 && storage_backend != StorageBackend::ExternalCompactInt32)
 			throw std::invalid_argument("multiway solver storage backend is invalid");
-		if (storage_backend == StorageBackend::ExternalCompactInt32 &&
-			(external_storage.directory.empty() || external_storage.public_catalog_cache_bytes == 0U ||
-				external_storage.row_page_cache_bytes == 0U || external_storage.maximum_wal_bytes == 0U ||
-				external_storage.segment_target_bytes == 0U || external_storage.compaction_fan_in < 2U ||
-				external_storage.compaction_scratch_bytes == 0U || external_storage.disk_reserve_bytes == 0U))
+		if (storage_backend == StorageBackend::ExternalCompactInt32 && (external_storage.directory.empty() || external_storage.public_catalog_cache_bytes == 0U || external_storage.row_page_cache_bytes == 0U || external_storage.maximum_wal_bytes == 0U || external_storage.segment_target_bytes == 0U || external_storage.compaction_fan_in < 2U || external_storage.compaction_scratch_bytes == 0U || external_storage.disk_reserve_bytes == 0U))
 			throw std::invalid_argument("external compact storage requires a directory and positive bounded resources");
 	}
 
@@ -1267,13 +1267,7 @@ namespace texas::solver::multiway
 		: root_policy_(std::move(root_policy)), root_values_(std::move(root_values)), diagnostics_(std::move(diagnostics)) {}
 
 	MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest& request)
-		: request_(request),
-		  storage_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference
-			  ? request.limits().max_sparse_rows : 0U,
-			  request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference
-			  ? checked_sparse_value_capacity(request) : 0U),
-		  public_catalog_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
-			  ? 0U : request.limits().max_public_states)
+		: request_(request), storage_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference ? request.limits().max_sparse_rows : 0U, request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference ? checked_sparse_value_capacity(request) : 0U), public_catalog_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 ? 0U : request.limits().max_public_states)
 	{
 		if (request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32)
 		{
@@ -1469,8 +1463,7 @@ namespace texas::solver::multiway
 				}
 				MultiwayPublicStateDescriptor existing;
 				const bool compatible = external_storage_ != nullptr
-					? external_storage_->catalog().reconstruct(state.id, existing) &&
-						public_state_candidates_compatible(existing, state)
+					? external_storage_->catalog().reconstruct(state.id, existing) && public_state_candidates_compatible(existing, state)
 					: public_catalog_.compatible_with_descriptor(admission_existing_nodes_[state_index], state);
 				if (!compatible)
 				{
@@ -1599,8 +1592,8 @@ namespace texas::solver::multiway
 				state = &public_states[state_index];
 			}
 			else if ((external
-					? external_storage_->catalog().reconstruct(shape.infoset.public_state, existing_state)
-					: public_catalog_.node(shape.infoset.public_state) != nullptr && public_catalog_.reconstruct(shape.infoset.public_state, existing_state)))
+							 ? external_storage_->catalog().reconstruct(shape.infoset.public_state, existing_state)
+							 : public_catalog_.node(shape.infoset.public_state) != nullptr && public_catalog_.reconstruct(shape.infoset.public_state, existing_state)))
 			{
 				if (admission_diagnostics_ != nullptr)
 				{
@@ -1735,8 +1728,13 @@ namespace texas::solver::multiway
 				}
 				catch (...)
 				{
-					try { external_storage_->abort_batch(); }
-					catch (...) {}
+					try
+					{
+						external_storage_->abort_batch();
+					}
+					catch (...)
+					{
+					}
 					throw;
 				}
 			}
@@ -2102,8 +2100,13 @@ namespace texas::solver::multiway
 			~ExternalMergeAbortGuard() noexcept
 			{
 				if (active)
-					try { storage->abort_batch(); }
-					catch (...) {}
+					try
+					{
+						storage->abort_batch();
+					}
+					catch (...)
+					{
+					}
 			}
 		};
 		ExternalMergeAbortGuard external_abort;
@@ -2230,8 +2233,7 @@ namespace texas::solver::multiway
 					}
 					if (delta.bucket >= external_row.bucket_count() || delta.action >= external_row.action_count())
 						throw std::invalid_argument("multiway delta does not match an admitted external row cell");
-					const auto page_id = external_row.first_page_id() +
-						(delta.bucket / request_.limits().compact_page_width);
+					const auto page_id = external_row.first_page_id() + (delta.bucket / request_.limits().compact_page_width);
 					if (external_pinned.owner == nullptr || external_pinned.page.page_id != page_id)
 						pin_external_bucket(external_row, delta.bucket);
 					else
@@ -2568,9 +2570,9 @@ namespace texas::solver::multiway
 		for (std::size_t action = 0U; action < output_size; ++action)
 			output[action] = compact_storage_ != nullptr
 				? compact_storage_->action_below_regret(infoset, bucket,
-					static_cast<std::uint8_t>(action), threshold)
+					  static_cast<std::uint8_t>(action), threshold)
 				: storage_.action_below_regret(infoset, bucket,
-					static_cast<std::uint8_t>(action), threshold);
+					  static_cast<std::uint8_t>(action), threshold);
 	}
 
 	void MultiwaySolverCoordinator::actions_below_regret_epoch(

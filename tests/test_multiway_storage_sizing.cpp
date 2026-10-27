@@ -11,8 +11,7 @@ TEST_CASE(multiway_catalog_capacity_fixture_matches_packed_layout_terms)
 	EXPECT_EQ(estimate.menu_action_bytes, 5U * sizeof(texas::MultiwayActionDescriptor));
 	EXPECT_TRUE(estimate.index_bytes > 0U);
 	EXPECT_EQ(estimate.total_bytes,
-		estimate.node_bytes + estimate.index_bytes + estimate.menu_header_bytes +
-		estimate.menu_action_bytes + estimate.admission_scratch_bytes);
+		estimate.node_bytes + estimate.index_bytes + estimate.menu_header_bytes + estimate.menu_action_bytes + estimate.admission_scratch_bytes);
 }
 
 TEST_CASE(multiway_catalog_capacity_fixture_saturates_overflow)

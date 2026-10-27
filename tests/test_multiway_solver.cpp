@@ -27,8 +27,7 @@ namespace
 		ExternalCoordinatorDirectory()
 		{
 			const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-			path_ = std::filesystem::temp_directory_path() /
-				("texassolver_external_coordinator_" + std::to_string(stamp));
+			path_ = std::filesystem::temp_directory_path() / ("texassolver_external_coordinator_" + std::to_string(stamp));
 			std::error_code error;
 			owned_ = std::filesystem::create_directory(path_, error);
 			if (error || !owned_)
@@ -633,8 +632,7 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	texas::MultiwaySolverCoordinator reference(
 		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
 	reference.admit_infoset_row(root_row());
-	EXPECT_TRUE(coordinator.memory_snapshot().merge_scratch.retained_capacity_bytes <
-		limits.max_sparse_values * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
+	EXPECT_TRUE(coordinator.memory_snapshot().merge_scratch.retained_capacity_bytes < limits.max_sparse_values * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
 	texas::MultiwayWorkerDeltaStream first(0, 1U);
 	texas::MultiwayWorkerDeltaStream second(1, 1U);
 	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 2.0)));
@@ -675,11 +673,11 @@ TEST_CASE(multiway_solver_request_accepts_external_storage_configuration)
 
 TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
 {
-	using texas::MultiwayWorkerDeltaStream;
+	using texas::MultiwayCFRConfig;
 	using texas::MultiwaySolverCoordinator;
 	using texas::MultiwaySolveRequest;
-	using texas::MultiwayCFRConfig;
 	using texas::MultiwaySolverLimits;
+	using texas::MultiwayWorkerDeltaStream;
 	ExternalCoordinatorDirectory directory;
 	auto limits = valid_limits();
 	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
@@ -739,8 +737,8 @@ TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
 TEST_CASE(multiway_solver_external_coordinator_reopens_committed_rows_and_states)
 {
 	using texas::MultiwayCFRConfig;
-	using texas::MultiwaySolveRequest;
 	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolveRequest;
 	using texas::MultiwaySolverLimits;
 	using texas::MultiwayWorkerDeltaStream;
 	ExternalCoordinatorDirectory directory;
@@ -800,8 +798,8 @@ TEST_CASE(multiway_solver_external_coordinator_reopens_committed_rows_and_states
 TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatches)
 {
 	using texas::MultiwayCFRConfig;
-	using texas::MultiwaySolveRequest;
 	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolveRequest;
 	using texas::MultiwaySolverLimits;
 	using texas::MultiwayWorkerDeltaStream;
 	ExternalCoordinatorDirectory directory;
@@ -864,7 +862,8 @@ TEST_CASE(multiway_public_catalog_packs_external_node_without_catalog_state)
 	catalog.admit(state);
 	const auto* in_memory_node = catalog.checkpoint_node_at(0U);
 	EXPECT_TRUE(in_memory_node != nullptr);
-	if (in_memory_node == nullptr) return;
+	if (in_memory_node == nullptr)
+		return;
 	const auto external_node = texas::MultiwayPublicCatalog::pack_node(
 		state, in_memory_node->legal_menu_handle);
 	std::vector<std::uint8_t> expected_bytes;

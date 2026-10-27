@@ -21,8 +21,9 @@ namespace texas::logging
 		Progress& field(std::string_view name, std::string_view value) noexcept;
 		Progress& rate(double per_second) noexcept;
 		void finish(std::string_view message = {}) noexcept;
+
 	private:
 		explicit Progress(std::uint64_t id) noexcept : id_(id) {}
 		std::uint64_t id_ = 0U;
 	};
-}
+} // namespace texas::logging

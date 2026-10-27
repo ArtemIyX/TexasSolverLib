@@ -12,10 +12,41 @@ namespace texas::logging
 {
 	inline constexpr std::size_t category_count = 8U;
 
-	enum class Level : std::uint8_t { Trace, Debug, Info, Warning, Error, Critical, Off };
-	enum class Category : std::uint8_t { Core, Config, Workflow, Solver, Storage, Checkpoint, Performance, Validation, Count };
-	enum class ColorMode : std::uint8_t { Automatic, Always, Never };
-	enum class ProgressMode : std::uint8_t { Automatic, Live, Lines, Off };
+	enum class Level : std::uint8_t
+	{
+		Trace,
+		Debug,
+		Info,
+		Warning,
+		Error,
+		Critical,
+		Off
+	};
+	enum class Category : std::uint8_t
+	{
+		Core,
+		Config,
+		Workflow,
+		Solver,
+		Storage,
+		Checkpoint,
+		Performance,
+		Validation,
+		Count
+	};
+	enum class ColorMode : std::uint8_t
+	{
+		Automatic,
+		Always,
+		Never
+	};
+	enum class ProgressMode : std::uint8_t
+	{
+		Automatic,
+		Live,
+		Lines,
+		Off
+	};
 
 	struct ConsoleConfig
 	{
@@ -97,4 +128,4 @@ namespace texas::logging
 	std::filesystem::path select_config_path(const EnvironmentMap& environment, const Overrides& overrides) noexcept;
 	Overrides scan_logging_options(int argc, char** argv, BootstrapError& error) noexcept;
 	EnvironmentMap process_environment() noexcept;
-}
+} // namespace texas::logging

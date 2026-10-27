@@ -35,10 +35,20 @@ namespace texas::solver::multiway
 			using pointer = void;
 			using reference = std::uint8_t;
 			std::uint8_t operator*() const noexcept;
-			const_iterator& operator++() noexcept { ++index_; return *this; }
-			const_iterator operator++(int) noexcept { auto copy = *this; ++*this; return copy; }
+			const_iterator& operator++() noexcept
+			{
+				++index_;
+				return *this;
+			}
+			const_iterator operator++(int) noexcept
+			{
+				auto copy = *this;
+				++*this;
+				return copy;
+			}
 			friend bool operator==(const const_iterator& left, const const_iterator& right) noexcept;
 			friend bool operator!=(const const_iterator& left, const const_iterator& right) noexcept { return !(left == right); }
+
 		private:
 			const_iterator(const std::uint8_t* bytes, std::uint64_t packed, std::uint8_t size, bool is_packed, std::uint8_t index) noexcept
 				: bytes_(bytes), packed_(packed), size_(size), is_packed_(is_packed), index_(index) {}
@@ -60,6 +70,7 @@ namespace texas::solver::multiway
 		friend bool operator==(MultiwayBoardView left, const std::vector<std::uint8_t>& right) noexcept;
 		friend bool operator==(const std::vector<std::uint8_t>& left, MultiwayBoardView right) noexcept { return right == left; }
 		friend bool operator<(MultiwayBoardView left, const std::vector<std::uint8_t>& right) noexcept;
+
 	private:
 		const std::uint8_t* bytes_ = nullptr;
 		std::uint64_t packed_ = 0U;
@@ -111,7 +122,8 @@ namespace texas::solver::multiway
 					return MULTIWAY_INVALID_BUCKET;
 				const auto& hole = core::canonical_combos().cards(static_cast<core::CanonicalComboId>(index));
 				for (const auto card : canonical_board())
-					if (hole[0] == card || hole[1] == card) return MULTIWAY_INVALID_BUCKET;
+					if (hole[0] == card || hole[1] == card)
+						return MULTIWAY_INVALID_BUCKET;
 			}
 			return value;
 		}
@@ -148,7 +160,8 @@ namespace texas::solver::multiway
 		static std::uint64_t read_mapped_u64(const std::uint8_t* p) noexcept
 		{
 			std::uint64_t value = 0U;
-			for (std::uint8_t byte = 0U; byte < 8U; ++byte) value |= static_cast<std::uint64_t>(p[byte]) << (byte * 8U);
+			for (std::uint8_t byte = 0U; byte < 8U; ++byte)
+				value |= static_cast<std::uint64_t>(p[byte]) << (byte * 8U);
 			return value;
 		}
 		friend class MultiwayBucketRegistry;

@@ -41,9 +41,12 @@ namespace texas::solver::multiway
 
 		bool key_less(const SortKey& left, const SortKey& right) noexcept
 		{
-			if (left.public_state != right.public_state) return left.public_state < right.public_state;
-			if (left.seat != right.seat) return left.seat < right.seat;
-			if (left.bucket != right.bucket) return left.bucket < right.bucket;
+			if (left.public_state != right.public_state)
+				return left.public_state < right.public_state;
+			if (left.seat != right.seat)
+				return left.seat < right.seat;
+			if (left.bucket != right.bucket)
+				return left.bucket < right.bucket;
 			return left.menu < right.menu;
 		}
 
@@ -56,15 +59,7 @@ namespace texas::solver::multiway
 			const MultiwayBlueprintTrainingMetadata& left,
 			const MultiwayBlueprintTrainingMetadata& right) noexcept
 		{
-			return left.batches == right.batches && left.trajectories == right.trajectories &&
-				left.deterministic_seed == right.deterministic_seed &&
-				left.late_window_start_batch == right.late_window_start_batch &&
-				left.schedule_hash == right.schedule_hash &&
-				left.pruned_negative_regrets == right.pruned_negative_regrets &&
-				left.linear_iteration_weighting == right.linear_iteration_weighting &&
-				left.discounting_enabled == right.discounting_enabled &&
-				left.negative_regret_pruning_enabled == right.negative_regret_pruning_enabled &&
-				left.reserved == right.reserved;
+			return left.batches == right.batches && left.trajectories == right.trajectories && left.deterministic_seed == right.deterministic_seed && left.late_window_start_batch == right.late_window_start_batch && left.schedule_hash == right.schedule_hash && left.pruned_negative_regrets == right.pruned_negative_regrets && left.linear_iteration_weighting == right.linear_iteration_weighting && left.discounting_enabled == right.discounting_enabled && left.negative_regret_pruning_enabled == right.negative_regret_pruning_enabled && left.reserved == right.reserved;
 		}
 
 		class MappedReader
@@ -78,21 +73,25 @@ namespace texas::solver::multiway
 			[[nodiscard]] std::size_t offset() const noexcept { return offset_; }
 			[[nodiscard]] bool bytes(std::uint8_t* output, std::size_t count) noexcept
 			{
-				if (offset_ > size_ || count > size_ - offset_) return false;
-				if (count != 0U) std::memcpy(output, data_ + offset_, count);
+				if (offset_ > size_ || count > size_ - offset_)
+					return false;
+				if (count != 0U)
+					std::memcpy(output, data_ + offset_, count);
 				offset_ += count;
 				return true;
 			}
 			[[nodiscard]] bool u8(std::uint8_t& value) noexcept
 			{
-				if (offset_ >= size_) return false;
+				if (offset_ >= size_)
+					return false;
 				value = data_[offset_++];
 				return true;
 			}
 			[[nodiscard]] bool u16(std::uint16_t& value) noexcept
 			{
 				std::uint8_t a = 0U, b = 0U;
-				if (!u8(a) || !u8(b)) return false;
+				if (!u8(a) || !u8(b))
+					return false;
 				value = static_cast<std::uint16_t>(a) | (static_cast<std::uint16_t>(b) << 8U);
 				return true;
 			}
@@ -102,7 +101,8 @@ namespace texas::solver::multiway
 				for (std::uint32_t shift = 0U; shift < 32U; shift += 8U)
 				{
 					std::uint8_t byte = 0U;
-					if (!u8(byte)) return false;
+					if (!u8(byte))
+						return false;
 					value |= static_cast<std::uint32_t>(byte) << shift;
 				}
 				return true;
@@ -110,7 +110,8 @@ namespace texas::solver::multiway
 			[[nodiscard]] bool i32(std::int32_t& value) noexcept
 			{
 				std::uint32_t raw = 0U;
-				if (!u32(raw)) return false;
+				if (!u32(raw))
+					return false;
 				value = static_cast<std::int32_t>(raw);
 				return true;
 			}
@@ -120,7 +121,8 @@ namespace texas::solver::multiway
 				for (std::uint32_t shift = 0U; shift < 64U; shift += 8U)
 				{
 					std::uint8_t byte = 0U;
-					if (!u8(byte)) return false;
+					if (!u8(byte))
+						return false;
 					value |= static_cast<std::uint64_t>(byte) << shift;
 				}
 				return true;
@@ -138,7 +140,8 @@ namespace texas::solver::multiway
 			std::size_t size = 0U;
 			~MappedFile() noexcept
 			{
-				if (data == nullptr) return;
+				if (data == nullptr)
+					return;
 #ifdef _WIN32
 				UnmapViewOfFile(data);
 #else
@@ -156,8 +159,7 @@ namespace texas::solver::multiway
 			if (file == INVALID_HANDLE_VALUE)
 				throw std::runtime_error("multiway blueprint shard cannot be opened for mapping");
 			LARGE_INTEGER file_size{};
-			if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart <= 0 ||
-				static_cast<unsigned long long>(file_size.QuadPart) > std::numeric_limits<std::size_t>::max())
+			if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart <= 0 || static_cast<unsigned long long>(file_size.QuadPart) > std::numeric_limits<std::size_t>::max())
 			{
 				CloseHandle(file);
 				throw std::length_error("multiway blueprint shard mapping size is invalid");
@@ -174,8 +176,7 @@ namespace texas::solver::multiway
 			if (file < 0)
 				throw std::runtime_error("multiway blueprint shard cannot be opened for mapping");
 			struct stat status{};
-			if (fstat(file, &status) != 0 || status.st_size <= 0 ||
-				static_cast<unsigned long long>(status.st_size) > std::numeric_limits<std::size_t>::max())
+			if (fstat(file, &status) != 0 || status.st_size <= 0 || static_cast<unsigned long long>(status.st_size) > std::numeric_limits<std::size_t>::max())
 			{
 				close(file);
 				throw std::length_error("multiway blueprint shard mapping size is invalid");
@@ -192,8 +193,7 @@ namespace texas::solver::multiway
 
 		bool read_key(MappedReader& reader, SortKey& key) noexcept
 		{
-			return reader.u64(key.public_state) && reader.i32(key.seat) &&
-				reader.u32(key.bucket) && reader.u64(key.menu);
+			return reader.u64(key.public_state) && reader.i32(key.seat) && reader.u32(key.bucket) && reader.u64(key.menu);
 		}
 
 		bool read_row(
@@ -208,9 +208,7 @@ namespace texas::solver::multiway
 			{
 				auto& action = actions[index];
 				std::uint8_t kind = 0U;
-				if (!reader.u8(kind) || !reader.u32(action.action.action_index) ||
-					!reader.i32(action.action.target_street_contribution) ||
-					!reader.u64(action.action.action_menu_id) || !reader.u16(action.probability))
+				if (!reader.u8(kind) || !reader.u32(action.action.action_index) || !reader.i32(action.action.target_street_contribution) || !reader.u64(action.action.action_menu_id) || !reader.u16(action.probability))
 					return false;
 				action.action.action = static_cast<MultiwayAction>(kind);
 			}
@@ -227,9 +225,7 @@ namespace texas::solver::multiway
 			std::uint32_t total = 0U;
 			for (std::uint32_t index = 0U; index < action_count; ++index)
 			{
-				if (actions[index].action.action_index != index ||
-					actions[index].action.action_menu_id != key.menu || actions[index].probability == 0U ||
-					actions[index].probability > 65535U - total)
+				if (actions[index].action.action_index != index || actions[index].action.action_menu_id != key.menu || actions[index].probability == 0U || actions[index].probability > 65535U - total)
 					return false;
 				total += actions[index].probability;
 			}
@@ -331,14 +327,12 @@ namespace texas::solver::multiway
 			if (root_error)
 				throw std::runtime_error("multiway mapped blueprint shard path cannot be resolved");
 			const auto relative_shard = canonical_shard.lexically_relative(canonical_root);
-			if (relative_shard.empty() || relative_shard.is_absolute() ||
-				std::any_of(relative_shard.begin(), relative_shard.end(), [](const auto& part) {
+			if (relative_shard.empty() || relative_shard.is_absolute() || std::any_of(relative_shard.begin(), relative_shard.end(), [](const auto& part) {
 					return part == "..";
 				}))
 				throw std::invalid_argument("multiway mapped blueprint shard escapes its manifest directory");
 			auto mapped = map_readonly(shard_path);
-			if (mapped->size != reference.serialized_bytes || mapped->size > manifest.maximum_serialized_bytes ||
-				mapped->size < kHeaderBytes + 8U)
+			if (mapped->size != reference.serialized_bytes || mapped->size > manifest.maximum_serialized_bytes || mapped->size < kHeaderBytes + 8U)
 				throw std::invalid_argument("multiway mapped blueprint shard has invalid size");
 			MappedReader reader(mapped->data, mapped->size);
 			std::array<std::uint8_t, kShardMagic.size()> magic{};
@@ -350,16 +344,11 @@ namespace texas::solver::multiway
 			MultiwayModelIdentity identity;
 			bool identity_ok = true;
 			visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) {
-				if (identity_ok) identity_ok = reader.u64(field);
+				if (identity_ok)
+					identity_ok = reader.u64(field);
 			});
 			MultiwayBlueprintTrainingMetadata training;
-			if (!identity_ok || identity != manifest.identity ||
-				!reader.u64(training.batches) || !reader.u64(training.trajectories) ||
-				!reader.u64(training.deterministic_seed) || !reader.u64(training.late_window_start_batch) ||
-				!reader.u64(training.schedule_hash) || !reader.u64(training.pruned_negative_regrets) ||
-				!reader.u8(training.linear_iteration_weighting) || !reader.u8(training.discounting_enabled) ||
-				!reader.u8(training.negative_regret_pruning_enabled) || !reader.u8(training.reserved) ||
-				!same_stream_training(training, manifest.training))
+			if (!identity_ok || identity != manifest.identity || !reader.u64(training.batches) || !reader.u64(training.trajectories) || !reader.u64(training.deterministic_seed) || !reader.u64(training.late_window_start_batch) || !reader.u64(training.schedule_hash) || !reader.u64(training.pruned_negative_regrets) || !reader.u8(training.linear_iteration_weighting) || !reader.u8(training.discounting_enabled) || !reader.u8(training.negative_regret_pruning_enabled) || !reader.u8(training.reserved) || !same_stream_training(training, manifest.training))
 				throw std::invalid_argument("multiway mapped blueprint shard identity or metadata mismatch");
 			std::uint64_t row_count = 0U;
 			if (!reader.u64(row_count) || row_count != reference.range.row_count)
@@ -389,7 +378,8 @@ namespace texas::solver::multiway
 				has_previous = true;
 				if (row_index % stride == 0U)
 					shard.index.push_back({ row_index, row_offset, key });
-				if (row_index == 0U) shard.first_key = key;
+				if (row_index == 0U)
+					shard.first_key = key;
 				shard.last_key = key;
 				const auto view = make_view(key, actions, action_count);
 				payload_hasher.append_row(view);
@@ -399,19 +389,15 @@ namespace texas::solver::multiway
 				shard_actions += action_count;
 			}
 			std::uint64_t payload_hash = 0U;
-			if (!reader.u64(payload_hash) || reader.offset() != shard.mapping->size ||
-				payload_hash == 0U || payload_hash != payload_hasher.finish() ||
-				payload_hash != reference.payload_hash || shard_actions != reference.action_count)
+			if (!reader.u64(payload_hash) || reader.offset() != shard.mapping->size || payload_hash == 0U || payload_hash != payload_hasher.finish() || payload_hash != reference.payload_hash || shard_actions != reference.action_count)
 				throw std::invalid_argument("multiway mapped blueprint shard integrity mismatch");
 			if (shard.index.empty() || shard.index.front().offset != kHeaderBytes)
 				throw std::invalid_argument("multiway mapped blueprint shard index is incomplete");
-			if (shard.mapping->size > std::numeric_limits<std::uint64_t>::max() - impl->mapped_bytes ||
-				shard.index.capacity() > std::numeric_limits<std::uint64_t>::max() / sizeof(Impl::SparseIndexEntry))
+			if (shard.mapping->size > std::numeric_limits<std::uint64_t>::max() - impl->mapped_bytes || shard.index.capacity() > std::numeric_limits<std::uint64_t>::max() / sizeof(Impl::SparseIndexEntry))
 				throw std::length_error("multiway mapped blueprint memory accounting overflows");
 			const auto shard_index_bytes = static_cast<std::uint64_t>(shard.index.capacity()) * sizeof(Impl::SparseIndexEntry);
 			constexpr auto maximum_index_bytes = kSparseIndexLimit * sizeof(Impl::SparseIndexEntry);
-			if (shard_index_bytes > maximum_index_bytes - impl->index_bytes ||
-				shard_actions > std::numeric_limits<std::uint64_t>::max() - total_actions)
+			if (shard_index_bytes > maximum_index_bytes - impl->index_bytes || shard_actions > std::numeric_limits<std::uint64_t>::max() - total_actions)
 				throw std::length_error("multiway mapped blueprint memory accounting overflows");
 			impl->mapped_bytes += shard.mapping->size;
 			impl->index_bytes += shard_index_bytes;
@@ -431,8 +417,7 @@ namespace texas::solver::multiway
 		std::size_t action_count,
 		Probability* output) const noexcept
 	{
-		if (impl_ == nullptr || legal_actions == nullptr || output == nullptr || action_count == 0U ||
-			impl_->shards.empty())
+		if (impl_ == nullptr || legal_actions == nullptr || output == nullptr || action_count == 0U || impl_->shards.empty())
 			return MultiwayBlueprintLookupStatus::Missing;
 		const SortKey target{ infoset.public_state.value, infoset.seat, bucket,
 			legal_actions[0].action_menu_id };
@@ -440,8 +425,7 @@ namespace texas::solver::multiway
 			[](const Impl::Shard& shard, const SortKey& key) noexcept { return key_less(shard.last_key, key); });
 		bool infoset_present = false;
 		bool bucket_present = false;
-		const auto search_shard = [&](const Impl::Shard& shard) noexcept
-		{
+		const auto search_shard = [&](const Impl::Shard& shard) noexcept {
 			const auto index_it = std::upper_bound(shard.index.begin(), shard.index.end(), target,
 				[](const SortKey& key, const Impl::SparseIndexEntry& entry) noexcept {
 					return key_less(key, entry.key);
@@ -458,12 +442,12 @@ namespace texas::solver::multiway
 				if (same_infoset(key, infoset))
 				{
 					infoset_present = true;
-					if (key.bucket == bucket) bucket_present = true;
+					if (key.bucket == bucket)
+						bucket_present = true;
 				}
 				if (!key_less(key, target))
 				{
-					if (key.public_state != target.public_state || key.seat != target.seat ||
-						key.bucket != target.bucket || key.menu != target.menu)
+					if (key.public_state != target.public_state || key.seat != target.seat || key.bucket != target.bucket || key.menu != target.menu)
 						return true;
 					if (row_action_count != action_count)
 					{
@@ -474,17 +458,16 @@ namespace texas::solver::multiway
 					{
 						if (actions[action_index].action != legal_actions[action_index])
 						{
-						bucket_present = true;
-						return true;
-					}
+							bucket_present = true;
+							return true;
+						}
 					}
 					constexpr auto total = static_cast<Probability>(std::numeric_limits<std::uint16_t>::max());
 					for (std::size_t action_index = 0U; action_index < action_count; ++action_index)
 						output[action_index] = static_cast<Probability>(actions[action_index].probability) / total;
 					return false;
 				}
-				if (key.public_state > target.public_state ||
-					(key.public_state == target.public_state && key.seat > target.seat))
+				if (key.public_state > target.public_state || (key.public_state == target.public_state && key.seat > target.seat))
 					break;
 			}
 			return true;
@@ -503,8 +486,7 @@ namespace texas::solver::multiway
 			if (!search_shard(impl_->shards[shard_index]))
 				return MultiwayBlueprintLookupStatus::Hit;
 		}
-		return bucket_present ? MultiwayBlueprintLookupStatus::IncompatibleMenu :
-			(infoset_present ? MultiwayBlueprintLookupStatus::MissingBucket : MultiwayBlueprintLookupStatus::Missing);
+		return bucket_present ? MultiwayBlueprintLookupStatus::IncompatibleMenu : (infoset_present ? MultiwayBlueprintLookupStatus::MissingBucket : MultiwayBlueprintLookupStatus::Missing);
 	}
 
 	std::uint64_t MultiwayMappedShardedBlueprintProvider::mapped_virtual_bytes() const noexcept

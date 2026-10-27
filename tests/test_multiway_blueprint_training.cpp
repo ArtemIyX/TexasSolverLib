@@ -167,9 +167,7 @@ namespace
 		std::uint64_t, void* context) noexcept
 	{
 		auto& state = *static_cast<ExportProgressState*>(context);
-		state.ordered = state.ordered && profile.pages == state.last_pages + 1U &&
-			profile.rows > state.last_rows && profile.encoded_bytes > state.last_encoded_bytes &&
-			profile.stream_write_bytes <= profile.encoded_bytes;
+		state.ordered = state.ordered && profile.pages == state.last_pages + 1U && profile.rows > state.last_rows && profile.encoded_bytes > state.last_encoded_bytes && profile.stream_write_bytes <= profile.encoded_bytes;
 		++state.calls;
 		state.last_pages = profile.pages;
 		state.last_rows = profile.rows;
@@ -272,9 +270,7 @@ TEST_CASE(multiway_external_snapshot_runtime_path_preserves_model_identity)
 TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_export)
 {
 	using namespace texas::solver::multiway;
-	const auto base = std::filesystem::temp_directory_path() /
-		("texas_solver_external_training_resume_" + std::to_string(
-			std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto base = std::filesystem::temp_directory_path() / ("texas_solver_external_training_resume_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	const auto storage_directory = base / "storage";
 	const auto isolated_storage_directory = base / "isolated-storage";
 	const auto checkpoint_path = base / "latest.mwec";
@@ -313,8 +309,8 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 	try
 	{
 		restored = restore_multiway_external_checkpoint(
-		checkpoint_path, isolated_storage_directory, identity.combined_hash, workflow_hash,
-		storage_hash, MultiwayBlueprintIterationSchedule{}.identity(), true);
+			checkpoint_path, isolated_storage_directory, identity.combined_hash, workflow_hash,
+			storage_hash, MultiwayBlueprintIterationSchedule{}.identity(), true);
 	}
 	catch (const std::exception& error)
 	{
@@ -327,14 +323,32 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 	{
 		StreamingExportFixture resumed(backend, sharded_monitor, isolated_storage_directory,
 			2U * 1024U * 1024U, storage_directory);
-		try { resumed.trainer.resume_from_external_checkpoint(restored, workflow_hash, storage_hash); }
-		catch (const std::exception& error) { throw std::runtime_error(std::string("resume: ") + error.what()); }
+		try
+		{
+			resumed.trainer.resume_from_external_checkpoint(restored, workflow_hash, storage_hash);
+		}
+		catch (const std::exception& error)
+		{
+			throw std::runtime_error(std::string("resume: ") + error.what());
+		}
 		EXPECT_EQ(resumed.trainer.batches(), 1U);
-		try { resumed.trainer.run_batches(1U, 4U, 0x77U); }
-		catch (const std::exception& error) { throw std::runtime_error(std::string("resumed batch: ") + error.what()); }
+		try
+		{
+			resumed.trainer.run_batches(1U, 4U, 0x77U);
+		}
+		catch (const std::exception& error)
+		{
+			throw std::runtime_error(std::string("resumed batch: ") + error.what());
+		}
 		MultiwayFullBlueprintExportResult output;
-		try { output = resumed.trainer.save_full_policy_atomic(policy_path); }
-		catch (const std::exception& error) { throw std::runtime_error(std::string("resumed export: ") + error.what()); }
+		try
+		{
+			output = resumed.trainer.save_full_policy_atomic(policy_path);
+		}
+		catch (const std::exception& error)
+		{
+			throw std::runtime_error(std::string("resumed export: ") + error.what());
+		}
 		EXPECT_TRUE(output.sharded);
 		const auto& profile = resumed.trainer.status().export_telemetry.external_profile;
 		EXPECT_TRUE(profile.enabled);
@@ -369,9 +383,7 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 TEST_CASE(multiway_external_profiled_resume_matches_unprofiled_bytes)
 {
 	using namespace texas::solver::multiway;
-	const auto base = std::filesystem::temp_directory_path() /
-		("texas_solver_profiled_resume_" + std::to_string(
-			std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto base = std::filesystem::temp_directory_path() / ("texas_solver_profiled_resume_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	const auto storage = base / "storage";
 	const auto checkpoint_path = base / "latest.mwec";
 	const auto baseline_path = base / "baseline.mwfb";
@@ -692,9 +704,7 @@ TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repea
 TEST_CASE(multiway_streaming_external_and_compact_policy_content_match)
 {
 	using Backend = texas::MultiwaySolverLimits::StorageBackend;
-	const auto base = std::filesystem::temp_directory_path() /
-		("texas_solver_external_compact_export_" + std::to_string(
-			std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto base = std::filesystem::temp_directory_path() / ("texas_solver_external_compact_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	{
 		StreamingExportFixture compact(Backend::CompactInt32);
 		ExportProgressState disabled_progress;
@@ -727,8 +737,9 @@ TEST_CASE(multiway_streaming_external_and_compact_policy_content_match)
 			{
 				const auto& previous = external_artifact.rows[row - 1U];
 				EXPECT_TRUE(std::tie(previous.infoset.public_state.value, previous.infoset.seat,
-					previous.bucket, previous.action_menu_id) < std::tie(actual.infoset.public_state.value,
-					actual.infoset.seat, actual.bucket, actual.action_menu_id));
+								previous.bucket, previous.action_menu_id)
+					< std::tie(actual.infoset.public_state.value,
+						actual.infoset.seat, actual.bucket, actual.action_menu_id));
 			}
 			EXPECT_EQ(expected.infoset.public_state.value, actual.infoset.public_state.value);
 			EXPECT_EQ(expected.infoset.seat, actual.infoset.seat);
@@ -785,40 +796,40 @@ TEST_CASE(multiway_streaming_external_and_compact_policy_content_match)
 		if (fixture_profile != nullptr && std::string(fixture_profile) == "1")
 		{
 			std::cout << "PB12_FIXTURE_PROFILE"
-				<< " rows=" << profile.rows << " actions=" << profile.actions << " pages=" << profile.pages
-				<< " export_total_ns=" << profiled.trainer.status().export_telemetry.duration_nanoseconds
-				<< " encoded_bytes=" << profile.encoded_bytes
-				<< " stream_write_bytes=" << profile.stream_write_bytes
-				<< " ordered_visit_ns=" << profile.ordered_visit_nanoseconds
-				<< " visitor_ns=" << profile.visitor_nanoseconds
-				<< " menu_ns=" << profile.menu_nanoseconds << " pin_ns=" << profile.pin_nanoseconds
-				<< " locate_ns=" << profile.page_locate_nanoseconds
-				<< " cache_find_ns=" << profile.page_cache_find_nanoseconds
-				<< " victim_ns=" << profile.page_victim_nanoseconds
-				<< " store_lookup_ns=" << profile.page_store_lookup_nanoseconds
-				<< " decode_ns=" << profile.page_decode_nanoseconds
-				<< " zero_ns=" << profile.page_zero_nanoseconds
-				<< " decoded_pages=" << profile.page_decoded_count << " zero_pages=" << profile.page_zero_count
-				<< " index_opens=" << profile.page_index_opens << " index_reads=" << profile.page_index_reads
-				<< " data_opens=" << profile.page_data_opens << " data_reads=" << profile.page_data_reads
-				<< " requested_read_bytes=" << profile.page_requested_read_bytes
-				<< " index_open_ns=" << profile.page_index_open_nanoseconds
-				<< " index_search_ns=" << profile.page_index_search_nanoseconds
-				<< " data_open_ns=" << profile.page_data_open_nanoseconds
-				<< " data_read_ns=" << profile.page_data_read_nanoseconds
-				<< " sampled_rows=" << profile.sampled_rows
-				<< " average_sample_ns=" << profile.sampled_average_nanoseconds
-				<< " quantize_sample_ns=" << profile.sampled_quantize_nanoseconds
-				<< " writer_sample_ns=" << profile.sampled_writer_nanoseconds
-				<< " writer_samples=" << profile.writer_sampled_rows
-				<< " validation_sample_ns=" << profile.writer_sampled_validation_nanoseconds
-				<< " payload_hash_sample_ns=" << profile.writer_sampled_payload_hash_nanoseconds
-				<< " policy_hash_sample_ns=" << profile.writer_sampled_policy_hash_nanoseconds
-				<< " encoding_sample_ns=" << profile.writer_sampled_encoding_nanoseconds
-				<< " flushes=" << profile.writer_flushes
-				<< " catalog_run_probes=" << profile.catalog.run_probes
-				<< " page_run_probes=" << profile.page_store.run_probes
-				<< " policy_hash=" << profiled_result.policy_content_hash << '\n';
+					  << " rows=" << profile.rows << " actions=" << profile.actions << " pages=" << profile.pages
+					  << " export_total_ns=" << profiled.trainer.status().export_telemetry.duration_nanoseconds
+					  << " encoded_bytes=" << profile.encoded_bytes
+					  << " stream_write_bytes=" << profile.stream_write_bytes
+					  << " ordered_visit_ns=" << profile.ordered_visit_nanoseconds
+					  << " visitor_ns=" << profile.visitor_nanoseconds
+					  << " menu_ns=" << profile.menu_nanoseconds << " pin_ns=" << profile.pin_nanoseconds
+					  << " locate_ns=" << profile.page_locate_nanoseconds
+					  << " cache_find_ns=" << profile.page_cache_find_nanoseconds
+					  << " victim_ns=" << profile.page_victim_nanoseconds
+					  << " store_lookup_ns=" << profile.page_store_lookup_nanoseconds
+					  << " decode_ns=" << profile.page_decode_nanoseconds
+					  << " zero_ns=" << profile.page_zero_nanoseconds
+					  << " decoded_pages=" << profile.page_decoded_count << " zero_pages=" << profile.page_zero_count
+					  << " index_opens=" << profile.page_index_opens << " index_reads=" << profile.page_index_reads
+					  << " data_opens=" << profile.page_data_opens << " data_reads=" << profile.page_data_reads
+					  << " requested_read_bytes=" << profile.page_requested_read_bytes
+					  << " index_open_ns=" << profile.page_index_open_nanoseconds
+					  << " index_search_ns=" << profile.page_index_search_nanoseconds
+					  << " data_open_ns=" << profile.page_data_open_nanoseconds
+					  << " data_read_ns=" << profile.page_data_read_nanoseconds
+					  << " sampled_rows=" << profile.sampled_rows
+					  << " average_sample_ns=" << profile.sampled_average_nanoseconds
+					  << " quantize_sample_ns=" << profile.sampled_quantize_nanoseconds
+					  << " writer_sample_ns=" << profile.sampled_writer_nanoseconds
+					  << " writer_samples=" << profile.writer_sampled_rows
+					  << " validation_sample_ns=" << profile.writer_sampled_validation_nanoseconds
+					  << " payload_hash_sample_ns=" << profile.writer_sampled_payload_hash_nanoseconds
+					  << " policy_hash_sample_ns=" << profile.writer_sampled_policy_hash_nanoseconds
+					  << " encoding_sample_ns=" << profile.writer_sampled_encoding_nanoseconds
+					  << " flushes=" << profile.writer_flushes
+					  << " catalog_run_probes=" << profile.catalog.run_probes
+					  << " page_run_probes=" << profile.page_store.run_probes
+					  << " policy_hash=" << profiled_result.policy_content_hash << '\n';
 		}
 	}
 	std::filesystem::remove_all(base);
@@ -827,9 +838,7 @@ TEST_CASE(multiway_streaming_external_and_compact_policy_content_match)
 TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 {
 	using Backend = texas::MultiwaySolverLimits::StorageBackend;
-	const auto base = std::filesystem::temp_directory_path() /
-		("texas_solver_synthetic_external_export_" + std::to_string(
-			std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto base = std::filesystem::temp_directory_path() / ("texas_solver_synthetic_external_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	texas::MultiwayWorkingSetMonitor monitor;
 	monitor.profile_external_export = true;
 	const auto* measurement_mode = std::getenv("TEXASSOLVER_PB12_EXPORT_MODE");
@@ -857,7 +866,8 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 
 	const auto& check = root.legal_actions[check_index];
 	const auto child_betting = texas::MultiwayState::from_snapshot(root.betting)
-		.apply(check.action, check.target_street_contribution).snapshot();
+								   .apply(check.action, check.target_street_contribution)
+								   .snapshot();
 	const auto child_actions = fixture.abstraction.make_legal_actions(child_betting);
 	const auto child = texas::MultiwayPublicBuilder::make_action_child(
 		root, check_index, child_betting, child_actions);
@@ -870,8 +880,7 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 			static_cast<std::uint8_t>(child.legal_actions.size()) }
 	};
 	std::sort(ordered_shapes.begin(), ordered_shapes.end(), [](const auto& left, const auto& right) {
-		return std::tie(left.infoset.public_state.value, left.infoset.seat) <
-			std::tie(right.infoset.public_state.value, right.infoset.seat);
+		return std::tie(left.infoset.public_state.value, left.infoset.seat) < std::tie(right.infoset.public_state.value, right.infoset.seat);
 	});
 	EXPECT_TRUE(ordered_shapes[0].infoset.public_state.value < ordered_shapes[1].infoset.public_state.value);
 	fixture.coordinator.admit_infoset_row(ordered_shapes[1]);
@@ -894,8 +903,7 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 	EXPECT_TRUE(first_pages[0] > first_pages[1]);
 
 	const auto merge_two_deltas = [&](const texas::MultiwaySparseRowShape& shape,
-		std::uint32_t bucket, std::uint64_t trajectory_id)
-	{
+									  std::uint32_t bucket, std::uint64_t trajectory_id) {
 		std::vector<texas::MultiwayWorkerDeltaStream> streams;
 		streams.emplace_back(0U, 2U);
 		EXPECT_TRUE(streams[0].try_append({ shape.infoset, bucket, 0U,
@@ -926,7 +934,8 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 	EXPECT_EQ(profile.page_store.page_hits + profile.page_store.page_misses, profile.pages);
 	EXPECT_TRUE(profile.page_decoded_count > 0U);
 	EXPECT_TRUE(profile.page_zero_count > 0U);
-	if (monitor.external_export_membership_filter) EXPECT_TRUE(profile.page_membership_misses > 0U);
+	if (monitor.external_export_membership_filter)
+		EXPECT_TRUE(profile.page_membership_misses > 0U);
 	EXPECT_EQ(profile.page_decoded_count + profile.page_zero_count, profile.page_store.page_misses);
 	EXPECT_TRUE(profile.page_store.run_probes > 0U);
 
@@ -934,24 +943,24 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 		fixture_profile != nullptr && std::string(fixture_profile) == "1")
 	{
 		std::cout << "PB12_FIXTURE_PROFILE"
-			<< " rows=" << profile.rows << " actions=" << profile.actions << " pages=" << profile.pages
-			<< " encoded_bytes=" << profile.encoded_bytes
-			<< " ordered_visit_ns=" << profile.ordered_visit_nanoseconds
-			<< " export_total_ns=" << reopened.trainer.status().export_telemetry.duration_nanoseconds
-			<< " decoded_pages=" << profile.page_decoded_count << " zero_pages=" << profile.page_zero_count
-			<< " page_hits=" << profile.page_store.page_hits
-			<< " page_misses=" << profile.page_store.page_misses
-			<< " page_lookups=" << profile.page_store.lookups
-			<< " page_run_probes=" << profile.page_store.run_probes
-			<< " index_opens=" << profile.page_index_opens
-			<< " index_reads=" << profile.page_index_reads
-			<< " range_skips=" << profile.page_run_range_skips
-			<< " membership_misses=" << profile.page_membership_misses
-			<< " data_reads=" << profile.page_data_reads
-			<< " row_index_run_probes=" << profile.row_index.run_probes
-			<< " catalog_run_probes=" << profile.catalog.run_probes
-			<< " policy_hash=" << result.policy_content_hash
-			<< " serialized_bytes=" << result.serialized_bytes << '\n';
+				  << " rows=" << profile.rows << " actions=" << profile.actions << " pages=" << profile.pages
+				  << " encoded_bytes=" << profile.encoded_bytes
+				  << " ordered_visit_ns=" << profile.ordered_visit_nanoseconds
+				  << " export_total_ns=" << reopened.trainer.status().export_telemetry.duration_nanoseconds
+				  << " decoded_pages=" << profile.page_decoded_count << " zero_pages=" << profile.page_zero_count
+				  << " page_hits=" << profile.page_store.page_hits
+				  << " page_misses=" << profile.page_store.page_misses
+				  << " page_lookups=" << profile.page_store.lookups
+				  << " page_run_probes=" << profile.page_store.run_probes
+				  << " index_opens=" << profile.page_index_opens
+				  << " index_reads=" << profile.page_index_reads
+				  << " range_skips=" << profile.page_run_range_skips
+				  << " membership_misses=" << profile.page_membership_misses
+				  << " data_reads=" << profile.page_data_reads
+				  << " row_index_run_probes=" << profile.row_index.run_probes
+				  << " catalog_run_probes=" << profile.catalog.run_probes
+				  << " policy_hash=" << result.policy_content_hash
+				  << " serialized_bytes=" << result.serialized_bytes << '\n';
 	}
 	if (measurement_mode != nullptr)
 	{
@@ -964,7 +973,7 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 
 	monitor.external_export_membership_filter = false;
 	texas::MultiwayBlueprintTrainer repeated(export_identity(Backend::ExternalCompactInt32,
-		base / "storage", kSmallRowPageCacheBytes, identity_directory, true),
+												 base / "storage", kSmallRowPageCacheBytes, identity_directory, true),
 		reopened.runner, reopened.coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor);
 	const auto repeated_result = repeated.save_full_policy_atomic(base / "repeated.bin");
 	EXPECT_TRUE(repeated.status().export_telemetry.external_profile.enabled);
@@ -979,9 +988,14 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 	for (const auto& entry : std::filesystem::directory_iterator(base / "storage" / "pages"))
 	{
 		const auto name = entry.path().stem().string();
-		if (entry.path().extension() != ".dat" || name.rfind("run_", 0U) != 0U) continue;
+		if (entry.path().extension() != ".dat" || name.rfind("run_", 0U) != 0U)
+			continue;
 		const auto generation = std::stoull(name.substr(4U));
-		if (generation > latest_generation) { latest_generation = generation; data_path = entry.path(); }
+		if (generation > latest_generation)
+		{
+			latest_generation = generation;
+			data_path = entry.path();
+		}
 	}
 	EXPECT_TRUE(!data_path.empty());
 	auto saved_data = read_bytes(data_path);
@@ -993,7 +1007,7 @@ TEST_CASE(multiway_synthetic_external_export_pages_and_runs_without_training)
 	}
 	monitor.external_export_membership_filter = true;
 	texas::MultiwayBlueprintTrainer corrupt(export_identity(Backend::ExternalCompactInt32,
-		base / "storage", kSmallRowPageCacheBytes, identity_directory, true),
+												base / "storage", kSmallRowPageCacheBytes, identity_directory, true),
 		reopened.runner, reopened.coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor);
 	const auto failed_path = base / "failed.bin";
 	EXPECT_THROW(corrupt.save_full_policy_atomic(failed_path), std::invalid_argument);
@@ -1036,8 +1050,7 @@ TEST_CASE(multiway_streaming_export_selects_bounded_shards_and_preserves_policy_
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
 	const auto materialized = fixture.trainer.export_full_policy();
-	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_sharded_" +
-		std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_sharded_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
 	const auto result = fixture.trainer.save_full_policy_atomic(path);
 	const auto& telemetry = fixture.trainer.status().export_telemetry;
 	EXPECT_TRUE(result.sharded);
@@ -1051,8 +1064,7 @@ TEST_CASE(multiway_streaming_export_selects_bounded_shards_and_preserves_policy_
 	texas::MultiwayFullBlueprintArtifacts::verify_sharded_artifact(path, result.plan.identity);
 	const auto manifest = texas::MultiwayFullBlueprintArtifacts::load_sharded_manifest(path,
 		result.plan.identity);
-	const auto generation_directory = path.parent_path() /
-		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path();
+	const auto generation_directory = path.parent_path() / std::filesystem::u8path(manifest.shards.front().relative_path).parent_path();
 	std::filesystem::remove_all(generation_directory);
 	std::filesystem::remove(path);
 }
@@ -1081,8 +1093,7 @@ TEST_CASE(multiway_sharded_workflow_lookup_matches_materialized_qualification)
 	std::vector<std::uint64_t> shard_actions(layout.ranges.size(), 0U);
 	for (std::size_t row_index = 0U; row_index < artifact.rows.size(); ++row_index)
 		shard_actions[row_index / layout.maximum_rows_per_shard] += artifact.rows[row_index].actions.size();
-	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_sharded_qualification_" +
-		std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_sharded_qualification_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
 	{
 		texas::MultiwayFullBlueprintShardedStreamWriter writer(path, plan, layout, shard_actions);
 		for (const auto& row : artifact.rows)
@@ -1113,8 +1124,7 @@ TEST_CASE(multiway_sharded_workflow_lookup_matches_materialized_qualification)
 	EXPECT_EQ(sharded.policy_content_hash, in_memory.policy_content_hash);
 	EXPECT_EQ(sharded.replay_fingerprint, in_memory.replay_fingerprint);
 	const auto manifest = texas::MultiwayFullBlueprintArtifacts::load_sharded_manifest(path, artifact.identity);
-	std::filesystem::remove_all(path.parent_path() /
-		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path());
+	std::filesystem::remove_all(path.parent_path() / std::filesystem::u8path(manifest.shards.front().relative_path).parent_path());
 	std::filesystem::remove(path);
 }
 
@@ -1146,8 +1156,7 @@ TEST_CASE(multiway_streaming_export_disk_gate_rejects_before_temp_creation)
 	monitor.export_disk_space_observer = export_disk_space_observer;
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
-	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_disk_gate_" +
-		std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_disk_gate_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	{
 		std::ofstream previous(path, std::ios::binary);
 		previous << "previous-blueprint";

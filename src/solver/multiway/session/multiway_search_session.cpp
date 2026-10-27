@@ -20,17 +20,17 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("ExternalCompactInt32 is not ready for search execution");
 			return request;
 		}
-	}
+	} // namespace
 
 	MultiwaySearchSession::MultiwaySearchSession(
 		const MultiwaySolveRequest& request,
 		MultiwaySearchSessionDependencies dependencies,
 		std::uint64_t public_root_revision)
 		: coordinator_(require_search_ready_request(request)), dependencies_(dependencies), buckets_(dependencies.buckets), action_menu_(coordinator_.root().public_state.legal_actions), root_metadata_({
-																																								coordinator_.root().public_state.id,
-																																								coordinator_.root().action_abstraction_identity(),
-																																								public_root_revision,
-																																							})
+																																															  coordinator_.root().public_state.id,
+																																															  coordinator_.root().action_abstraction_identity(),
+																																															  public_root_revision,
+																																														  })
 	{
 		validate_dependencies();
 		initialize_beliefs();

@@ -531,8 +531,7 @@ TEST_CASE(multiway_memory_preflight_uses_packed_catalog_and_separates_output_cac
 	inputs.disk_output_bytes = 9'000'000U;
 	inputs.file_cache_allowance_bytes = 7'000'000U;
 	const auto result = texas::preflight_multiway_memory(
-		large, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(),
-			std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
+		large, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
 	const auto expected = texas::estimate_multiway_catalog_capacity(
 		4'000'000U, 4'000'000U, 4'000'000U * texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
 	EXPECT_EQ(result.estimate.public_state_bytes, expected.total_bytes);
@@ -542,8 +541,7 @@ TEST_CASE(multiway_memory_preflight_uses_packed_catalog_and_separates_output_cac
 	EXPECT_EQ(result.estimate.checkpoint_transient_bytes, 4096U);
 	EXPECT_EQ(result.estimate.export_transient_bytes, 2048U);
 	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-		result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes +
-		result.estimate.compact_reallocation_peak_bytes + 4096U);
+		result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes + 4096U);
 }
 
 TEST_CASE(multiway_memory_preflight_34m_catalog_fixture_has_no_kibibyte_multiplier)
@@ -564,22 +562,19 @@ TEST_CASE(multiway_memory_preflight_34m_catalog_fixture_has_no_kibibyte_multipli
 	inputs.existing_working_set_bytes = 15'950'000'000ULL;
 	inputs.existing_private_committed_bytes = 546'232'440ULL;
 	inputs.mapped_virtual_bytes = 15'369'522'466ULL;
-	inputs.checkpoint_peak_bytes = 34'000'000ULL * 2U * sizeof(std::uint32_t) +
-		5'000'000ULL * sizeof(std::uint32_t) + texas::MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES;
+	inputs.checkpoint_peak_bytes = 34'000'000ULL * 2U * sizeof(std::uint32_t) + 5'000'000ULL * sizeof(std::uint32_t) + texas::MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES;
 	texas::MultiwayExportPlanMemoryValues export_plan;
 	texas::MultiwayExportProcessGateConfig export_config;
 	inputs.export_peak_bytes = texas::make_multiway_export_scratch_estimate(export_plan, export_config).total_bytes;
 	const auto result = texas::preflight_multiway_memory(
-		large, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(),
-			std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
+		large, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
 	const auto expected = texas::estimate_multiway_catalog_capacity(
 		34'000'000U, 34'000'000U, 34'000'000U * texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
 	EXPECT_EQ(result.estimate.public_state_bytes, expected.total_bytes);
 	EXPECT_EQ(result.estimate.sparse_value_bytes, 100'000'000ULL * (sizeof(std::int32_t) + sizeof(std::uint64_t)));
 	EXPECT_EQ(result.estimate.compact_page_bytes,
 		100'000'000ULL * texas::MultiwayCompactStorage::page_metadata_size());
-	EXPECT_TRUE(result.estimate.merge_scratch_bytes >=
-		100'000'000ULL * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
+	EXPECT_TRUE(result.estimate.merge_scratch_bytes >= 100'000'000ULL * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
 	EXPECT_TRUE(result.estimate.public_state_bytes < 34'000'000ULL * 1024ULL);
 	const auto working_set_gate = texas::evaluate_multiway_working_set_preflight(
 		result, { 51'539'607'552ULL, 0U });
@@ -636,9 +631,7 @@ TEST_CASE(multiway_memory_preflight_stops_before_rejected_row_allocation)
 {
 	const auto roomy = texas::preflight_multiway_memory(
 		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U });
-	const auto root_bytes = roomy.estimate.public_state_bytes + roomy.estimate.public_catalog_reallocation_peak_bytes +
-		roomy.estimate.blueprint_index_bytes + roomy.estimate.range_row_bytes + roomy.estimate.future_bucket_cache_bytes +
-		roomy.estimate.off_tree_menu_bytes + roomy.estimate.export_bytes;
+	const auto root_bytes = roomy.estimate.public_state_bytes + roomy.estimate.public_catalog_reallocation_peak_bytes + roomy.estimate.blueprint_index_bytes + roomy.estimate.range_row_bytes + roomy.estimate.future_bucket_cache_bytes + roomy.estimate.off_tree_menu_bytes + roomy.estimate.export_bytes;
 	const auto rejected = texas::preflight_multiway_memory(
 		limits(),
 		texas::MultiwayMemoryBudget{ 1U, roomy.estimate.total_bytes + 1U, root_bytes });

@@ -97,11 +97,11 @@ TEST_CASE(multiway_workflow_config_binds_external_storage_identity_and_resources
 	text.replace(text.find("storage_backend=CompactInt32"), std::strlen("storage_backend=CompactInt32"),
 		"storage_backend=ExternalCompactInt32");
 	text += "storage_directory=external-store\npublic_catalog_cache_bytes=4096\nrow_page_cache_bytes=8192\n"
-		"maximum_wal_bytes=65536\nsegment_target_bytes=65536\ncompaction_fan_in=2\n"
-		"compaction_scratch_bytes=4096\ndisk_reserve_bytes=1000000\nsynchronous_durability=false\n"
-		"maximum_public_states=1000\nmaximum_sparse_values=10000\n"
-		"worker_delta_capacity=10000\ndiscovery_capacity=1000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
-		"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000000\n";
+			"maximum_wal_bytes=65536\nsegment_target_bytes=65536\ncompaction_fan_in=2\n"
+			"compaction_scratch_bytes=4096\ndisk_reserve_bytes=1000000\nsynchronous_durability=false\n"
+			"maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+			"worker_delta_capacity=10000\ndiscovery_capacity=1000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+			"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000000\n";
 	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"), std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
 	const auto config = parse_multiway_workflow_config(text);
 	const auto round_trip = parse_multiway_workflow_config(serialize_multiway_workflow_config(config));
@@ -118,12 +118,9 @@ TEST_CASE(multiway_workflow_config_binds_external_storage_identity_and_resources
 	auto modified = text;
 	modified.replace(modified.find("row_page_cache_bytes=8192"), std::strlen("row_page_cache_bytes=8192"), "row_page_cache_bytes=8193");
 	EXPECT_TRUE(parse_multiway_workflow_config(modified).fingerprint() != config.fingerprint());
-	EXPECT_TRUE(parse_multiway_workflow_config(modified).external_storage_fingerprint() !=
-		config.external_storage_fingerprint());
+	EXPECT_TRUE(parse_multiway_workflow_config(modified).external_storage_fingerprint() != config.external_storage_fingerprint());
 	MultiwayWorkflowResourceLimits disk_limits;
-	disk_limits.max_disk_space_requirement_bytes = config.disk_space_requirement_bytes +
-		config.maximum_wal_bytes + config.segment_target_bytes +
-		2U * config.compaction_scratch_bytes + config.disk_reserve_bytes - 1U;
+	disk_limits.max_disk_space_requirement_bytes = config.disk_space_requirement_bytes + config.maximum_wal_bytes + config.segment_target_bytes + 2U * config.compaction_scratch_bytes + config.disk_reserve_bytes - 1U;
 	EXPECT_THROW(config.validate(disk_limits), std::invalid_argument);
 }
 
@@ -134,11 +131,11 @@ TEST_CASE(multiway_workflow_snapshot_runtime_path_preserves_checkpoint_identity)
 	text.replace(text.find("storage_backend=CompactInt32"), std::strlen("storage_backend=CompactInt32"),
 		"storage_backend=ExternalCompactInt32");
 	text += "storage_directory=source-store\npublic_catalog_cache_bytes=4096\nrow_page_cache_bytes=8192\n"
-		"maximum_wal_bytes=65536\nsegment_target_bytes=65536\ncompaction_fan_in=2\n"
-		"compaction_scratch_bytes=4096\ndisk_reserve_bytes=1000000\nsynchronous_durability=false\n"
-		"maximum_public_states=1000\nmaximum_sparse_values=10000\n"
-		"worker_delta_capacity=10000\ndiscovery_capacity=1000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
-		"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000000\n";
+			"maximum_wal_bytes=65536\nsegment_target_bytes=65536\ncompaction_fan_in=2\n"
+			"compaction_scratch_bytes=4096\ndisk_reserve_bytes=1000000\nsynchronous_durability=false\n"
+			"maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+			"worker_delta_capacity=10000\ndiscovery_capacity=1000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+			"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000000\n";
 	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
 		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
 	const auto source = parse_multiway_workflow_config(text);
@@ -266,8 +263,8 @@ TEST_CASE(multiway_workflow_config_accepts_500k_qualification_state_capacity)
 {
 	using namespace texas::solver::multiway;
 	auto text = std::string(valid_config) + "maximum_public_states=34000000\nmaximum_sparse_values=10000\n"
-												"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
-												"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
 	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
 		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
 	const auto config = parse_multiway_workflow_config(text);

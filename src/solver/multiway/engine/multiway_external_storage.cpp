@@ -38,8 +38,10 @@ namespace texas::solver::multiway
 	{
 		std::uint64_t export_filter_hash(std::uint64_t key) noexcept
 		{
-			key ^= key >> 30U; key *= 0xbf58476d1ce4e5b9ULL;
-			key ^= key >> 27U; key *= 0x94d049bb133111ebULL;
+			key ^= key >> 30U;
+			key *= 0xbf58476d1ce4e5b9ULL;
+			key ^= key >> 27U;
+			key *= 0x94d049bb133111ebULL;
 			return key ^ (key >> 31U);
 		}
 
@@ -49,30 +51,32 @@ namespace texas::solver::multiway
 			const auto hash = export_filter_hash(key);
 			const auto a = hash & mask;
 			const auto b = (hash >> 23U) & mask;
-			return (filter[a / 64U] & (1ULL << (a % 64U))) != 0U &&
-				(filter[b / 64U] & (1ULL << (b % 64U))) != 0U;
+			return (filter[a / 64U] & (1ULL << (a % 64U))) != 0U && (filter[b / 64U] & (1ULL << (b % 64U))) != 0U;
 		}
 		class OptionalExternalTimer
 		{
 		public:
 			explicit OptionalExternalTimer(std::uint64_t* target) noexcept
-				: target_(target), started_(target != nullptr ? std::chrono::steady_clock::now()
-					: std::chrono::steady_clock::time_point{}) {}
+				: target_(target), started_(target != nullptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}) {}
 			~OptionalExternalTimer() noexcept
 			{
-				if (target_ == nullptr) return;
+				if (target_ == nullptr)
+					return;
 				const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - started_).count());
+					std::chrono::steady_clock::now() - started_)
+						.count());
 				*target_ = elapsed > std::numeric_limits<std::uint64_t>::max() - *target_
-					? std::numeric_limits<std::uint64_t>::max() : *target_ + elapsed;
+					? std::numeric_limits<std::uint64_t>::max()
+					: *target_ + elapsed;
 			}
+
 		private:
 			std::uint64_t* target_;
 			std::chrono::steady_clock::time_point started_;
 		};
 
-		constexpr std::array<std::uint8_t, 8U> kManifestMagic = { 'T','X','M','W','E','X','T','1' };
-		constexpr std::array<std::uint8_t, 8U> kWalMagic = { 'T','X','M','W','W','A','L','1' };
+		constexpr std::array<std::uint8_t, 8U> kManifestMagic = { 'T', 'X', 'M', 'W', 'E', 'X', 'T', '1' };
+		constexpr std::array<std::uint8_t, 8U> kWalMagic = { 'T', 'X', 'M', 'W', 'W', 'A', 'L', '1' };
 		constexpr std::uint32_t kSchema = 1U;
 		constexpr std::uint64_t kHashOffset = texas::core::fingerprint::FNV1A_OFFSET;
 		constexpr std::uint32_t kCheckpointTrainingExtensionMagic = 0x31544d57U;
@@ -87,77 +91,78 @@ namespace texas::solver::multiway
 		constexpr std::uint32_t kPageRecordSchema = 1U;
 		constexpr std::size_t kPageRecordHeaderBytes = 40U;
 		constexpr std::size_t kPageRecordChecksumBytes = 8U;
-		constexpr std::size_t kCatalogMenuBytes = kCatalogMenuHeaderBytes +
-			MULTIWAY_MAX_ABSTRACTED_ACTIONS * kCatalogMenuActionBytes + kCatalogMenuChecksumBytes;
-		constexpr std::array<std::uint8_t, 8U> kTransactionWalMagic = { 'T','X','M','W','B','A','T','1' };
+		constexpr std::size_t kCatalogMenuBytes = kCatalogMenuHeaderBytes + MULTIWAY_MAX_ABSTRACTED_ACTIONS * kCatalogMenuActionBytes + kCatalogMenuChecksumBytes;
+		constexpr std::array<std::uint8_t, 8U> kTransactionWalMagic = { 'T', 'X', 'M', 'W', 'B', 'A', 'T', '1' };
 
-	template <typename Transform, typename Flush>
-	std::size_t transform_external_regrets(
-		MultiwayExternalCompactPages& pages,
-		std::uint64_t next_page_id,
-		Transform&& transform,
-		Flush&& flush_page_batch)
-	{
-		std::size_t changed = 0U;
-		std::size_t dirty_pages = 0U;
-		for (std::uint64_t page_id = 1U; page_id < next_page_id; ++page_id)
+		template <typename Transform, typename Flush>
+		std::size_t transform_external_regrets(
+			MultiwayExternalCompactPages& pages,
+			std::uint64_t next_page_id,
+			Transform&& transform,
+			Flush&& flush_page_batch)
 		{
-			auto page = pages.pin_existing(page_id);
-			if (page.page_id == 0U)
-				continue;
-			bool pinned = true;
-			try
+			std::size_t changed = 0U;
+			std::size_t dirty_pages = 0U;
+			for (std::uint64_t page_id = 1U; page_id < next_page_id; ++page_id)
 			{
-				bool page_changed = false;
-				for (std::size_t action = 0U; action < page.action_count; ++action)
+				auto page = pages.pin_existing(page_id);
+				if (page.page_id == 0U)
+					continue;
+				bool pinned = true;
+				try
 				{
-					for (std::size_t bucket = 0U; bucket < page.bucket_count; ++bucket)
+					bool page_changed = false;
+					for (std::size_t action = 0U; action < page.action_count; ++action)
 					{
-						const auto regret = page.regrets[action * page.action_stride + bucket];
-						auto candidate = regret;
-						(void)transform(candidate);
-						page_changed = page_changed || candidate != regret;
+						for (std::size_t bucket = 0U; bucket < page.bucket_count; ++bucket)
+						{
+							const auto regret = page.regrets[action * page.action_stride + bucket];
+							auto candidate = regret;
+							(void)transform(candidate);
+							page_changed = page_changed || candidate != regret;
+						}
 					}
-				}
-				if (!page_changed)
-				{
+					if (!page_changed)
+					{
+						pages.unpin(page_id);
+						pinned = false;
+						continue;
+					}
+					pages.mark_dirty(page_id);
+					for (std::size_t action = 0U; action < page.action_count; ++action)
+					{
+						for (std::size_t bucket = 0U; bucket < page.bucket_count; ++bucket)
+						{
+							auto& regret = page.regrets[action * page.action_stride + bucket];
+							changed += transform(regret) ? 1U : 0U;
+						}
+					}
 					pages.unpin(page_id);
 					pinned = false;
-					continue;
-				}
-				pages.mark_dirty(page_id);
-				for (std::size_t action = 0U; action < page.action_count; ++action)
-				{
-					for (std::size_t bucket = 0U; bucket < page.bucket_count; ++bucket)
+					++dirty_pages;
+					if (dirty_pages == pages.page_capacity())
 					{
-						auto& regret = page.regrets[action * page.action_stride + bucket];
-						changed += transform(regret) ? 1U : 0U;
+						flush_page_batch();
+						dirty_pages = 0U;
 					}
 				}
-				pages.unpin(page_id);
-				pinned = false;
-				++dirty_pages;
-				if (dirty_pages == pages.page_capacity())
+				catch (...)
 				{
-					flush_page_batch();
-					dirty_pages = 0U;
+					if (pinned)
+						pages.unpin(page_id);
+					throw;
 				}
 			}
-			catch (...)
-			{
-				if (pinned)
-					pages.unpin(page_id);
-				throw;
-			}
+			return changed;
 		}
-		return changed;
-	}
 		constexpr std::array<const char*, 3U> kComponentNames = { "catalog", "rows", "pages" };
 		constexpr std::array<const char*, 3U> kBackupNames = {
-			"CATALOG_CURRENT.previous", "ROWS_CURRENT.previous", "PAGES_CURRENT.previous" };
+			"CATALOG_CURRENT.previous", "ROWS_CURRENT.previous", "PAGES_CURRENT.previous"
+		};
 		constexpr std::array<const char*, 4U> kCheckpointRestoreBackupNames = {
 			"CHECKPOINT_CATALOG.previous", "CHECKPOINT_ROWS.previous",
-			"CHECKPOINT_PAGES.previous", "CHECKPOINT_TRAINING.previous" };
+			"CHECKPOINT_PAGES.previous", "CHECKPOINT_TRAINING.previous"
+		};
 
 		struct ComponentManifestInfo
 		{
@@ -174,21 +179,23 @@ namespace texas::solver::multiway
 
 		void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
 		{
-			for (unsigned shift = 0U; shift < 32U; shift += 8U) bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+			for (unsigned shift = 0U; shift < 32U; shift += 8U)
+				bytes.push_back(static_cast<std::uint8_t>(value >> shift));
 		}
 		void append_u64(std::vector<std::uint8_t>& bytes, std::uint64_t value)
 		{
-			for (unsigned shift = 0U; shift < 64U; shift += 8U) bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+			for (unsigned shift = 0U; shift < 64U; shift += 8U)
+				bytes.push_back(static_cast<std::uint8_t>(value >> shift));
 		}
 		std::uint32_t read_u32(const std::uint8_t* bytes)
 		{
-			return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8U) |
-				(static_cast<std::uint32_t>(bytes[2]) << 16U) | (static_cast<std::uint32_t>(bytes[3]) << 24U);
+			return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8U) | (static_cast<std::uint32_t>(bytes[2]) << 16U) | (static_cast<std::uint32_t>(bytes[3]) << 24U);
 		}
 		std::uint64_t read_u64(const std::uint8_t* bytes)
 		{
 			std::uint64_t result = 0U;
-			for (unsigned shift = 0U; shift < 64U; shift += 8U) result |= static_cast<std::uint64_t>(bytes[shift / 8U]) << shift;
+			for (unsigned shift = 0U; shift < 64U; shift += 8U)
+				result |= static_cast<std::uint64_t>(bytes[shift / 8U]) << shift;
 			return result;
 		}
 		void append_f64(std::vector<std::uint8_t>& bytes, double value)
@@ -211,8 +218,8 @@ namespace texas::solver::multiway
 			static_assert(sizeof(int) == sizeof(std::int32_t), "packed node integer width changed");
 			const auto signed_value = static_cast<std::int64_t>(value);
 			const auto bits = static_cast<std::uint32_t>(signed_value < 0
-				? (static_cast<std::uint64_t>(signed_value + (1LL << 32U)))
-				: static_cast<std::uint64_t>(signed_value));
+					? (static_cast<std::uint64_t>(signed_value + (1LL << 32U)))
+					: static_cast<std::uint64_t>(signed_value));
 			append_u32(bytes, bits);
 		}
 		int read_i32(const std::uint8_t* bytes)
@@ -225,7 +232,8 @@ namespace texas::solver::multiway
 		}
 		void write_u64(std::ostream& out, std::uint64_t value)
 		{
-			for (unsigned shift = 0U; shift < 64U; shift += 8U) out.put(static_cast<char>(value >> shift));
+			for (unsigned shift = 0U; shift < 64U; shift += 8U)
+				out.put(static_cast<char>(value >> shift));
 		}
 		std::uint64_t checked_add(std::uint64_t left, std::uint64_t right)
 		{
@@ -276,16 +284,20 @@ namespace texas::solver::multiway
 #ifdef _WIN32
 			const auto handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
 				nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-			if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("external transaction file cannot be opened for flush");
+			if (handle == INVALID_HANDLE_VALUE)
+				throw std::runtime_error("external transaction file cannot be opened for flush");
 			const auto flushed = FlushFileBuffers(handle);
 			CloseHandle(handle);
-			if (!flushed) throw std::runtime_error("external transaction file flush failed");
+			if (!flushed)
+				throw std::runtime_error("external transaction file flush failed");
 #else
 			const auto descriptor = open(path.c_str(), O_RDONLY);
-			if (descriptor < 0) throw std::runtime_error("external transaction file cannot be opened for flush");
+			if (descriptor < 0)
+				throw std::runtime_error("external transaction file cannot be opened for flush");
 			const auto flushed = fsync(descriptor);
 			close(descriptor);
-			if (flushed != 0) throw std::runtime_error("external transaction file flush failed");
+			if (flushed != 0)
+				throw std::runtime_error("external transaction file flush failed");
 #endif
 		}
 		void sync_directory_path(const std::filesystem::path& path)
@@ -294,10 +306,12 @@ namespace texas::solver::multiway
 			(void)path;
 #else
 			const auto descriptor = open(path.c_str(), O_RDONLY | O_DIRECTORY);
-			if (descriptor < 0) throw std::runtime_error("external transaction directory cannot be opened for flush");
+			if (descriptor < 0)
+				throw std::runtime_error("external transaction directory cannot be opened for flush");
 			const auto flushed = fsync(descriptor);
 			close(descriptor);
-			if (flushed != 0) throw std::runtime_error("external transaction directory flush failed");
+			if (flushed != 0)
+				throw std::runtime_error("external transaction directory flush failed");
 #endif
 		}
 		std::filesystem::path checkpoint_pin_path(const std::filesystem::path& directory,
@@ -319,18 +333,16 @@ namespace texas::solver::multiway
 			const std::filesystem::path& path)
 		{
 			std::ifstream input(path, std::ios::binary);
-			if (!input) throw std::invalid_argument("external checkpoint pin cannot be opened");
+			if (!input)
+				throw std::invalid_argument("external checkpoint pin cannot be opened");
 			std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
 				std::istreambuf_iterator<char>());
-			constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','P','I','N','1' };
+			constexpr std::array<std::uint8_t, 8U> magic = { 'T', 'X', 'M', 'W', 'P', 'I', 'N', '1' };
 			constexpr std::size_t header_bytes = 20U;
-			if (bytes.size() < header_bytes || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
-				read_u32(bytes.data() + 8U) != 1U)
+			if (bytes.size() < header_bytes || !std::equal(magic.begin(), magic.end(), bytes.begin()) || read_u32(bytes.data() + 8U) != 1U)
 				throw std::invalid_argument("external checkpoint pin header is invalid");
 			const auto count = read_u64(bytes.data() + 12U);
-			if (bytes.size() < header_bytes + 8U ||
-				count > (bytes.size() - header_bytes - 8U) / 24U ||
-				bytes.size() != header_bytes + count * 24U + 8U)
+			if (bytes.size() < header_bytes + 8U || count > (bytes.size() - header_bytes - 8U) / 24U || bytes.size() != header_bytes + count * 24U + 8U)
 				throw std::invalid_argument("external checkpoint pin segment count is invalid");
 			auto checksum = kHashOffset;
 			for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
@@ -344,9 +356,12 @@ namespace texas::solver::multiway
 			for (std::uint64_t index = 0U; index < count; ++index)
 			{
 				MultiwayExternalCheckpointManifest::SegmentReference reference{};
-				reference.generation = read_u64(bytes.data() + cursor); cursor += 8U;
-				reference.record_count = read_u64(bytes.data() + cursor); cursor += 8U;
-				reference.content_hash = read_u64(bytes.data() + cursor); cursor += 8U;
+				reference.generation = read_u64(bytes.data() + cursor);
+				cursor += 8U;
+				reference.record_count = read_u64(bytes.data() + cursor);
+				cursor += 8U;
+				reference.content_hash = read_u64(bytes.data() + cursor);
+				cursor += 8U;
 				if (reference.generation <= previous_generation || reference.record_count == 0U)
 					throw std::invalid_argument("external checkpoint pin runs are not ordered");
 				previous_generation = reference.generation;
@@ -366,7 +381,8 @@ namespace texas::solver::multiway
 				if (name.rfind("CHECKPOINT_", 0U) != 0U || name.size() < 14U || name.substr(name.size() - 4U) != ".PIN")
 					continue;
 				const auto references = read_checkpoint_pin(entry.path());
-				for (const auto& reference : references) generations.push_back(reference.generation);
+				for (const auto& reference : references)
+					generations.push_back(reference.generation);
 			}
 			std::sort(generations.begin(), generations.end());
 			generations.erase(std::unique(generations.begin(), generations.end()), generations.end());
@@ -376,7 +392,7 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& references,
 			bool synchronous_durability)
 		{
-			std::vector<std::uint8_t> bytes{ 'T','X','M','W','P','I','N','1' };
+			std::vector<std::uint8_t> bytes{ 'T', 'X', 'M', 'W', 'P', 'I', 'N', '1' };
 			append_u32(bytes, 1U);
 			append_u64(bytes, references.size());
 			for (const auto& reference : references)
@@ -386,7 +402,8 @@ namespace texas::solver::multiway
 				append_u64(bytes, reference.content_hash);
 			}
 			auto hash = kHashOffset;
-			for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
+			for (const auto byte : bytes)
+				texas::core::fingerprint::append_u8(hash, byte);
 			append_u64(bytes, texas::core::fingerprint::finish(hash));
 			const auto destination = checkpoint_pin_path(directory, pin_id);
 			const auto temporary = std::filesystem::path(destination.string() + ".tmp");
@@ -395,19 +412,27 @@ namespace texas::solver::multiway
 			struct TemporaryFileCleanup
 			{
 				std::filesystem::path path;
-				~TemporaryFileCleanup() noexcept { std::error_code ignored; std::filesystem::remove(path, ignored); }
+				~TemporaryFileCleanup() noexcept
+				{
+					std::error_code ignored;
+					std::filesystem::remove(path, ignored);
+				}
 			} cleanup{ temporary };
 			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-			if (!output) throw std::runtime_error("external checkpoint pin cannot be opened");
+			if (!output)
+				throw std::runtime_error("external checkpoint pin cannot be opened");
 			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 			output.flush();
-			if (!output) throw std::runtime_error("external checkpoint pin write failed");
+			if (!output)
+				throw std::runtime_error("external checkpoint pin write failed");
 			output.close();
-			if (synchronous_durability) sync_file_path(temporary);
+			if (synchronous_durability)
+				sync_file_path(temporary);
 			texas::core::publish_atomic_replace(temporary, destination,
 				"external checkpoint pin publish failed",
 				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-			if (synchronous_durability) sync_directory_path(directory);
+			if (synchronous_durability)
+				sync_directory_path(directory);
 		}
 		ComponentManifestInfo read_component_manifest(const std::filesystem::path& component_directory)
 		{
@@ -415,22 +440,22 @@ namespace texas::solver::multiway
 			std::error_code error;
 			if (!std::filesystem::exists(path, error))
 			{
-				if (error) throw std::runtime_error("external component manifest cannot be inspected");
+				if (error)
+					throw std::runtime_error("external component manifest cannot be inspected");
 				return {};
 			}
 			const auto file_bytes = std::filesystem::file_size(path, error);
-			if (error || file_bytes < 48U) throw std::invalid_argument("external component manifest size is invalid");
+			if (error || file_bytes < 48U)
+				throw std::invalid_argument("external component manifest size is invalid");
 			std::ifstream input(path, std::ios::binary);
 			std::array<std::uint8_t, 40U> header{};
 			input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
-			if (!input || !std::equal(kManifestMagic.begin(), kManifestMagic.end(), header.begin()) ||
-				read_u32(header.data() + 8U) != kSchema)
+			if (!input || !std::equal(kManifestMagic.begin(), kManifestMagic.end(), header.begin()) || read_u32(header.data() + 8U) != kSchema)
 				throw std::invalid_argument("external component manifest header is invalid");
 			const auto generation = read_u64(header.data() + 16U);
 			const auto run_count = read_u64(header.data() + 24U);
 			const auto last_batch_number = read_u64(header.data() + 32U);
-			if (run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U ||
-				48U + run_count * 24U != file_bytes)
+			if (run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U || 48U + run_count * 24U != file_bytes)
 				throw std::invalid_argument("external component manifest run table size is invalid");
 			auto checksum = kHashOffset;
 			std::array<char, 64U * 1024U> buffer{};
@@ -441,283 +466,310 @@ namespace texas::solver::multiway
 			{
 				const auto request = static_cast<std::streamsize>(std::min<std::uint64_t>(remaining, buffer.size()));
 				input.read(buffer.data(), request);
-				if (!input) throw std::invalid_argument("external component manifest is truncated");
+				if (!input)
+					throw std::invalid_argument("external component manifest is truncated");
 				for (std::streamsize index = 0; index < request; ++index)
 					texas::core::fingerprint::append_u8(checksum, static_cast<std::uint8_t>(buffer[static_cast<std::size_t>(index)]));
 				remaining -= static_cast<std::uint64_t>(request);
 			}
-		std::array<std::uint8_t, 8U> checksum_bytes{};
-		input.read(reinterpret_cast<char*>(checksum_bytes.data()), checksum_bytes.size());
-		if (!input || texas::core::fingerprint::finish(checksum) != read_u64(checksum_bytes.data()))
-			throw std::invalid_argument("external component manifest checksum is invalid");
-		return { generation, last_batch_number, true };
-	}
-	void write_transaction_wal(const std::filesystem::path& directory,
-		const TransactionWal& transaction, bool synchronous_durability,
-		bool replace_existing = false)
-	{
-		std::vector<std::uint8_t> bytes(kTransactionWalMagic.begin(), kTransactionWalMagic.end());
-		append_u32(bytes, 1U);
-		append_u32(bytes, transaction.previous_flags);
-		append_u64(bytes, transaction.batch_number);
-		append_u64(bytes, transaction.merge_fingerprint);
-		auto checksum = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
-		append_u64(bytes, texas::core::fingerprint::finish(checksum));
-		const auto temp = directory / "TRAINING_BATCH.tmp";
-		const auto wal = directory / "TRAINING_BATCH.wal";
-		if (std::filesystem::exists(temp) ||
-			(!replace_existing && std::filesystem::exists(wal)) ||
-			(replace_existing && !std::filesystem::exists(wal)))
-			throw std::runtime_error("external transaction already has a pending journal");
-		std::ofstream output(temp, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external transaction journal cannot be opened");
-		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		output.flush();
-		if (!output) throw std::runtime_error("external transaction journal write failed");
-		output.close();
-		if (synchronous_durability) sync_file_path(temp);
-		texas::core::publish_atomic_replace(temp, wal, "external transaction journal publish failed",
-			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-		if (synchronous_durability) sync_directory_path(directory);
-	}
-	TransactionWal read_transaction_wal(const std::filesystem::path& path)
-	{
-		if (std::filesystem::file_size(path) != 40U)
-			throw std::invalid_argument("external transaction journal size is invalid");
-		std::array<std::uint8_t, 40U> bytes{};
-		std::ifstream input(path, std::ios::binary);
-		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		if (!input || !std::equal(kTransactionWalMagic.begin(), kTransactionWalMagic.end(), bytes.begin()) ||
-			read_u32(bytes.data() + 8U) != 1U)
-			throw std::invalid_argument("external transaction journal header is invalid");
-		auto checksum = kHashOffset;
-		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
-			texas::core::fingerprint::append_u8(checksum, bytes[index]);
-		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + 32U))
-			throw std::invalid_argument("external transaction journal checksum is invalid");
-		TransactionWal result{ read_u32(bytes.data() + 12U), read_u64(bytes.data() + 16U), read_u64(bytes.data() + 24U) };
-		if ((result.previous_flags & ~7U) != 0U || result.batch_number == 0U)
-			throw std::invalid_argument("external transaction journal fields are invalid");
-		return result;
-	}
-	struct CheckpointRestoreWal
-	{
-		std::uint32_t previous_flags = 0U;
-		MultiwayExternalGenerationManifest target{};
-		std::array<std::uint64_t, 3U> component_manifest_hashes{};
-	};
-	constexpr std::array<std::uint8_t, 8U> kCheckpointRestoreWalMagic = {
-		'T','X','M','W','R','S','T','1' };
-	void write_checkpoint_restore_wal(const std::filesystem::path& directory,
-		const CheckpointRestoreWal& wal, bool synchronous_durability)
-	{
-		std::vector<std::uint8_t> bytes(kCheckpointRestoreWalMagic.begin(), kCheckpointRestoreWalMagic.end());
-		append_u32(bytes, 1U);
-		append_u32(bytes, wal.previous_flags);
-		append_u64(bytes, wal.target.generation);
-		append_u64(bytes, wal.target.content_hash);
-		append_u64(bytes, wal.target.catalog_generation);
-		append_u64(bytes, wal.target.row_generation);
-		append_u64(bytes, wal.target.page_generation);
-		for (const auto hash : wal.component_manifest_hashes) append_u64(bytes, hash);
-		auto checksum = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
-		append_u64(bytes, texas::core::fingerprint::finish(checksum));
-		const auto temporary = directory / "CHECKPOINT_RESTORE.wal.tmp";
-		const auto destination = directory / "CHECKPOINT_RESTORE.wal";
-		if (std::filesystem::exists(temporary) || std::filesystem::exists(destination))
-			throw std::runtime_error("external checkpoint restore already has a pending journal");
-		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external checkpoint restore journal cannot be opened");
-		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		output.flush();
-		if (!output) throw std::runtime_error("external checkpoint restore journal write failed");
-		output.close();
-		if (synchronous_durability) sync_file_path(temporary);
-		texas::core::publish_atomic_replace(temporary, destination,
-			"external checkpoint restore journal publish failed",
-			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-		if (synchronous_durability) sync_directory_path(directory);
-	}
-	CheckpointRestoreWal read_checkpoint_restore_wal(const std::filesystem::path& path)
-	{
-		constexpr std::size_t bytes_size = 88U;
-		if (std::filesystem::file_size(path) != bytes_size)
-			throw std::invalid_argument("external checkpoint restore journal size is invalid");
-		std::array<std::uint8_t, bytes_size> bytes{};
-		std::ifstream input(path, std::ios::binary);
-		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		if (!input || !std::equal(kCheckpointRestoreWalMagic.begin(), kCheckpointRestoreWalMagic.end(), bytes.begin()) ||
-			read_u32(bytes.data() + 8U) != 1U)
-			throw std::invalid_argument("external checkpoint restore journal header is invalid");
-		auto checksum = kHashOffset;
-		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
-			texas::core::fingerprint::append_u8(checksum, bytes[index]);
-		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
-			throw std::invalid_argument("external checkpoint restore journal checksum is invalid");
-		CheckpointRestoreWal result{};
-		result.previous_flags = read_u32(bytes.data() + 12U);
-		result.target.generation = read_u64(bytes.data() + 16U);
-		result.target.content_hash = read_u64(bytes.data() + 24U);
-		result.target.catalog_generation = read_u64(bytes.data() + 32U);
-		result.target.row_generation = read_u64(bytes.data() + 40U);
-		result.target.page_generation = read_u64(bytes.data() + 48U);
-		for (std::size_t component = 0U; component < result.component_manifest_hashes.size(); ++component)
-			result.component_manifest_hashes[component] = read_u64(bytes.data() + 56U + component * 8U);
-		if ((result.previous_flags & ~15U) != 0U || result.target.generation == 0U)
-			throw std::invalid_argument("external checkpoint restore journal fields are invalid");
-		return result;
-	}
-	void cleanup_checkpoint_restore(const std::filesystem::path& directory)
-	{
-		std::error_code error;
-		for (const auto* name : kCheckpointRestoreBackupNames)
-		{
-			std::filesystem::remove(directory / name, error);
-			if (error) throw std::runtime_error("external checkpoint restore backup cannot be removed");
+			std::array<std::uint8_t, 8U> checksum_bytes{};
+			input.read(reinterpret_cast<char*>(checksum_bytes.data()), checksum_bytes.size());
+			if (!input || texas::core::fingerprint::finish(checksum) != read_u64(checksum_bytes.data()))
+				throw std::invalid_argument("external component manifest checksum is invalid");
+			return { generation, last_batch_number, true };
 		}
-		std::filesystem::remove(directory / "CHECKPOINT_RESTORE.wal", error);
-		if (error) throw std::runtime_error("external checkpoint restore journal cannot be removed");
-		for (const auto* name : { "CHECKPOINT_RESTORE.wal.tmp", "TRAINING_CURRENT.tmp",
-			"CHECKPOINT_TRAINING_ROLLBACK.tmp" })
+		void write_transaction_wal(const std::filesystem::path& directory,
+			const TransactionWal& transaction, bool synchronous_durability,
+			bool replace_existing = false)
 		{
-			std::filesystem::remove(directory / name, error);
-			if (error) throw std::runtime_error("external checkpoint restore temporary journal cannot be removed");
+			std::vector<std::uint8_t> bytes(kTransactionWalMagic.begin(), kTransactionWalMagic.end());
+			append_u32(bytes, 1U);
+			append_u32(bytes, transaction.previous_flags);
+			append_u64(bytes, transaction.batch_number);
+			append_u64(bytes, transaction.merge_fingerprint);
+			auto checksum = kHashOffset;
+			for (const auto byte : bytes)
+				texas::core::fingerprint::append_u8(checksum, byte);
+			append_u64(bytes, texas::core::fingerprint::finish(checksum));
+			const auto temp = directory / "TRAINING_BATCH.tmp";
+			const auto wal = directory / "TRAINING_BATCH.wal";
+			if (std::filesystem::exists(temp) || (!replace_existing && std::filesystem::exists(wal)) || (replace_existing && !std::filesystem::exists(wal)))
+				throw std::runtime_error("external transaction already has a pending journal");
+			std::ofstream output(temp, std::ios::binary | std::ios::trunc);
+			if (!output)
+				throw std::runtime_error("external transaction journal cannot be opened");
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			output.flush();
+			if (!output)
+				throw std::runtime_error("external transaction journal write failed");
+			output.close();
+			if (synchronous_durability)
+				sync_file_path(temp);
+			texas::core::publish_atomic_replace(temp, wal, "external transaction journal publish failed",
+				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+			if (synchronous_durability)
+				sync_directory_path(directory);
 		}
-		for (const auto* component : kComponentNames)
-			for (const auto* name : { "CHECKPOINT_CURRENT.tmp", "CHECKPOINT_ROLLBACK.tmp" })
+		TransactionWal read_transaction_wal(const std::filesystem::path& path)
+		{
+			if (std::filesystem::file_size(path) != 40U)
+				throw std::invalid_argument("external transaction journal size is invalid");
+			std::array<std::uint8_t, 40U> bytes{};
+			std::ifstream input(path, std::ios::binary);
+			input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			if (!input || !std::equal(kTransactionWalMagic.begin(), kTransactionWalMagic.end(), bytes.begin()) || read_u32(bytes.data() + 8U) != 1U)
+				throw std::invalid_argument("external transaction journal header is invalid");
+			auto checksum = kHashOffset;
+			for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+				texas::core::fingerprint::append_u8(checksum, bytes[index]);
+			if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + 32U))
+				throw std::invalid_argument("external transaction journal checksum is invalid");
+			TransactionWal result{ read_u32(bytes.data() + 12U), read_u64(bytes.data() + 16U), read_u64(bytes.data() + 24U) };
+			if ((result.previous_flags & ~7U) != 0U || result.batch_number == 0U)
+				throw std::invalid_argument("external transaction journal fields are invalid");
+			return result;
+		}
+		struct CheckpointRestoreWal
+		{
+			std::uint32_t previous_flags = 0U;
+			MultiwayExternalGenerationManifest target{};
+			std::array<std::uint64_t, 3U> component_manifest_hashes{};
+		};
+		constexpr std::array<std::uint8_t, 8U> kCheckpointRestoreWalMagic = {
+			'T', 'X', 'M', 'W', 'R', 'S', 'T', '1'
+		};
+		void write_checkpoint_restore_wal(const std::filesystem::path& directory,
+			const CheckpointRestoreWal& wal, bool synchronous_durability)
+		{
+			std::vector<std::uint8_t> bytes(kCheckpointRestoreWalMagic.begin(), kCheckpointRestoreWalMagic.end());
+			append_u32(bytes, 1U);
+			append_u32(bytes, wal.previous_flags);
+			append_u64(bytes, wal.target.generation);
+			append_u64(bytes, wal.target.content_hash);
+			append_u64(bytes, wal.target.catalog_generation);
+			append_u64(bytes, wal.target.row_generation);
+			append_u64(bytes, wal.target.page_generation);
+			for (const auto hash : wal.component_manifest_hashes)
+				append_u64(bytes, hash);
+			auto checksum = kHashOffset;
+			for (const auto byte : bytes)
+				texas::core::fingerprint::append_u8(checksum, byte);
+			append_u64(bytes, texas::core::fingerprint::finish(checksum));
+			const auto temporary = directory / "CHECKPOINT_RESTORE.wal.tmp";
+			const auto destination = directory / "CHECKPOINT_RESTORE.wal";
+			if (std::filesystem::exists(temporary) || std::filesystem::exists(destination))
+				throw std::runtime_error("external checkpoint restore already has a pending journal");
+			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+			if (!output)
+				throw std::runtime_error("external checkpoint restore journal cannot be opened");
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			output.flush();
+			if (!output)
+				throw std::runtime_error("external checkpoint restore journal write failed");
+			output.close();
+			if (synchronous_durability)
+				sync_file_path(temporary);
+			texas::core::publish_atomic_replace(temporary, destination,
+				"external checkpoint restore journal publish failed",
+				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+			if (synchronous_durability)
+				sync_directory_path(directory);
+		}
+		CheckpointRestoreWal read_checkpoint_restore_wal(const std::filesystem::path& path)
+		{
+			constexpr std::size_t bytes_size = 88U;
+			if (std::filesystem::file_size(path) != bytes_size)
+				throw std::invalid_argument("external checkpoint restore journal size is invalid");
+			std::array<std::uint8_t, bytes_size> bytes{};
+			std::ifstream input(path, std::ios::binary);
+			input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			if (!input || !std::equal(kCheckpointRestoreWalMagic.begin(), kCheckpointRestoreWalMagic.end(), bytes.begin()) || read_u32(bytes.data() + 8U) != 1U)
+				throw std::invalid_argument("external checkpoint restore journal header is invalid");
+			auto checksum = kHashOffset;
+			for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+				texas::core::fingerprint::append_u8(checksum, bytes[index]);
+			if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
+				throw std::invalid_argument("external checkpoint restore journal checksum is invalid");
+			CheckpointRestoreWal result{};
+			result.previous_flags = read_u32(bytes.data() + 12U);
+			result.target.generation = read_u64(bytes.data() + 16U);
+			result.target.content_hash = read_u64(bytes.data() + 24U);
+			result.target.catalog_generation = read_u64(bytes.data() + 32U);
+			result.target.row_generation = read_u64(bytes.data() + 40U);
+			result.target.page_generation = read_u64(bytes.data() + 48U);
+			for (std::size_t component = 0U; component < result.component_manifest_hashes.size(); ++component)
+				result.component_manifest_hashes[component] = read_u64(bytes.data() + 56U + component * 8U);
+			if ((result.previous_flags & ~15U) != 0U || result.target.generation == 0U)
+				throw std::invalid_argument("external checkpoint restore journal fields are invalid");
+			return result;
+		}
+		void cleanup_checkpoint_restore(const std::filesystem::path& directory)
+		{
+			std::error_code error;
+			for (const auto* name : kCheckpointRestoreBackupNames)
 			{
-				std::filesystem::remove(directory / component / name, error);
-				if (error) throw std::runtime_error("external checkpoint component temporary cannot be removed");
+				std::filesystem::remove(directory / name, error);
+				if (error)
+					throw std::runtime_error("external checkpoint restore backup cannot be removed");
 			}
-	}
-	std::vector<std::uint8_t> encode_checkpoint_component_manifest(
-		std::uint32_t payload_bytes, std::uint64_t generation, std::uint64_t last_batch_number,
-		const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& references)
-	{
-		std::vector<std::uint8_t> bytes(kManifestMagic.begin(), kManifestMagic.end());
-		append_u32(bytes, kSchema);
-		append_u32(bytes, payload_bytes);
-		append_u64(bytes, generation);
-		append_u64(bytes, references.size());
-		append_u64(bytes, last_batch_number);
-		for (const auto& reference : references)
-		{
-			append_u64(bytes, reference.generation);
-			append_u64(bytes, reference.record_count);
-			append_u64(bytes, reference.content_hash);
-		}
-		auto checksum = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
-		append_u64(bytes, texas::core::fingerprint::finish(checksum));
-		return bytes;
-	}
-	void publish_checkpoint_component_manifest(const std::filesystem::path& component_directory,
-		const std::vector<std::uint8_t>& bytes, bool synchronous_durability)
-	{
-		const auto temporary = component_directory / "CHECKPOINT_CURRENT.tmp";
-		const auto destination = component_directory / "CURRENT";
-		if (std::filesystem::exists(temporary))
-			throw std::runtime_error("external checkpoint component temporary path already exists");
-		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external checkpoint component manifest cannot be opened");
-		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		output.flush();
-		if (!output) throw std::runtime_error("external checkpoint component manifest write failed");
-		output.close();
-		if (synchronous_durability) sync_file_path(temporary);
-		texas::core::publish_atomic_replace(temporary, destination,
-			"external checkpoint component manifest publish failed",
-			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-		if (synchronous_durability) sync_directory_path(component_directory);
-	}
-	void recover_checkpoint_restore(const std::filesystem::path& directory, bool synchronous_durability)
-	{
-		const auto wal_path = directory / "CHECKPOINT_RESTORE.wal";
-		if (!std::filesystem::exists(wal_path))
-		{
-			cleanup_checkpoint_restore(directory);
-			return;
-		}
-		const auto wal = read_checkpoint_restore_wal(wal_path);
-		MultiwayExternalGenerationManifest published{};
-		const bool has_generation = load_multiway_external_generation(directory, published);
-		bool target_is_published = has_generation && published.generation == wal.target.generation &&
-			published.content_hash == wal.target.content_hash;
-		const std::array<std::uint64_t, 3U> target_component_generations = {
-			wal.target.catalog_generation, wal.target.row_generation, wal.target.page_generation };
-		for (std::size_t component = 0U; target_is_published && component < kComponentNames.size(); ++component)
-		{
-			try
+			std::filesystem::remove(directory / "CHECKPOINT_RESTORE.wal", error);
+			if (error)
+				throw std::runtime_error("external checkpoint restore journal cannot be removed");
+			for (const auto* name : { "CHECKPOINT_RESTORE.wal.tmp", "TRAINING_CURRENT.tmp",
+					 "CHECKPOINT_TRAINING_ROLLBACK.tmp" })
 			{
-				const auto component_directory = directory / kComponentNames[component];
-				const auto current_manifest = component_directory / "CURRENT";
-				if (read_component_manifest(component_directory).generation != target_component_generations[component])
+				std::filesystem::remove(directory / name, error);
+				if (error)
+					throw std::runtime_error("external checkpoint restore temporary journal cannot be removed");
+			}
+			for (const auto* component : kComponentNames)
+				for (const auto* name : { "CHECKPOINT_CURRENT.tmp", "CHECKPOINT_ROLLBACK.tmp" })
+				{
+					std::filesystem::remove(directory / component / name, error);
+					if (error)
+						throw std::runtime_error("external checkpoint component temporary cannot be removed");
+				}
+		}
+		std::vector<std::uint8_t> encode_checkpoint_component_manifest(
+			std::uint32_t payload_bytes, std::uint64_t generation, std::uint64_t last_batch_number,
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& references)
+		{
+			std::vector<std::uint8_t> bytes(kManifestMagic.begin(), kManifestMagic.end());
+			append_u32(bytes, kSchema);
+			append_u32(bytes, payload_bytes);
+			append_u64(bytes, generation);
+			append_u64(bytes, references.size());
+			append_u64(bytes, last_batch_number);
+			for (const auto& reference : references)
+			{
+				append_u64(bytes, reference.generation);
+				append_u64(bytes, reference.record_count);
+				append_u64(bytes, reference.content_hash);
+			}
+			auto checksum = kHashOffset;
+			for (const auto byte : bytes)
+				texas::core::fingerprint::append_u8(checksum, byte);
+			append_u64(bytes, texas::core::fingerprint::finish(checksum));
+			return bytes;
+		}
+		void publish_checkpoint_component_manifest(const std::filesystem::path& component_directory,
+			const std::vector<std::uint8_t>& bytes, bool synchronous_durability)
+		{
+			const auto temporary = component_directory / "CHECKPOINT_CURRENT.tmp";
+			const auto destination = component_directory / "CURRENT";
+			if (std::filesystem::exists(temporary))
+				throw std::runtime_error("external checkpoint component temporary path already exists");
+			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+			if (!output)
+				throw std::runtime_error("external checkpoint component manifest cannot be opened");
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			output.flush();
+			if (!output)
+				throw std::runtime_error("external checkpoint component manifest write failed");
+			output.close();
+			if (synchronous_durability)
+				sync_file_path(temporary);
+			texas::core::publish_atomic_replace(temporary, destination,
+				"external checkpoint component manifest publish failed",
+				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+			if (synchronous_durability)
+				sync_directory_path(component_directory);
+		}
+		void recover_checkpoint_restore(const std::filesystem::path& directory, bool synchronous_durability)
+		{
+			const auto wal_path = directory / "CHECKPOINT_RESTORE.wal";
+			if (!std::filesystem::exists(wal_path))
+			{
+				cleanup_checkpoint_restore(directory);
+				return;
+			}
+			const auto wal = read_checkpoint_restore_wal(wal_path);
+			MultiwayExternalGenerationManifest published{};
+			const bool has_generation = load_multiway_external_generation(directory, published);
+			bool target_is_published = has_generation && published.generation == wal.target.generation && published.content_hash == wal.target.content_hash;
+			const std::array<std::uint64_t, 3U> target_component_generations = {
+				wal.target.catalog_generation, wal.target.row_generation, wal.target.page_generation
+			};
+			for (std::size_t component = 0U; target_is_published && component < kComponentNames.size(); ++component)
+			{
+				try
+				{
+					const auto component_directory = directory / kComponentNames[component];
+					const auto current_manifest = component_directory / "CURRENT";
+					if (read_component_manifest(component_directory).generation != target_component_generations[component])
+					{
+						target_is_published = false;
+						continue;
+					}
+					std::ifstream input(current_manifest, std::ios::binary);
+					std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
+						std::istreambuf_iterator<char>());
+					if (!input.eof() && input.fail())
+						throw std::runtime_error("external checkpoint component manifest cannot be read");
+					auto hash = kHashOffset;
+					for (const auto byte : bytes)
+						texas::core::fingerprint::append_u8(hash, byte);
+					target_is_published = texas::core::fingerprint::finish(hash) == wal.component_manifest_hashes[component];
+				}
+				catch (...)
 				{
 					target_is_published = false;
-					continue;
 				}
-				std::ifstream input(current_manifest, std::ios::binary);
-				std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
-					std::istreambuf_iterator<char>());
-				if (!input.eof() && input.fail())
-					throw std::runtime_error("external checkpoint component manifest cannot be read");
-				auto hash = kHashOffset;
-				for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
-				target_is_published = texas::core::fingerprint::finish(hash) ==
-					wal.component_manifest_hashes[component];
 			}
-			catch (...) { target_is_published = false; }
-		}
-		if (!target_is_published)
-		{
-			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
+			if (!target_is_published)
 			{
-				const auto component_directory = directory / kComponentNames[component];
-				const auto current = component_directory / "CURRENT";
-				const auto backup = directory / kCheckpointRestoreBackupNames[component];
-				if ((wal.previous_flags & (1U << component)) != 0U)
+				for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
 				{
-					const auto temporary = component_directory / "CHECKPOINT_ROLLBACK.tmp";
-					std::filesystem::copy_file(backup, temporary, std::filesystem::copy_options::overwrite_existing);
-					if (synchronous_durability) sync_file_path(temporary);
-					texas::core::publish_atomic_replace(temporary, current,
+					const auto component_directory = directory / kComponentNames[component];
+					const auto current = component_directory / "CURRENT";
+					const auto backup = directory / kCheckpointRestoreBackupNames[component];
+					if ((wal.previous_flags & (1U << component)) != 0U)
+					{
+						const auto temporary = component_directory / "CHECKPOINT_ROLLBACK.tmp";
+						std::filesystem::copy_file(backup, temporary, std::filesystem::copy_options::overwrite_existing);
+						if (synchronous_durability)
+							sync_file_path(temporary);
+						texas::core::publish_atomic_replace(temporary, current,
+							"external checkpoint rollback failed",
+							texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+					}
+					else
+					{
+						std::error_code error;
+						std::filesystem::remove(current, error);
+						if (error)
+							throw std::runtime_error("external checkpoint rollback manifest cannot be removed");
+					}
+				}
+				const auto training_current = directory / "TRAINING_CURRENT";
+				const auto training_backup = directory / kCheckpointRestoreBackupNames[3];
+				if ((wal.previous_flags & 8U) != 0U)
+				{
+					const auto temporary = directory / "CHECKPOINT_TRAINING_ROLLBACK.tmp";
+					std::filesystem::copy_file(training_backup, temporary, std::filesystem::copy_options::overwrite_existing);
+					if (synchronous_durability)
+						sync_file_path(temporary);
+					texas::core::publish_atomic_replace(temporary, training_current,
 						"external checkpoint rollback failed",
 						texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 				}
 				else
 				{
 					std::error_code error;
-					std::filesystem::remove(current, error);
-					if (error) throw std::runtime_error("external checkpoint rollback manifest cannot be removed");
+					std::filesystem::remove(training_current, error);
+					if (error)
+						throw std::runtime_error("external checkpoint rollback generation cannot be removed");
 				}
 			}
-			const auto training_current = directory / "TRAINING_CURRENT";
-			const auto training_backup = directory / kCheckpointRestoreBackupNames[3];
-			if ((wal.previous_flags & 8U) != 0U)
-			{
-				const auto temporary = directory / "CHECKPOINT_TRAINING_ROLLBACK.tmp";
-				std::filesystem::copy_file(training_backup, temporary, std::filesystem::copy_options::overwrite_existing);
-				if (synchronous_durability) sync_file_path(temporary);
-				texas::core::publish_atomic_replace(temporary, training_current,
-					"external checkpoint rollback failed",
-					texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-			}
-			else
-			{
-				std::error_code error;
-				std::filesystem::remove(training_current, error);
-				if (error) throw std::runtime_error("external checkpoint rollback generation cannot be removed");
-			}
+			cleanup_checkpoint_restore(directory);
+			if (synchronous_durability)
+				sync_directory_path(directory);
 		}
-		cleanup_checkpoint_restore(directory);
-		if (synchronous_durability) sync_directory_path(directory);
-	}
 		void append_file_hash(std::uint64_t& hash, const std::filesystem::path& path)
 		{
 			std::ifstream input(path, std::ios::binary);
-			if (!input) throw std::runtime_error("external storage run cannot be read");
+			if (!input)
+				throw std::runtime_error("external storage run cannot be read");
 			std::array<char, 64U * 1024U> buffer{};
 			while (input)
 			{
@@ -726,25 +778,31 @@ namespace texas::solver::multiway
 				for (std::streamsize index = 0; index < count; ++index)
 					texas::core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(buffer[static_cast<std::size_t>(index)]));
 			}
-			if (!input.eof()) throw std::runtime_error("external storage run read failed");
+			if (!input.eof())
+				throw std::runtime_error("external storage run read failed");
 		}
-	}
+	} // namespace
 
 	void encode_external_public_node(const MultiwayPackedPublicNode& node,
 		std::vector<std::uint8_t>& output)
 	{
-		if (node.id.value == 0U || node.betting.seat_count > node.betting.stacks.size() ||
-			node.board_count > node.board.size() || node.dealt_card_count > node.dealt_cards.size() ||
-			node.transition_board_count > node.transition_board.size() ||
-			static_cast<std::uint8_t>(node.betting.street) > static_cast<std::uint8_t>(core::Street::Showdown) ||
-			static_cast<std::uint8_t>(node.incoming_kind) > static_cast<std::uint8_t>(MultiwayPublicParentEdgeKind::StreetTransition) ||
-			static_cast<std::uint8_t>(node.incoming_action.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn))
+		if (node.id.value == 0U || node.betting.seat_count > node.betting.stacks.size() || node.board_count > node.board.size() || node.dealt_card_count > node.dealt_cards.size() || node.transition_board_count > node.transition_board.size() || static_cast<std::uint8_t>(node.betting.street) > static_cast<std::uint8_t>(core::Street::Showdown) || static_cast<std::uint8_t>(node.incoming_kind) > static_cast<std::uint8_t>(MultiwayPublicParentEdgeKind::StreetTransition) || static_cast<std::uint8_t>(node.incoming_action.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn))
 			throw std::invalid_argument("packed public node exceeds its fixed record bounds");
-		for (const auto value : node.betting.folded) if (value > 1U) throw std::invalid_argument("packed public node has invalid folded flags");
-		for (const auto value : node.betting.all_in) if (value > 1U) throw std::invalid_argument("packed public node has invalid all-in flags");
-		for (const auto value : node.betting.may_raise) if (value > 1U) throw std::invalid_argument("packed public node has invalid raise flags");
-		for (const auto value : node.betting.pending) if (value > 1U) throw std::invalid_argument("packed public node has invalid pending flags");
-		for (const auto value : node.betting.has_acted) if (value > 1U) throw std::invalid_argument("packed public node has invalid acted flags");
+		for (const auto value : node.betting.folded)
+			if (value > 1U)
+				throw std::invalid_argument("packed public node has invalid folded flags");
+		for (const auto value : node.betting.all_in)
+			if (value > 1U)
+				throw std::invalid_argument("packed public node has invalid all-in flags");
+		for (const auto value : node.betting.may_raise)
+			if (value > 1U)
+				throw std::invalid_argument("packed public node has invalid raise flags");
+		for (const auto value : node.betting.pending)
+			if (value > 1U)
+				throw std::invalid_argument("packed public node has invalid pending flags");
+		for (const auto value : node.betting.has_acted)
+			if (value > 1U)
+				throw std::invalid_argument("packed public node has invalid acted flags");
 		output.clear();
 		output.reserve(240U);
 		append_u32(output, kNodeRecordMagic);
@@ -752,15 +810,24 @@ namespace texas::solver::multiway
 		append_u64(output, node.id.value);
 		append_u64(output, node.parent_id.value);
 		append_u64(output, node.canonical_history_id);
-		for (const auto value : node.betting.stacks) append_i32(output, value);
-		for (const auto value : node.betting.contributions) append_i32(output, value);
-		for (const auto value : node.betting.street_contributions) append_i32(output, value);
-		for (const auto value : node.betting.folded) output.push_back(value);
-		for (const auto value : node.betting.all_in) output.push_back(value);
-		for (const auto value : node.betting.may_raise) output.push_back(value);
-		for (const auto value : node.betting.pending) output.push_back(value);
-		for (const auto value : node.betting.has_acted) output.push_back(value);
-		for (const auto value : node.betting.bet_faced_when_acted) append_i32(output, value);
+		for (const auto value : node.betting.stacks)
+			append_i32(output, value);
+		for (const auto value : node.betting.contributions)
+			append_i32(output, value);
+		for (const auto value : node.betting.street_contributions)
+			append_i32(output, value);
+		for (const auto value : node.betting.folded)
+			output.push_back(value);
+		for (const auto value : node.betting.all_in)
+			output.push_back(value);
+		for (const auto value : node.betting.may_raise)
+			output.push_back(value);
+		for (const auto value : node.betting.pending)
+			output.push_back(value);
+		for (const auto value : node.betting.has_acted)
+			output.push_back(value);
+		for (const auto value : node.betting.bet_faced_when_acted)
+			append_i32(output, value);
 		output.push_back(node.betting.seat_count);
 		append_i32(output, node.betting.current_player);
 		append_i32(output, node.betting.last_aggressor);
@@ -801,11 +868,9 @@ namespace texas::solver::multiway
 	void publish_multiway_external_generation(const std::filesystem::path& directory,
 		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability)
 	{
-		if (directory.empty() || manifest.generation == 0U || manifest.committed_batch_number == 0U ||
-			manifest.merge_fingerprint == 0U ||
-			((manifest.row_count == 0U) != (manifest.logical_value_count == 0U)))
+		if (directory.empty() || manifest.generation == 0U || manifest.committed_batch_number == 0U || manifest.merge_fingerprint == 0U || ((manifest.row_count == 0U) != (manifest.logical_value_count == 0U)))
 			throw std::invalid_argument("external generation manifest identity is invalid");
-		std::vector<std::uint8_t> bytes{ 'T','X','M','W','G','E','N','1' };
+		std::vector<std::uint8_t> bytes{ 'T', 'X', 'M', 'W', 'G', 'E', 'N', '1' };
 		append_u32(bytes, 2U);
 		append_u32(bytes, 0U);
 		append_u64(bytes, manifest.generation);
@@ -820,33 +885,40 @@ namespace texas::solver::multiway
 		append_u64(bytes, manifest.logical_value_count);
 		append_u64(bytes, manifest.content_hash);
 		auto checksum = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		for (const auto byte : bytes)
+			texas::core::fingerprint::append_u8(checksum, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
 		const auto temp = directory / "TRAINING_CURRENT.tmp";
 		const auto current = directory / "TRAINING_CURRENT";
 		if (std::filesystem::exists(temp))
 			throw std::runtime_error("external training manifest temporary path already exists");
 		std::ofstream output(temp, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external training manifest cannot be opened");
+		if (!output)
+			throw std::runtime_error("external training manifest cannot be opened");
 		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		output.flush();
-		if (!output) throw std::runtime_error("external training manifest write failed");
+		if (!output)
+			throw std::runtime_error("external training manifest write failed");
 		output.close();
 		if (synchronous_durability)
 		{
 #ifdef _WIN32
 			const auto handle = CreateFileW(temp.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, nullptr,
 				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-			if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("external training manifest cannot be opened for flush");
+			if (handle == INVALID_HANDLE_VALUE)
+				throw std::runtime_error("external training manifest cannot be opened for flush");
 			const auto flushed = FlushFileBuffers(handle);
 			CloseHandle(handle);
-			if (!flushed) throw std::runtime_error("external training manifest flush failed");
+			if (!flushed)
+				throw std::runtime_error("external training manifest flush failed");
 #else
 			const auto descriptor = open(temp.c_str(), O_RDONLY);
-			if (descriptor < 0) throw std::runtime_error("external training manifest cannot be opened for flush");
+			if (descriptor < 0)
+				throw std::runtime_error("external training manifest cannot be opened for flush");
 			const auto flushed = fsync(descriptor);
 			close(descriptor);
-			if (flushed != 0) throw std::runtime_error("external training manifest flush failed");
+			if (flushed != 0)
+				throw std::runtime_error("external training manifest flush failed");
 #endif
 		}
 		texas::core::publish_atomic_replace(temp, current, "external training manifest publish failed",
@@ -855,10 +927,12 @@ namespace texas::solver::multiway
 		{
 #ifndef _WIN32
 			const auto descriptor = open(directory.c_str(), O_RDONLY | O_DIRECTORY);
-			if (descriptor < 0) throw std::runtime_error("external training directory cannot be opened for flush");
+			if (descriptor < 0)
+				throw std::runtime_error("external training directory cannot be opened for flush");
 			const auto flushed = fsync(descriptor);
 			close(descriptor);
-			if (flushed != 0) throw std::runtime_error("external training directory flush failed");
+			if (flushed != 0)
+				throw std::runtime_error("external training directory flush failed");
 #endif
 		}
 	}
@@ -870,7 +944,8 @@ namespace texas::solver::multiway
 		std::error_code error;
 		if (!std::filesystem::exists(path, error))
 		{
-			if (error) throw std::runtime_error("external training manifest cannot be inspected");
+			if (error)
+				throw std::runtime_error("external training manifest cannot be inspected");
 			return false;
 		}
 		const auto manifest_size = std::filesystem::file_size(path, error);
@@ -879,11 +954,9 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> bytes(static_cast<std::size_t>(manifest_size));
 		std::ifstream input(path, std::ios::binary);
 		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','G','E','N','1' };
+		constexpr std::array<std::uint8_t, 8U> magic = { 'T', 'X', 'M', 'W', 'G', 'E', 'N', '1' };
 		const auto schema = bytes.size() >= 12U ? read_u32(bytes.data() + 8U) : 0U;
-		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
-			(schema != 1U && schema != 2U) || (schema == 1U && bytes.size() != 104U) ||
-			(schema == 2U && bytes.size() != 112U) || read_u32(bytes.data() + 12U) != 0U)
+		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) || (schema != 1U && schema != 2U) || (schema == 1U && bytes.size() != 104U) || (schema == 2U && bytes.size() != 112U) || read_u32(bytes.data() + 12U) != 0U)
 			throw std::invalid_argument("external training manifest header is invalid");
 		auto checksum = kHashOffset;
 		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
@@ -907,9 +980,7 @@ namespace texas::solver::multiway
 		else if (decoded.row_count != 0U)
 			decoded.logical_value_count = std::numeric_limits<std::uint64_t>::max();
 		decoded.content_hash = read_field();
-		if (cursor != bytes.size() - 8U || decoded.generation == 0U ||
-			decoded.committed_batch_number == 0U || decoded.merge_fingerprint == 0U ||
-			(schema >= 2U && ((decoded.row_count == 0U) != (decoded.logical_value_count == 0U))))
+		if (cursor != bytes.size() - 8U || decoded.generation == 0U || decoded.committed_batch_number == 0U || decoded.merge_fingerprint == 0U || (schema >= 2U && ((decoded.row_count == 0U) != (decoded.logical_value_count == 0U))))
 			throw std::invalid_argument("external training manifest identity is invalid");
 		manifest = decoded;
 		return true;
@@ -928,13 +999,12 @@ namespace texas::solver::multiway
 			{
 				const auto path = storage_directory / kComponentNames[component] / "CURRENT";
 				std::ifstream input(path, std::ios::binary);
-				if (!input) throw std::invalid_argument("external checkpoint component manifest is missing");
+				if (!input)
+					throw std::invalid_argument("external checkpoint component manifest is missing");
 				std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
 					std::istreambuf_iterator<char>());
 				constexpr std::size_t fixed_bytes = 48U;
-				if (bytes.size() < fixed_bytes ||
-					!std::equal(kManifestMagic.begin(), kManifestMagic.end(), bytes.begin()) ||
-					read_u32(bytes.data() + 8U) != kSchema)
+				if (bytes.size() < fixed_bytes || !std::equal(kManifestMagic.begin(), kManifestMagic.end(), bytes.begin()) || read_u32(bytes.data() + 8U) != kSchema)
 					throw std::invalid_argument("external checkpoint component manifest header is invalid");
 				if (component_generations != nullptr)
 					(*component_generations)[component] = read_u64(bytes.data() + 16U);
@@ -943,8 +1013,7 @@ namespace texas::solver::multiway
 				if (component_last_batch_numbers != nullptr)
 					(*component_last_batch_numbers)[component] = read_u64(bytes.data() + 32U);
 				const auto run_count = read_u64(bytes.data() + 24U);
-				if (run_count > (bytes.size() - fixed_bytes) / 24U ||
-					bytes.size() != fixed_bytes + run_count * 24U)
+				if (run_count > (bytes.size() - fixed_bytes) / 24U || bytes.size() != fixed_bytes + run_count * 24U)
 					throw std::invalid_argument("external checkpoint component run count is invalid");
 				auto checksum = kHashOffset;
 				for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
@@ -958,9 +1027,12 @@ namespace texas::solver::multiway
 				for (std::uint64_t run = 0U; run < run_count; ++run)
 				{
 					MultiwayExternalCheckpointManifest::SegmentReference reference{};
-					reference.generation = read_u64(bytes.data() + cursor); cursor += 8U;
-					reference.record_count = read_u64(bytes.data() + cursor); cursor += 8U;
-					reference.content_hash = read_u64(bytes.data() + cursor); cursor += 8U;
+					reference.generation = read_u64(bytes.data() + cursor);
+					cursor += 8U;
+					reference.record_count = read_u64(bytes.data() + cursor);
+					cursor += 8U;
+					reference.content_hash = read_u64(bytes.data() + cursor);
+					cursor += 8U;
 					if (reference.generation <= previous_generation || reference.record_count == 0U)
 						throw std::invalid_argument("external checkpoint component runs are not ordered");
 					previous_generation = reference.generation;
@@ -996,8 +1068,7 @@ namespace texas::solver::multiway
 		{
 			const auto found = std::lower_bound(pin.begin(), pin.end(), reference.generation,
 				[](const auto& item, std::uint64_t generation) { return item.generation < generation; });
-			return found != pin.end() && found->generation == reference.generation &&
-				found->record_count == reference.record_count && found->content_hash == reference.content_hash;
+			return found != pin.end() && found->generation == reference.generation && found->record_count == reference.record_count && found->content_hash == reference.content_hash;
 		}
 
 		bool verify_checkpoint_segment(const std::filesystem::path& directory,
@@ -1007,11 +1078,12 @@ namespace texas::solver::multiway
 			const auto data_path = run_path(directory, reference.generation, ".dat");
 			const auto index_path = run_path(directory, reference.generation, ".idx");
 			std::error_code error;
-			if (!std::filesystem::is_regular_file(data_path, error) || error) return false;
-			if (!std::filesystem::is_regular_file(index_path, error) || error) return false;
+			if (!std::filesystem::is_regular_file(data_path, error) || error)
+				return false;
+			if (!std::filesystem::is_regular_file(index_path, error) || error)
+				return false;
 			const auto expected_data = record_bytes(reference.record_count, payload_bytes);
-			if (std::filesystem::file_size(data_path) != expected_data ||
-				std::filesystem::file_size(index_path) != record_bytes(reference.record_count, 0U))
+			if (std::filesystem::file_size(data_path) != expected_data || std::filesystem::file_size(index_path) != record_bytes(reference.record_count, 0U))
 				return false;
 			auto hash = kHashOffset;
 			append_file_hash(hash, index_path);
@@ -1026,11 +1098,11 @@ namespace texas::solver::multiway
 			std::uint32_t payload_bytes)
 		{
 			constexpr std::size_t kMaximumWorkers = 4U;
-			if (references.empty()) return true;
+			if (references.empty())
+				return true;
 			const auto worker_count = std::min(kMaximumWorkers, references.size());
 			if (worker_count == 1U)
-				return checkpoint_pin_contains(pin, references.front()) &&
-					verify_checkpoint_segment(directory, references.front(), payload_bytes);
+				return checkpoint_pin_contains(pin, references.front()) && verify_checkpoint_segment(directory, references.front(), payload_bytes);
 
 			std::atomic<std::size_t> next_reference{ 0U };
 			std::atomic<bool> valid{ true };
@@ -1041,11 +1113,11 @@ namespace texas::solver::multiway
 				while (valid.load(std::memory_order_relaxed))
 				{
 					const auto index = next_reference.fetch_add(1U, std::memory_order_relaxed);
-					if (index >= references.size()) return;
+					if (index >= references.size())
+						return;
 					try
 					{
-						if (!checkpoint_pin_contains(pin, references[index]) ||
-							!verify_checkpoint_segment(directory, references[index], payload_bytes))
+						if (!checkpoint_pin_contains(pin, references[index]) || !verify_checkpoint_segment(directory, references[index], payload_bytes))
 						{
 							valid.store(false, std::memory_order_relaxed);
 							return;
@@ -1061,7 +1133,8 @@ namespace texas::solver::multiway
 			};
 			const auto join_workers = [&]() noexcept {
 				for (auto& worker : workers)
-					if (worker.joinable()) worker.join();
+					if (worker.joinable())
+						worker.join();
 			};
 			try
 			{
@@ -1077,10 +1150,11 @@ namespace texas::solver::multiway
 			validate(0U);
 			join_workers();
 			for (const auto& error : worker_errors)
-				if (error) std::rethrow_exception(error);
+				if (error)
+					std::rethrow_exception(error);
 			return valid.load(std::memory_order_relaxed);
 		}
-	}
+	} // namespace
 
 	MultiwayExternalCheckpointManifest make_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& external_storage_directory,
@@ -1094,16 +1168,11 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 3U> component_generations{};
 		std::array<std::uint32_t, 3U> component_payload_bytes{};
 		std::array<std::uint64_t, 3U> component_last_batch_numbers{};
-		if (external_storage_directory.empty() || model_identity_hash == 0U ||
-			workflow_identity_hash == 0U || storage_identity_hash == 0U || schedule_hash == 0U ||
-			!load_multiway_external_generation(external_storage_directory, generation) ||
-			generation.generation == 0U || generation.committed_batch_number == 0U ||
-			generation.merge_fingerprint == 0U)
+		if (external_storage_directory.empty() || model_identity_hash == 0U || workflow_identity_hash == 0U || storage_identity_hash == 0U || schedule_hash == 0U || !load_multiway_external_generation(external_storage_directory, generation) || generation.generation == 0U || generation.committed_batch_number == 0U || generation.merge_fingerprint == 0U)
 			throw std::invalid_argument("external checkpoint capture identity is invalid");
 		auto segments = load_checkpoint_segment_references(external_storage_directory,
 			&component_generations, &component_payload_bytes, &component_last_batch_numbers);
-		if (component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
-			generation.row_generation, generation.page_generation })
+		if (component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation, generation.row_generation, generation.page_generation })
 			throw std::invalid_argument("external checkpoint components do not match the published generation");
 
 		MultiwayExternalCheckpointManifest checkpoint{};
@@ -1130,8 +1199,7 @@ namespace texas::solver::multiway
 	{
 		const auto& generation = manifest.generation;
 		MultiwayExternalGenerationManifest current_generation{};
-		if (path.empty() || external_storage_directory.empty() ||
-			!load_multiway_external_generation(external_storage_directory, current_generation))
+		if (path.empty() || external_storage_directory.empty() || !load_multiway_external_generation(external_storage_directory, current_generation))
 			throw std::invalid_argument("external checkpoint manifest identity is invalid");
 		std::array<std::uint64_t, 3U> component_generations{};
 		std::array<std::uint32_t, 3U> component_payload_bytes{};
@@ -1140,35 +1208,9 @@ namespace texas::solver::multiway
 			external_storage_directory, &component_generations,
 			&component_payload_bytes, &component_last_batch_numbers);
 		if (
-			manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
-			manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U ||
-			manifest.storage_identity_hash == 0U || manifest.schedule_hash == 0U ||
-			manifest.completed_batches >= generation.committed_batch_number ||
-			manifest.completed_trajectories < manifest.completed_batches ||
-			generation.generation == 0U || generation.committed_batch_number == 0U ||
-			manifest.wal_generation != generation.committed_batch_number ||
-			manifest.wal_committed_offset != 0U ||
-			generation.merge_fingerprint == 0U ||
-			generation.generation != current_generation.generation ||
-			generation.committed_batch_number != current_generation.committed_batch_number ||
-			generation.merge_fingerprint != current_generation.merge_fingerprint ||
-			generation.catalog_generation != current_generation.catalog_generation ||
-			generation.public_state_count != current_generation.public_state_count ||
-			generation.row_generation != current_generation.row_generation ||
-			generation.row_count != current_generation.row_count ||
-			generation.page_generation != current_generation.page_generation ||
-			generation.page_count != current_generation.page_count ||
-			generation.logical_value_count != current_generation.logical_value_count ||
-			generation.content_hash != current_generation.content_hash ||
-			component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
-				generation.row_generation, generation.page_generation } ||
-			manifest.linear_iteration_weighting > 1U || manifest.discounting_enabled > 1U ||
-			manifest.negative_regret_pruning_enabled > 1U ||
-			std::any_of(manifest.late_window_baseline.begin(), manifest.late_window_baseline.end(),
-				[](double value) { return !std::isfinite(value); }) ||
-			((generation.row_count == 0U) != (generation.logical_value_count == 0U)))
+			manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA || manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U || manifest.storage_identity_hash == 0U || manifest.schedule_hash == 0U || manifest.completed_batches >= generation.committed_batch_number || manifest.completed_trajectories < manifest.completed_batches || generation.generation == 0U || generation.committed_batch_number == 0U || manifest.wal_generation != generation.committed_batch_number || manifest.wal_committed_offset != 0U || generation.merge_fingerprint == 0U || generation.generation != current_generation.generation || generation.committed_batch_number != current_generation.committed_batch_number || generation.merge_fingerprint != current_generation.merge_fingerprint || generation.catalog_generation != current_generation.catalog_generation || generation.public_state_count != current_generation.public_state_count || generation.row_generation != current_generation.row_generation || generation.row_count != current_generation.row_count || generation.page_generation != current_generation.page_generation || generation.page_count != current_generation.page_count || generation.logical_value_count != current_generation.logical_value_count || generation.content_hash != current_generation.content_hash || component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation, generation.row_generation, generation.page_generation } || manifest.linear_iteration_weighting > 1U || manifest.discounting_enabled > 1U || manifest.negative_regret_pruning_enabled > 1U || std::any_of(manifest.late_window_baseline.begin(), manifest.late_window_baseline.end(), [](double value) { return !std::isfinite(value); }) || ((generation.row_count == 0U) != (generation.logical_value_count == 0U)))
 			throw std::invalid_argument("external checkpoint manifest identity is invalid");
-		std::vector<std::uint8_t> bytes{ 'T','X','M','W','C','P','6','1' };
+		std::vector<std::uint8_t> bytes{ 'T', 'X', 'M', 'W', 'C', 'P', '6', '1' };
 		append_u32(bytes, MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA);
 		append_u32(bytes, manifest.backend_schema);
 		append_u64(bytes, manifest.model_identity_hash);
@@ -1218,14 +1260,13 @@ namespace texas::solver::multiway
 		append_u64(bytes, manifest.river_rows);
 		for (const auto visits : manifest.street_visits)
 			append_u64(bytes, visits);
-		append_u32(bytes, static_cast<std::uint32_t>(manifest.linear_iteration_weighting) |
-			(static_cast<std::uint32_t>(manifest.discounting_enabled) << 8U) |
-			(static_cast<std::uint32_t>(manifest.negative_regret_pruning_enabled) << 16U));
+		append_u32(bytes, static_cast<std::uint32_t>(manifest.linear_iteration_weighting) | (static_cast<std::uint32_t>(manifest.discounting_enabled) << 8U) | (static_cast<std::uint32_t>(manifest.negative_regret_pruning_enabled) << 16U));
 		append_u64(bytes, manifest.late_window_baseline.size());
 		for (const auto value : manifest.late_window_baseline)
 			append_f64(bytes, value);
 		auto checksum = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		for (const auto byte : bytes)
+			texas::core::fingerprint::append_u8(checksum, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
 		if (disk_reserve_bytes != 0U)
 		{
@@ -1237,7 +1278,8 @@ namespace texas::solver::multiway
 			if (disk_error || storage_space.available < required)
 				throw std::runtime_error("external checkpoint storage disk preflight rejected");
 			const auto checkpoint_directory = path.parent_path().empty()
-				? std::filesystem::current_path(disk_error) : path.parent_path();
+				? std::filesystem::current_path(disk_error)
+				: path.parent_path();
 			if (disk_error)
 				throw std::runtime_error("external checkpoint destination disk telemetry is unavailable");
 			const auto checkpoint_space = std::filesystem::space(checkpoint_directory, disk_error);
@@ -1260,15 +1302,22 @@ namespace texas::solver::multiway
 		struct TemporaryFileCleanup
 		{
 			std::filesystem::path path;
-			~TemporaryFileCleanup() noexcept { std::error_code ignored; std::filesystem::remove(path, ignored); }
+			~TemporaryFileCleanup() noexcept
+			{
+				std::error_code ignored;
+				std::filesystem::remove(path, ignored);
+			}
 		} cleanup{ temporary };
 		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external checkpoint manifest cannot be opened");
+		if (!output)
+			throw std::runtime_error("external checkpoint manifest cannot be opened");
 		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		output.flush();
-		if (!output) throw std::runtime_error("external checkpoint manifest write failed");
+		if (!output)
+			throw std::runtime_error("external checkpoint manifest write failed");
 		output.close();
-		if (synchronous_durability) sync_file_path(temporary);
+		if (synchronous_durability)
+			sync_file_path(temporary);
 		if (options.fail_before_publication)
 			throw std::runtime_error("injected external checkpoint manifest publication failure");
 		texas::core::publish_atomic_replace(temporary, path,
@@ -1297,8 +1346,10 @@ namespace texas::solver::multiway
 		{
 			const auto directory = external_storage_directory / component;
 			std::filesystem::remove(checkpoint_pin_path(directory, pin_id), error);
-			if (error) throw std::runtime_error("external checkpoint pin cannot be released");
-			if (synchronous_durability) sync_directory_path(directory);
+			if (error)
+				throw std::runtime_error("external checkpoint pin cannot be released");
+			if (synchronous_durability)
+				sync_directory_path(directory);
 		}
 	}
 
@@ -1318,10 +1369,8 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
 		std::ifstream input(path, std::ios::binary);
 		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-		constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','C','P','6','1' };
-		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
-			read_u32(bytes.data() + 8U) != MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA ||
-			read_u32(bytes.data() + 12U) != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA)
+		constexpr std::array<std::uint8_t, 8U> magic = { 'T', 'X', 'M', 'W', 'C', 'P', '6', '1' };
+		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) || read_u32(bytes.data() + 8U) != MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA || read_u32(bytes.data() + 12U) != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA)
 			throw std::invalid_argument("external checkpoint manifest header is invalid");
 		auto checksum = kHashOffset;
 		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
@@ -1358,8 +1407,7 @@ namespace texas::solver::multiway
 			decoded.component_payload_bytes[component] = read_u32(bytes.data() + cursor);
 			cursor += 4U;
 			decoded.component_last_batch_numbers[component] = read_field();
-			if (decoded.component_payload_bytes[component] == 0U ||
-				decoded.component_last_batch_numbers[component] == 0U)
+			if (decoded.component_payload_bytes[component] == 0U || decoded.component_last_batch_numbers[component] == 0U)
 				throw std::invalid_argument("external checkpoint component metadata is invalid");
 		}
 		for (auto& component : decoded.segments)
@@ -1386,9 +1434,7 @@ namespace texas::solver::multiway
 		if (cursor != bytes.size() - 8U)
 		{
 			constexpr std::size_t kTrainingExtensionFixedBytes = 4U + 4U + 14U * 8U + 4U + 8U;
-			if (bytes.size() - 8U - cursor < kTrainingExtensionFixedBytes ||
-				read_u32(bytes.data() + cursor) != kCheckpointTrainingExtensionMagic ||
-				read_u32(bytes.data() + cursor + 4U) != 1U)
+			if (bytes.size() - 8U - cursor < kTrainingExtensionFixedBytes || read_u32(bytes.data() + cursor) != kCheckpointTrainingExtensionMagic || read_u32(bytes.data() + cursor + 4U) != 1U)
 				throw std::invalid_argument("external checkpoint training metadata extension is invalid");
 			cursor += 8U;
 			decoded.completed_batches = read_field();
@@ -1405,8 +1451,7 @@ namespace texas::solver::multiway
 				visits = read_field();
 			const auto flags = read_u32(bytes.data() + cursor);
 			cursor += 4U;
-			if ((flags & 0xff000000U) != 0U || (flags & 0xffU) > 1U ||
-				((flags >> 8U) & 0xffU) > 1U || ((flags >> 16U) & 0xffU) > 1U)
+			if ((flags & 0xff000000U) != 0U || (flags & 0xffU) > 1U || ((flags >> 8U) & 0xffU) > 1U || ((flags >> 16U) & 0xffU) > 1U)
 				throw std::invalid_argument("external checkpoint training flags are invalid");
 			decoded.linear_iteration_weighting = static_cast<std::uint8_t>(flags & 0xffU);
 			decoded.discounting_enabled = static_cast<std::uint8_t>((flags >> 8U) & 0xffU);
@@ -1433,25 +1478,11 @@ namespace texas::solver::multiway
 				external_storage_directory / kComponentNames[component], pin_id);
 			const auto pin = read_checkpoint_pin(pin_path);
 			if (!verify_checkpoint_segments(
-				external_storage_directory / kComponentNames[component],
-				decoded.segments[component], pin, decoded.component_payload_bytes[component]))
+					external_storage_directory / kComponentNames[component],
+					decoded.segments[component], pin, decoded.component_payload_bytes[component]))
 				throw std::invalid_argument("external checkpoint segment is not retained");
 		}
-		if (cursor != bytes.size() - 8U ||
-			generation.generation == 0U || generation.committed_batch_number == 0U ||
-			generation.merge_fingerprint == 0U ||
-			((generation.row_count == 0U) != (generation.logical_value_count == 0U)) ||
-			decoded.wal_generation != generation.committed_batch_number ||
-			decoded.wal_committed_offset != 0U ||
-			decoded.component_payload_bytes[0] == 0U ||
-			decoded.component_payload_bytes[1] == 0U ||
-			decoded.component_payload_bytes[2] == 0U ||
-			expected_model_identity_hash == 0U ||
-			expected_workflow_identity_hash == 0U || expected_storage_identity_hash == 0U ||
-			expected_schedule_hash == 0U || decoded.model_identity_hash != expected_model_identity_hash ||
-			decoded.workflow_identity_hash != expected_workflow_identity_hash ||
-			decoded.storage_identity_hash != expected_storage_identity_hash ||
-			decoded.schedule_hash != expected_schedule_hash)
+		if (cursor != bytes.size() - 8U || generation.generation == 0U || generation.committed_batch_number == 0U || generation.merge_fingerprint == 0U || ((generation.row_count == 0U) != (generation.logical_value_count == 0U)) || decoded.wal_generation != generation.committed_batch_number || decoded.wal_committed_offset != 0U || decoded.component_payload_bytes[0] == 0U || decoded.component_payload_bytes[1] == 0U || decoded.component_payload_bytes[2] == 0U || expected_model_identity_hash == 0U || expected_workflow_identity_hash == 0U || expected_storage_identity_hash == 0U || expected_schedule_hash == 0U || decoded.model_identity_hash != expected_model_identity_hash || decoded.workflow_identity_hash != expected_workflow_identity_hash || decoded.storage_identity_hash != expected_storage_identity_hash || decoded.schedule_hash != expected_schedule_hash)
 			throw std::invalid_argument("external checkpoint manifest identity or generation mismatch");
 		return decoded;
 	}
@@ -1466,16 +1497,14 @@ namespace texas::solver::multiway
 		bool synchronous_durability,
 		MultiwayExternalCheckpointRestoreOptions options)
 	{
-		if (checkpoint_path.empty() || external_storage_directory.empty() ||
-			options.fail_after_component_publications > kComponentNames.size())
+		if (checkpoint_path.empty() || external_storage_directory.empty() || options.fail_after_component_publications > kComponentNames.size())
 			throw std::invalid_argument("external checkpoint restore failure point is invalid");
 		recover_checkpoint_restore(external_storage_directory, synchronous_durability);
 		auto checkpoint = load_multiway_external_checkpoint_manifest(checkpoint_path,
 			external_storage_directory, expected_model_identity_hash,
 			expected_workflow_identity_hash, expected_storage_identity_hash,
 			expected_schedule_hash);
-		if (std::filesystem::exists(external_storage_directory / "TRAINING_BATCH.wal") ||
-			std::filesystem::exists(external_storage_directory / "TRAINING_BATCH.tmp"))
+		if (std::filesystem::exists(external_storage_directory / "TRAINING_BATCH.wal") || std::filesystem::exists(external_storage_directory / "TRAINING_BATCH.tmp"))
 			throw std::runtime_error("external checkpoint restore requires a committed batch boundary");
 		std::uint32_t previous_flags = 0U;
 		bool journal_published = false;
@@ -1492,7 +1521,8 @@ namespace texas::solver::multiway
 					if (std::filesystem::exists(backup))
 						throw std::runtime_error("external checkpoint restore has a stale component backup");
 					std::filesystem::copy_file(current, backup);
-					if (synchronous_durability) sync_file_path(backup);
+					if (synchronous_durability)
+						sync_file_path(backup);
 					previous_flags |= 1U << component;
 				}
 			}
@@ -1503,10 +1533,12 @@ namespace texas::solver::multiway
 				if (std::filesystem::exists(backup))
 					throw std::runtime_error("external checkpoint restore has a stale generation backup");
 				std::filesystem::copy_file(current_generation, backup);
-				if (synchronous_durability) sync_file_path(backup);
+				if (synchronous_durability)
+					sync_file_path(backup);
 				previous_flags |= 8U;
 			}
-			if (synchronous_durability) sync_directory_path(external_storage_directory);
+			if (synchronous_durability)
+				sync_directory_path(external_storage_directory);
 			std::array<std::vector<std::uint8_t>, 3U> target_component_manifests;
 			std::array<std::uint64_t, 3U> target_component_hashes{};
 			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
@@ -1556,7 +1588,8 @@ namespace texas::solver::multiway
 		std::filesystem::path directory, bool synchronous_durability)
 		: directory_(std::move(directory)), synchronous_durability_(synchronous_durability)
 	{
-		if (directory_.empty()) throw std::invalid_argument("external batch transaction directory is empty");
+		if (directory_.empty())
+			throw std::invalid_argument("external batch transaction directory is empty");
 		std::error_code error;
 		std::filesystem::create_directories(directory_, error);
 		if (error || !std::filesystem::is_directory(directory_, error) || error)
@@ -1570,9 +1603,7 @@ namespace texas::solver::multiway
 	void MultiwayExternalBatchTransaction::begin_batch(
 		std::uint64_t batch_number, std::uint64_t merge_fingerprint)
 	{
-		if (batch_open_ || batch_number == 0U ||
-			batch_number <= current_.committed_batch_number ||
-			current_.generation == std::numeric_limits<std::uint64_t>::max())
+		if (batch_open_ || batch_number == 0U || batch_number <= current_.committed_batch_number || current_.generation == std::numeric_limits<std::uint64_t>::max())
 			throw std::invalid_argument("external batch transaction identity is invalid");
 		previous_manifest_flags_ = 0U;
 		previous_component_generations_ = {};
@@ -1586,7 +1617,8 @@ namespace texas::solver::multiway
 			const auto component = directory_ / kComponentNames[index];
 			std::error_code error;
 			std::filesystem::create_directories(component, error);
-			if (error) throw std::runtime_error("external batch component directory cannot be created");
+			if (error)
+				throw std::runtime_error("external batch component directory cannot be created");
 			const auto info = read_component_manifest(component);
 			previous_component_generations_[index] = info.generation;
 			previous_component_batch_numbers_[index] = info.last_batch_number;
@@ -1594,17 +1626,20 @@ namespace texas::solver::multiway
 			if (std::filesystem::exists(backup))
 			{
 				std::filesystem::remove(backup, error);
-				if (error) throw std::runtime_error("stale external component backup cannot be removed");
+				if (error)
+					throw std::runtime_error("stale external component backup cannot be removed");
 			}
 			const auto current = component / "CURRENT";
 			if (info.exists)
 			{
 				std::filesystem::copy_file(current, backup);
-				if (synchronous_durability_) sync_file_path(backup);
+				if (synchronous_durability_)
+					sync_file_path(backup);
 				previous_manifest_flags_ |= (1U << index);
 			}
 		}
-		if (synchronous_durability_) sync_directory_path(directory_);
+		if (synchronous_durability_)
+			sync_directory_path(directory_);
 		try
 		{
 			write_transaction_wal(directory_, { previous_manifest_flags_, batch_number, merge_fingerprint },
@@ -1613,7 +1648,8 @@ namespace texas::solver::multiway
 		catch (...)
 		{
 			std::error_code ignored;
-			for (const auto* name : kBackupNames) std::filesystem::remove(directory_ / name, ignored);
+			for (const auto* name : kBackupNames)
+				std::filesystem::remove(directory_ / name, ignored);
 			std::filesystem::remove(temp, ignored);
 			std::filesystem::remove(wal, ignored);
 			previous_manifest_flags_ = 0U;
@@ -1627,10 +1663,10 @@ namespace texas::solver::multiway
 	void MultiwayExternalBatchTransaction::set_merge_fingerprint(
 		std::uint64_t merge_fingerprint)
 	{
-		if (!batch_open_ || merge_fingerprint == 0U ||
-			(merge_fingerprint_ != 0U && merge_fingerprint_ != merge_fingerprint))
+		if (!batch_open_ || merge_fingerprint == 0U || (merge_fingerprint_ != 0U && merge_fingerprint_ != merge_fingerprint))
 			throw std::invalid_argument("external batch merge fingerprint cannot be finalized");
-		if (merge_fingerprint_ == merge_fingerprint) return;
+		if (merge_fingerprint_ == merge_fingerprint)
+			return;
 		write_transaction_wal(directory_,
 			{ previous_manifest_flags_, batch_number_, merge_fingerprint },
 			synchronous_durability_, true);
@@ -1640,23 +1676,18 @@ namespace texas::solver::multiway
 	void MultiwayExternalBatchTransaction::commit_batch(
 		const MultiwayExternalGenerationManifest& manifest)
 	{
-		if (!batch_open_ || manifest.generation != current_.generation + 1U ||
-			manifest.committed_batch_number != batch_number_ || manifest.merge_fingerprint != merge_fingerprint_)
+		if (!batch_open_ || manifest.generation != current_.generation + 1U || manifest.committed_batch_number != batch_number_ || manifest.merge_fingerprint != merge_fingerprint_)
 			throw std::invalid_argument("external batch commit does not match its begin record");
 		const std::array<std::uint64_t, 3U> expected_generations = {
-			manifest.catalog_generation, manifest.row_generation, manifest.page_generation };
+			manifest.catalog_generation, manifest.row_generation, manifest.page_generation
+		};
 		for (std::size_t index = 0U; index < kComponentNames.size(); ++index)
 		{
 			const auto info = read_component_manifest(directory_ / kComponentNames[index]);
 			const bool generation_changed = info.generation != previous_component_generations_[index];
 			const bool page_component = index == 2U;
 			const auto previous_batch = previous_component_batch_numbers_[index];
-			const bool batch_number_valid = info.last_batch_number >= previous_batch &&
-				(page_component || info.last_batch_number <= batch_number_) &&
-				(!generation_changed || info.last_batch_number == previous_batch ||
-					(page_component ? info.last_batch_number > previous_batch
-						: info.last_batch_number == batch_number_)) &&
-				(generation_changed || info.last_batch_number == previous_batch);
+			const bool batch_number_valid = info.last_batch_number >= previous_batch && (page_component || info.last_batch_number <= batch_number_) && (!generation_changed || info.last_batch_number == previous_batch || (page_component ? info.last_batch_number > previous_batch : info.last_batch_number == batch_number_)) && (generation_changed || info.last_batch_number == previous_batch);
 			if (info.generation != expected_generations[index] || !batch_number_valid)
 				throw std::invalid_argument("external component generation does not match the batch commit");
 		}
@@ -1668,13 +1699,15 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalBatchTransaction::abort_batch()
 	{
-		if (!batch_open_) return;
+		if (!batch_open_)
+			return;
 		rollback_pending_batch(previous_manifest_flags_);
 		batch_open_ = false;
 		batch_number_ = 0U;
 		merge_fingerprint_ = 0U;
 		previous_manifest_flags_ = 0U;
-		if (!load_multiway_external_generation(directory_, current_)) current_ = {};
+		if (!load_multiway_external_generation(directory_, current_))
+			current_ = {};
 	}
 
 	void MultiwayExternalBatchTransaction::recover_pending_batch()
@@ -1687,15 +1720,15 @@ namespace texas::solver::multiway
 			{
 				std::error_code error;
 				std::filesystem::remove(temp, error);
-				if (error) throw std::runtime_error("incomplete external transaction journal cannot be removed");
+				if (error)
+					throw std::runtime_error("incomplete external transaction journal cannot be removed");
 			}
 			return;
 		}
 		const auto pending = read_transaction_wal(wal);
 		if (pending.batch_number <= current_.committed_batch_number)
 		{
-			if (pending.batch_number == current_.committed_batch_number &&
-				pending.merge_fingerprint != current_.merge_fingerprint)
+			if (pending.batch_number == current_.committed_batch_number && pending.merge_fingerprint != current_.merge_fingerprint)
 				throw std::invalid_argument("external transaction journal conflicts with the committed manifest");
 			clear_pending_batch();
 			return;
@@ -1710,8 +1743,7 @@ namespace texas::solver::multiway
 	{
 		MultiwayExternalGenerationManifest committed{};
 		const auto has_manifest = load_multiway_external_generation(directory_, committed);
-		if (has_manifest && committed.committed_batch_number >= batch_number_ &&
-			committed.committed_batch_number != 0U)
+		if (has_manifest && committed.committed_batch_number >= batch_number_ && committed.committed_batch_number != 0U)
 		{
 			if (committed.committed_batch_number == batch_number_ && committed.merge_fingerprint != merge_fingerprint_)
 				throw std::invalid_argument("external batch journal conflicts with the published generation");
@@ -1733,10 +1765,12 @@ namespace texas::solver::multiway
 				if (std::filesystem::exists(restore_temp))
 				{
 					std::filesystem::remove(restore_temp, error);
-					if (error) throw std::runtime_error("external transaction restore temporary cannot be cleared");
+					if (error)
+						throw std::runtime_error("external transaction restore temporary cannot be cleared");
 				}
 				std::filesystem::copy_file(backup, restore_temp);
-				if (synchronous_durability_) sync_file_path(restore_temp);
+				if (synchronous_durability_)
+					sync_file_path(restore_temp);
 				texas::core::publish_atomic_replace(restore_temp, current,
 					"external component manifest rollback failed",
 					texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
@@ -1744,18 +1778,22 @@ namespace texas::solver::multiway
 			else
 			{
 				std::filesystem::remove(current, error);
-				if (error) throw std::runtime_error("new external component manifest cannot be rolled back");
+				if (error)
+					throw std::runtime_error("new external component manifest cannot be rolled back");
 			}
 			for (const auto* name : { "BATCH.wal", "CURRENT.tmp", "CURRENT.restore.tmp" })
 			{
 				std::filesystem::remove(component / name, error);
-				if (error) throw std::runtime_error("external component transaction temporary cannot be removed");
+				if (error)
+					throw std::runtime_error("external component transaction temporary cannot be removed");
 			}
-			if (synchronous_durability_) sync_directory_path(component);
+			if (synchronous_durability_)
+				sync_directory_path(component);
 		}
 		std::error_code error;
 		std::filesystem::remove(directory_ / "TRAINING_CURRENT.tmp", error);
-		if (error) throw std::runtime_error("external training manifest temporary cannot be removed");
+		if (error)
+			throw std::runtime_error("external training manifest temporary cannot be removed");
 		current_ = {};
 		(void)load_multiway_external_generation(directory_, current_);
 		clear_pending_batch();
@@ -1767,14 +1805,17 @@ namespace texas::solver::multiway
 		for (const auto* name : { "TRAINING_BATCH.wal", "TRAINING_BATCH.tmp" })
 		{
 			std::filesystem::remove(directory_ / name, error);
-			if (error) throw std::runtime_error("external transaction journal cannot be removed");
+			if (error)
+				throw std::runtime_error("external transaction journal cannot be removed");
 		}
 		for (const auto* name : kBackupNames)
 		{
 			std::filesystem::remove(directory_ / name, error);
-			if (error) throw std::runtime_error("external transaction backup cannot be removed");
+			if (error)
+				throw std::runtime_error("external transaction backup cannot be removed");
 		}
-		if (synchronous_durability_) sync_directory_path(directory_);
+		if (synchronous_durability_)
+			sync_directory_path(directory_);
 		batch_number_ = 0U;
 		merge_fingerprint_ = 0U;
 		previous_manifest_flags_ = 0U;
@@ -1783,65 +1824,88 @@ namespace texas::solver::multiway
 	bool decode_external_public_node(const std::uint8_t* bytes, std::size_t size,
 		MultiwayPackedPublicNode& output) noexcept
 	{
-		if (bytes == nullptr || size < 8U || read_u32(bytes) != kNodeRecordMagic ||
-			read_u32(bytes + 4U) != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA)
+		if (bytes == nullptr || size < 8U || read_u32(bytes) != kNodeRecordMagic || read_u32(bytes + 4U) != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA)
 			return false;
-		if (size != kNodeRecordBytes) return false;
+		if (size != kNodeRecordBytes)
+			return false;
 		MultiwayPackedPublicNode node{};
 		std::size_t cursor = 8U;
 		const auto get_u32 = [&]() { const auto value = read_u32(bytes + cursor); cursor += 4U; return value; };
 		const auto get_i32 = [&]() { const auto value = read_i32(bytes + cursor); cursor += 4U; return value; };
 		const auto get_u64 = [&]() { const auto value = read_u64(bytes + cursor); cursor += 8U; return value; };
-		node.id.value = get_u64(); node.parent_id.value = get_u64(); node.canonical_history_id = get_u64();
-		for (auto& value : node.betting.stacks) value = get_i32();
-		for (auto& value : node.betting.contributions) value = get_i32();
-		for (auto& value : node.betting.street_contributions) value = get_i32();
-		for (auto& value : node.betting.folded) value = bytes[cursor++];
-		for (auto& value : node.betting.all_in) value = bytes[cursor++];
-		for (auto& value : node.betting.may_raise) value = bytes[cursor++];
-		for (auto& value : node.betting.pending) value = bytes[cursor++];
-		for (auto& value : node.betting.has_acted) value = bytes[cursor++];
-		for (auto& value : node.betting.bet_faced_when_acted) value = get_i32();
+		node.id.value = get_u64();
+		node.parent_id.value = get_u64();
+		node.canonical_history_id = get_u64();
+		for (auto& value : node.betting.stacks)
+			value = get_i32();
+		for (auto& value : node.betting.contributions)
+			value = get_i32();
+		for (auto& value : node.betting.street_contributions)
+			value = get_i32();
+		for (auto& value : node.betting.folded)
+			value = bytes[cursor++];
+		for (auto& value : node.betting.all_in)
+			value = bytes[cursor++];
+		for (auto& value : node.betting.may_raise)
+			value = bytes[cursor++];
+		for (auto& value : node.betting.pending)
+			value = bytes[cursor++];
+		for (auto& value : node.betting.has_acted)
+			value = bytes[cursor++];
+		for (auto& value : node.betting.bet_faced_when_acted)
+			value = get_i32();
 		node.betting.seat_count = bytes[cursor++];
-		node.betting.current_player = get_i32(); node.betting.last_aggressor = get_i32();
-		node.betting.current_bet = get_i32(); node.betting.last_full_raise_size = get_i32(); node.betting.big_blind = get_i32();
+		node.betting.current_player = get_i32();
+		node.betting.last_aggressor = get_i32();
+		node.betting.current_bet = get_i32();
+		node.betting.last_full_raise_size = get_i32();
+		node.betting.big_blind = get_i32();
 		node.betting.street = static_cast<core::Street>(bytes[cursor++]);
-		std::copy_n(bytes + cursor, node.board.size(), node.board.begin()); cursor += node.board.size();
+		std::copy_n(bytes + cursor, node.board.size(), node.board.begin());
+		cursor += node.board.size();
 		node.board_count = bytes[cursor++];
 		node.board_runout.remaining_board_cards = bytes[cursor++];
-		if (bytes[cursor] > 1U) return false;
+		if (bytes[cursor] > 1U)
+			return false;
 		node.board_runout.chance_only_runout = bytes[cursor++] != 0U;
 		node.incoming_kind = static_cast<MultiwayPublicParentEdgeKind>(bytes[cursor++]);
 		node.incoming_action.action = static_cast<MultiwayAction>(bytes[cursor++]);
 		node.incoming_action.action_index = get_u32();
 		node.incoming_action.target_street_contribution = get_i32();
 		node.incoming_action.action_menu_id = get_u64();
-		node.incoming_actor = get_i32(); node.dealt_card = bytes[cursor++];
-		std::copy_n(bytes + cursor, node.dealt_cards.size(), node.dealt_cards.begin()); cursor += node.dealt_cards.size();
+		node.incoming_actor = get_i32();
+		node.dealt_card = bytes[cursor++];
+		std::copy_n(bytes + cursor, node.dealt_cards.size(), node.dealt_cards.begin());
+		cursor += node.dealt_cards.size();
 		node.dealt_card_count = bytes[cursor++];
-		std::copy_n(bytes + cursor, node.transition_board.size(), node.transition_board.begin()); cursor += node.transition_board.size();
-		node.transition_board_count = bytes[cursor++]; node.legal_menu_handle = get_u32();
-		if (cursor != size || node.id.value == 0U || node.betting.seat_count > node.betting.stacks.size() ||
-			node.board_count > node.board.size() || node.dealt_card_count > node.dealt_cards.size() ||
-			node.transition_board_count > node.transition_board.size() ||
-			static_cast<std::uint8_t>(node.betting.street) > static_cast<std::uint8_t>(core::Street::Showdown) ||
-			static_cast<std::uint8_t>(node.incoming_kind) > static_cast<std::uint8_t>(MultiwayPublicParentEdgeKind::StreetTransition) ||
-			static_cast<std::uint8_t>(node.incoming_action.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn))
+		std::copy_n(bytes + cursor, node.transition_board.size(), node.transition_board.begin());
+		cursor += node.transition_board.size();
+		node.transition_board_count = bytes[cursor++];
+		node.legal_menu_handle = get_u32();
+		if (cursor != size || node.id.value == 0U || node.betting.seat_count > node.betting.stacks.size() || node.board_count > node.board.size() || node.dealt_card_count > node.dealt_cards.size() || node.transition_board_count > node.transition_board.size() || static_cast<std::uint8_t>(node.betting.street) > static_cast<std::uint8_t>(core::Street::Showdown) || static_cast<std::uint8_t>(node.incoming_kind) > static_cast<std::uint8_t>(MultiwayPublicParentEdgeKind::StreetTransition) || static_cast<std::uint8_t>(node.incoming_action.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn))
 			return false;
-		for (const auto value : node.betting.folded) if (value > 1U) return false;
-		for (const auto value : node.betting.all_in) if (value > 1U) return false;
-		for (const auto value : node.betting.may_raise) if (value > 1U) return false;
-		for (const auto value : node.betting.pending) if (value > 1U) return false;
-		for (const auto value : node.betting.has_acted) if (value > 1U) return false;
+		for (const auto value : node.betting.folded)
+			if (value > 1U)
+				return false;
+		for (const auto value : node.betting.all_in)
+			if (value > 1U)
+				return false;
+		for (const auto value : node.betting.may_raise)
+			if (value > 1U)
+				return false;
+		for (const auto value : node.betting.pending)
+			if (value > 1U)
+				return false;
+		for (const auto value : node.betting.has_acted)
+			if (value > 1U)
+				return false;
 		output = node;
 		return true;
 	}
 
 	void MultiwayExternalStorageConfig::validate(std::size_t payload_bytes) const
 	{
-		if (directory.empty() || payload_bytes == 0U || payload_bytes > std::numeric_limits<std::uint32_t>::max() ||
-			cache_bytes < payload_bytes + 8U || maximum_wal_bytes < payload_bytes + 56U ||
-			segment_target_bytes < payload_bytes + 8U || compaction_fan_in < 2U || compaction_scratch_bytes == 0U || disk_reserve_bytes == 0U)
+		if (directory.empty() || payload_bytes == 0U || payload_bytes > std::numeric_limits<std::uint32_t>::max() || cache_bytes < payload_bytes + 8U || maximum_wal_bytes < payload_bytes + 56U || segment_target_bytes < payload_bytes + 8U || compaction_fan_in < 2U || compaction_scratch_bytes == 0U || disk_reserve_bytes == 0U)
 			throw std::invalid_argument("external storage requires a directory and positive bounded resources");
 		constexpr std::uint64_t kCompactionCursorBytes = 2048U;
 		const auto per_cursor = checked_add(payload_bytes, kCompactionCursorBytes);
@@ -1857,9 +1921,11 @@ namespace texas::solver::multiway
 	{
 		config_.validate(payload_bytes_);
 		cache_capacity_ = static_cast<std::size_t>(config_.cache_bytes / (payload_bytes_ + sizeof(CacheEntry) + 8U));
-		if (cache_capacity_ == 0U) throw std::invalid_argument("external storage cache cannot hold one record");
+		if (cache_capacity_ == 0U)
+			throw std::invalid_argument("external storage cache cannot hold one record");
 		cache_.resize(cache_capacity_);
-		for (auto& entry : cache_) entry.payload.resize(payload_bytes_);
+		for (auto& entry : cache_)
+			entry.payload.resize(payload_bytes_);
 		std::error_code error;
 		if (std::filesystem::exists(config_.directory, error))
 		{
@@ -1867,27 +1933,28 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("external storage path is not a directory");
 			if (!std::filesystem::exists(config_.directory / "CURRENT", error))
 			{
-				if (error) throw std::runtime_error("external storage manifest cannot be inspected");
+				if (error)
+					throw std::runtime_error("external storage manifest cannot be inspected");
 				for (const auto& entry : std::filesystem::directory_iterator(config_.directory))
 				{
 					const auto name = entry.path().filename().string();
-					const bool checkpoint_pin = name.rfind("CHECKPOINT_", 0U) == 0U &&
-						name.size() >= 14U && name.substr(name.size() - 4U) == ".PIN";
-					const bool checkpoint_pin_temp = name.rfind("CHECKPOINT_", 0U) == 0U &&
-						name.size() >= 18U && name.substr(name.size() - 8U) == ".PIN.tmp";
-					if (name != "BATCH.wal" && name != "CURRENT.tmp" && !checkpoint_pin && !checkpoint_pin_temp &&
-						name.rfind("run_", 0U) != 0U)
+					const bool checkpoint_pin = name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 14U && name.substr(name.size() - 4U) == ".PIN";
+					const bool checkpoint_pin_temp = name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 18U && name.substr(name.size() - 8U) == ".PIN.tmp";
+					if (name != "BATCH.wal" && name != "CURRENT.tmp" && !checkpoint_pin && !checkpoint_pin_temp && name.rfind("run_", 0U) != 0U)
 						throw std::invalid_argument("external storage directory contains an unrecognized file without a manifest");
 				}
 			}
 		}
 		else
 		{
-			if (error) throw std::runtime_error("external storage directory cannot be inspected");
+			if (error)
+				throw std::runtime_error("external storage directory cannot be inspected");
 			std::filesystem::create_directories(config_.directory, error);
-			if (error) throw std::runtime_error("external storage directory cannot be created");
+			if (error)
+				throw std::runtime_error("external storage directory cannot be created");
 		}
-		if (std::filesystem::exists(config_.directory / "CURRENT")) load_manifest();
+		if (std::filesystem::exists(config_.directory / "CURRENT"))
+			load_manifest();
 		cleanup_orphans();
 		recover_wal();
 	}
@@ -1897,24 +1964,25 @@ namespace texas::solver::multiway
 	void MultiwayExternalRecordStore::begin_export_filter() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (failed_ || export_filter_) throw std::logic_error("external export filter cannot be started");
+		if (failed_ || export_filter_)
+			throw std::logic_error("external export filter cannot be started");
 		constexpr auto words = export_filter_bytes / sizeof(std::uint64_t);
 		auto filter = std::make_unique<std::uint64_t[]>(words);
 		constexpr auto mask = export_filter_bytes * 8U - 1U;
 		for (const auto& run : runs_)
 		{
-			if (std::filesystem::file_size(run.index_path) != run.record_count * 8U ||
-				std::filesystem::file_size(run.data_path) != record_bytes(run.record_count, payload_bytes_) ||
-				run_hash(run) != run.content_hash)
+			if (std::filesystem::file_size(run.index_path) != run.record_count * 8U || std::filesystem::file_size(run.data_path) != record_bytes(run.record_count, payload_bytes_) || run_hash(run) != run.content_hash)
 				throw std::invalid_argument("external export filter run validation failed");
 			std::ifstream index(run.index_path, std::ios::binary);
-			if (!index) throw std::runtime_error("external index run cannot be opened");
+			if (!index)
+				throw std::runtime_error("external index run cannot be opened");
 			std::uint64_t previous = 0U;
 			for (std::uint64_t i = 0U; i < run.record_count; ++i)
 			{
 				std::array<std::uint8_t, 8U> bytes{};
 				index.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
-				if (!index) throw std::runtime_error("external index run is truncated");
+				if (!index)
+					throw std::runtime_error("external index run is truncated");
 				const auto key = read_u64(bytes.data());
 				if (i != 0U && key <= previous)
 					throw std::invalid_argument("external index run is not strictly ordered");
@@ -1944,33 +2012,41 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalRecordStore::flush_file(const std::filesystem::path& path) const
 	{
-		if (!config_.synchronous_durability) return;
+		if (!config_.synchronous_durability)
+			return;
 #ifdef _WIN32
 		const auto handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-		if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("external storage file cannot be opened for durable flush");
+		if (handle == INVALID_HANDLE_VALUE)
+			throw std::runtime_error("external storage file cannot be opened for durable flush");
 		const auto ok = FlushFileBuffers(handle);
 		CloseHandle(handle);
-		if (!ok) throw std::runtime_error("external storage durable file flush failed");
+		if (!ok)
+			throw std::runtime_error("external storage durable file flush failed");
 #else
 		const auto descriptor = open(path.c_str(), O_RDONLY);
-		if (descriptor < 0) throw std::runtime_error("external storage file cannot be opened for durable flush");
+		if (descriptor < 0)
+			throw std::runtime_error("external storage file cannot be opened for durable flush");
 		const auto result = fsync(descriptor);
 		close(descriptor);
-		if (result != 0) throw std::runtime_error("external storage durable file flush failed");
+		if (result != 0)
+			throw std::runtime_error("external storage durable file flush failed");
 #endif
 	}
 
 	void MultiwayExternalRecordStore::flush_directory() const
 	{
-		if (!config_.synchronous_durability) return;
+		if (!config_.synchronous_durability)
+			return;
 #ifdef _WIN32
 		// Atomic replacement uses Windows write-through semantics in the shared helper.
 #else
 		const auto descriptor = open(config_.directory.c_str(), O_RDONLY | O_DIRECTORY);
-		if (descriptor < 0) throw std::runtime_error("external storage directory cannot be opened for durable flush");
+		if (descriptor < 0)
+			throw std::runtime_error("external storage directory cannot be opened for durable flush");
 		const auto result = fsync(descriptor);
 		close(descriptor);
-		if (result != 0) throw std::runtime_error("external storage durable directory flush failed");
+		if (result != 0)
+			throw std::runtime_error("external storage durable directory flush failed");
 #endif
 	}
 
@@ -1980,18 +2056,25 @@ namespace texas::solver::multiway
 	{
 		const auto wal = config_.directory / "BATCH.wal";
 		const auto bytes = checked_add(48U, record_bytes(records.size(), payload_bytes_));
-		if (bytes > config_.maximum_wal_bytes) throw std::length_error("external storage batch exceeds the WAL limit");
+		if (bytes > config_.maximum_wal_bytes)
+			throw std::length_error("external storage batch exceeds the WAL limit");
 		check_disk_reserve(bytes);
-		if (std::filesystem::exists(wal)) throw std::runtime_error("external storage has an unrecovered WAL");
+		if (std::filesystem::exists(wal))
+			throw std::runtime_error("external storage has an unrecovered WAL");
 		std::ofstream output(wal, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external storage WAL cannot be opened");
+		if (!output)
+			throw std::runtime_error("external storage WAL cannot be opened");
 		output.write(reinterpret_cast<const char*>(kWalMagic.data()), static_cast<std::streamsize>(kWalMagic.size()));
 		auto wal_hash = kHashOffset;
-		for (const auto byte : kWalMagic) texas::core::fingerprint::append_u8(wal_hash, byte);
+		for (const auto byte : kWalMagic)
+			texas::core::fingerprint::append_u8(wal_hash, byte);
 		const auto hash_u64 = [&wal_hash](std::uint64_t value) {
-			for (unsigned shift = 0U; shift < 64U; shift += 8U) texas::core::fingerprint::append_u8(wal_hash, static_cast<std::uint8_t>(value >> shift));
+			for (unsigned shift = 0U; shift < 64U; shift += 8U)
+				texas::core::fingerprint::append_u8(wal_hash, static_cast<std::uint8_t>(value >> shift));
 		};
-		hash_u64(batch_number); hash_u64(merge_fingerprint); hash_u64(records.size());
+		hash_u64(batch_number);
+		hash_u64(merge_fingerprint);
+		hash_u64(records.size());
 		write_u64(output, batch_number);
 		write_u64(output, merge_fingerprint);
 		write_u64(output, records.size());
@@ -2000,13 +2083,15 @@ namespace texas::solver::multiway
 			write_u64(output, record.key);
 			output.write(reinterpret_cast<const char*>(record.payload.data()), static_cast<std::streamsize>(record.payload.size()));
 			hash_u64(record.key);
-			for (const auto byte : record.payload) texas::core::fingerprint::append_u8(wal_hash, byte);
+			for (const auto byte : record.payload)
+				texas::core::fingerprint::append_u8(wal_hash, byte);
 		}
 		hash_u64(0x434f4d4d49545445ULL);
 		write_u64(output, 0x434f4d4d49545445ULL);
 		write_u64(output, texas::core::fingerprint::finish(wal_hash));
 		output.flush();
-		if (!output) throw std::runtime_error("external storage WAL write failed");
+		if (!output)
+			throw std::runtime_error("external storage WAL write failed");
 		output.close();
 		flush_file(wal);
 	}
@@ -2030,8 +2115,10 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
-		if (export_filter_) throw std::logic_error("external storage cannot mutate during export filter session");
+		if (failed_)
+			throw std::runtime_error("external storage is unavailable after a failed batch");
+		if (export_filter_)
+			throw std::logic_error("external storage cannot mutate during export filter session");
 		if ((allow_same_batch ? batch_number < last_batch_number_ : batch_number <= last_batch_number_) || records.empty())
 			throw std::invalid_argument("external storage batch number must increase and contain records");
 		for (std::size_t index = 0U; index < records.size(); ++index)
@@ -2039,12 +2126,15 @@ namespace texas::solver::multiway
 			if (records[index].payload.size() != payload_bytes_ || (index != 0U && records[index - 1U].key >= records[index].key))
 				throw std::invalid_argument("external storage batch records must be fixed-width and strictly sorted");
 		}
-		if (generation_ == std::numeric_limits<std::uint64_t>::max()) throw std::overflow_error("external storage generation overflows");
+		if (generation_ == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external storage generation overflows");
 		const auto next_generation = generation_ + 1U;
 		const auto data_path = run_path(config_.directory, next_generation, ".dat");
-		auto data_temp = data_path; data_temp += ".tmp";
+		auto data_temp = data_path;
+		data_temp += ".tmp";
 		const auto index_path = run_path(config_.directory, next_generation, ".idx");
-		auto index_temp = index_path; index_temp += ".tmp";
+		auto index_temp = index_path;
+		index_temp += ".tmp";
 		const auto batch_bytes = record_bytes(records.size(), payload_bytes_);
 		if (batch_bytes > config_.segment_target_bytes)
 			throw std::length_error("external storage batch exceeds the segment target");
@@ -2057,17 +2147,22 @@ namespace texas::solver::multiway
 			write_wal(batch_number, merge_fingerprint, records);
 			std::ofstream data(data_temp, std::ios::binary | std::ios::trunc);
 			std::ofstream index(index_temp, std::ios::binary | std::ios::trunc);
-			if (!data || !index) throw std::runtime_error("external storage segment cannot be opened");
+			if (!data || !index)
+				throw std::runtime_error("external storage segment cannot be opened");
 			for (const auto& record : records)
 			{
 				write_u64(data, record.key);
 				data.write(reinterpret_cast<const char*>(record.payload.data()), static_cast<std::streamsize>(record.payload.size()));
 				write_u64(index, record.key);
 			}
-			data.flush(); index.flush();
-			if (!data || !index) throw std::runtime_error("external storage segment write failed");
-			data.close(); index.close();
-			flush_file(data_temp); flush_file(index_temp);
+			data.flush();
+			index.flush();
+			if (!data || !index)
+				throw std::runtime_error("external storage segment write failed");
+			data.close();
+			index.close();
+			flush_file(data_temp);
+			flush_file(index_temp);
 			if (std::filesystem::exists(data_path) || std::filesystem::exists(index_path))
 				throw std::runtime_error("external storage generation file already exists");
 			texas::core::publish_atomic_replace(data_temp, data_path, "external data segment publish failed",
@@ -2089,7 +2184,8 @@ namespace texas::solver::multiway
 			for (const auto& record : records)
 			{
 				auto& cached = cache_[external_cache_slot(record.key, cache_.size())];
-				if (cached.valid && cached.key == record.key) cached.valid = false;
+				if (cached.valid && cached.key == record.key)
+					cached.valid = false;
 			}
 			flush_directory();
 			std::error_code ignored;
@@ -2118,7 +2214,8 @@ namespace texas::solver::multiway
 		if (payload == nullptr || payload_size != payload_bytes_)
 			throw std::invalid_argument("external lookup output buffer has the wrong size");
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
+		if (failed_)
+			throw std::runtime_error("external storage is unavailable after a failed batch");
 		return lookup_unlocked(key, payload, payload_size);
 	}
 
@@ -2127,7 +2224,8 @@ namespace texas::solver::multiway
 	{
 		payload.resize(payload_bytes_);
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
+		if (failed_)
+			throw std::runtime_error("external storage is unavailable after a failed batch");
 		++stats_.lookups;
 		auto& cached = cache_[external_cache_slot(key, cache_.size())];
 		if (cached.valid && cached.key == key)
@@ -2152,18 +2250,22 @@ namespace texas::solver::multiway
 				continue;
 			}
 			++stats_.disk_reads;
-			if (!lookup_run_profiled(*run, key, payload.data(), payload.size(), profile)) continue;
+			if (!lookup_run_profiled(*run, key, payload.data(), payload.size(), profile))
+				continue;
 			auto& entry = cache_[external_cache_slot(key, cache_.size())];
-			if (entry.valid) ++stats_.cache_evictions;
+			if (entry.valid)
+				++stats_.cache_evictions;
 			entry.key = key;
 			entry.valid = true;
 			std::copy_n(payload.data(), payload_bytes_, entry.payload.data());
 			stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - started).count());
+				std::chrono::steady_clock::now() - started)
+					.count());
 			return true;
 		}
 		stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-			std::chrono::steady_clock::now() - started).count());
+			std::chrono::steady_clock::now() - started)
+				.count());
 		return false;
 	}
 
@@ -2199,9 +2301,7 @@ namespace texas::solver::multiway
 			std::size_t cursor;
 		};
 		const auto greater = [](const Item& left, const Item& right) {
-			return left.key > right.key || (left.key == right.key &&
-				(left.generation < right.generation ||
-					(left.generation == right.generation && left.cursor > right.cursor)));
+			return left.key > right.key || (left.key == right.key && (left.generation < right.generation || (left.generation == right.generation && left.cursor > right.cursor)));
 		};
 		std::vector<Cursor> cursors(runs_.size());
 		std::priority_queue<Item, std::vector<Item>, decltype(greater)> queue(greater);
@@ -2282,17 +2382,21 @@ namespace texas::solver::multiway
 			return true;
 		}
 		++stats_.cache_misses;
-		if (export_filter_ && !export_filter_maybe_contains(export_filter_.get(), key)) return false;
+		if (export_filter_ && !export_filter_maybe_contains(export_filter_.get(), key))
+			return false;
 		const auto started = std::chrono::steady_clock::now();
 		for (auto run = runs_.rbegin(); run != runs_.rend(); ++run)
 		{
 			if (key < run->minimum_key || key > run->maximum_key)
 				continue;
 			++stats_.disk_reads;
-			if (!lookup_run(*run, key, payload, payload_size)) continue;
+			if (!lookup_run(*run, key, payload, payload_size))
+				continue;
 			auto& entry = cache_[external_cache_slot(key, cache_.size())];
-			if (entry.valid) ++stats_.cache_evictions;
-			entry.key = key; entry.valid = true;
+			if (entry.valid)
+				++stats_.cache_evictions;
+			entry.key = key;
+			entry.valid = true;
 			std::copy_n(payload, payload_size, entry.payload.data());
 			stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 			return true;
@@ -2305,7 +2409,8 @@ namespace texas::solver::multiway
 		std::uint8_t* payload, std::size_t payload_size) const
 	{
 		std::ifstream index(run.index_path, std::ios::binary);
-		if (!index) throw std::runtime_error("external index run cannot be opened");
+		if (!index)
+			throw std::runtime_error("external index run cannot be opened");
 		std::uint64_t first = 0U, last = run.record_count;
 		while (first < last)
 		{
@@ -2313,23 +2418,32 @@ namespace texas::solver::multiway
 			index.seekg(static_cast<std::streamoff>(middle * 8U));
 			std::array<std::uint8_t, 8U> bytes{};
 			index.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
-			if (!index) throw std::runtime_error("external index run is truncated");
+			if (!index)
+				throw std::runtime_error("external index run is truncated");
 			const auto candidate = read_u64(bytes.data());
-			if (candidate < key) first = middle + 1U;
-			else last = middle;
+			if (candidate < key)
+				first = middle + 1U;
+			else
+				last = middle;
 		}
-		if (first == run.record_count) return false;
-		index.clear(); index.seekg(static_cast<std::streamoff>(first * 8U));
+		if (first == run.record_count)
+			return false;
+		index.clear();
+		index.seekg(static_cast<std::streamoff>(first * 8U));
 		std::array<std::uint8_t, 8U> key_bytes{};
 		index.read(reinterpret_cast<char*>(key_bytes.data()), key_bytes.size());
-		if (!index) throw std::runtime_error("external index run is truncated");
-		if (read_u64(key_bytes.data()) != key) return false;
+		if (!index)
+			throw std::runtime_error("external index run is truncated");
+		if (read_u64(key_bytes.data()) != key)
+			return false;
 		std::ifstream data(run.data_path, std::ios::binary);
-		if (!data) throw std::runtime_error("external data segment cannot be opened");
+		if (!data)
+			throw std::runtime_error("external data segment cannot be opened");
 		const auto width = payload_bytes_ + 8U;
 		data.seekg(static_cast<std::streamoff>(first * width + 8U));
 		data.read(reinterpret_cast<char*>(payload), static_cast<std::streamsize>(payload_size));
-		if (!data) throw std::runtime_error("external data segment is truncated");
+		if (!data)
+			throw std::runtime_error("external data segment is truncated");
 		return true;
 	}
 
@@ -2341,7 +2455,8 @@ namespace texas::solver::multiway
 			OptionalExternalTimer timer(&profile.index_open_nanoseconds);
 			++profile.index_opens;
 			index.open(run.index_path, std::ios::binary);
-			if (!index) throw std::runtime_error("external index run cannot be opened");
+			if (!index)
+				throw std::runtime_error("external index run cannot be opened");
 		}
 		std::uint64_t first = 0U, last = run.record_count;
 		{
@@ -2354,26 +2469,34 @@ namespace texas::solver::multiway
 				++profile.index_reads;
 				profile.requested_bytes = multiway_memory_saturating_add(profile.requested_bytes, bytes.size());
 				index.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
-				if (!index) throw std::runtime_error("external index run is truncated");
+				if (!index)
+					throw std::runtime_error("external index run is truncated");
 				const auto candidate = read_u64(bytes.data());
-				if (candidate < key) first = middle + 1U;
-				else last = middle;
+				if (candidate < key)
+					first = middle + 1U;
+				else
+					last = middle;
 			}
-			if (first == run.record_count) return false;
-			index.clear(); index.seekg(static_cast<std::streamoff>(first * 8U));
+			if (first == run.record_count)
+				return false;
+			index.clear();
+			index.seekg(static_cast<std::streamoff>(first * 8U));
 			std::array<std::uint8_t, 8U> key_bytes{};
 			++profile.index_reads;
 			profile.requested_bytes = multiway_memory_saturating_add(profile.requested_bytes, key_bytes.size());
 			index.read(reinterpret_cast<char*>(key_bytes.data()), key_bytes.size());
-			if (!index) throw std::runtime_error("external index run is truncated");
-			if (read_u64(key_bytes.data()) != key) return false;
+			if (!index)
+				throw std::runtime_error("external index run is truncated");
+			if (read_u64(key_bytes.data()) != key)
+				return false;
 		}
 		std::ifstream data;
 		{
 			OptionalExternalTimer timer(&profile.data_open_nanoseconds);
 			++profile.data_opens;
 			data.open(run.data_path, std::ios::binary);
-			if (!data) throw std::runtime_error("external data segment cannot be opened");
+			if (!data)
+				throw std::runtime_error("external data segment cannot be opened");
 		}
 		{
 			OptionalExternalTimer timer(&profile.data_read_nanoseconds);
@@ -2382,15 +2505,15 @@ namespace texas::solver::multiway
 			++profile.data_reads;
 			profile.requested_bytes = multiway_memory_saturating_add(profile.requested_bytes, payload_size);
 			data.read(reinterpret_cast<char*>(payload), static_cast<std::streamsize>(payload_size));
-			if (!data) throw std::runtime_error("external data segment is truncated");
+			if (!data)
+				throw std::runtime_error("external data segment is truncated");
 		}
 		return true;
 	}
 
 	void MultiwayExternalRecordStore::load_run_key_range(Run& run) const
 	{
-		if (run.record_count == 0U || run.record_count >
-			(std::numeric_limits<std::uint64_t>::max() / 8U))
+		if (run.record_count == 0U || run.record_count > (std::numeric_limits<std::uint64_t>::max() / 8U))
 			throw std::invalid_argument("external index run key range has an invalid record count");
 		const auto last_offset = (run.record_count - 1U) * 8U;
 		if (last_offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max()))
@@ -2424,24 +2547,32 @@ namespace texas::solver::multiway
 	void MultiwayExternalRecordStore::publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number)
 	{
 		std::vector<std::uint8_t> bytes(kManifestMagic.begin(), kManifestMagic.end());
-		append_u32(bytes, kSchema); append_u32(bytes, static_cast<std::uint32_t>(payload_bytes_));
-		append_u64(bytes, next_generation); append_u64(bytes, runs.size());
+		append_u32(bytes, kSchema);
+		append_u32(bytes, static_cast<std::uint32_t>(payload_bytes_));
+		append_u64(bytes, next_generation);
+		append_u64(bytes, runs.size());
 		append_u64(bytes, last_batch_number);
 		for (const auto& run : runs)
 		{
-			append_u64(bytes, run.generation); append_u64(bytes, run.record_count); append_u64(bytes, run.content_hash);
+			append_u64(bytes, run.generation);
+			append_u64(bytes, run.record_count);
+			append_u64(bytes, run.content_hash);
 		}
 		auto hash = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
+		for (const auto byte : bytes)
+			texas::core::fingerprint::append_u8(hash, byte);
 		append_u64(bytes, hash);
 		const auto temp = config_.directory / "CURRENT.tmp";
 		const auto destination = config_.directory / "CURRENT";
-		if (std::filesystem::exists(temp)) throw std::runtime_error("external manifest temporary path already exists");
+		if (std::filesystem::exists(temp))
+			throw std::runtime_error("external manifest temporary path already exists");
 		std::ofstream output(temp, std::ios::binary | std::ios::trunc);
-		if (!output) throw std::runtime_error("external manifest cannot be opened");
+		if (!output)
+			throw std::runtime_error("external manifest cannot be opened");
 		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		output.flush();
-		if (!output) throw std::runtime_error("external manifest write failed");
+		if (!output)
+			throw std::runtime_error("external manifest write failed");
 		output.close();
 		flush_file(temp);
 		texas::core::publish_atomic_replace(temp, destination, "external manifest publish failed",
@@ -2453,7 +2584,8 @@ namespace texas::solver::multiway
 	{
 		const auto path = config_.directory / "CURRENT";
 		std::ifstream input(path, std::ios::binary);
-		if (!input) throw std::runtime_error("external storage manifest cannot be opened");
+		if (!input)
+			throw std::runtime_error("external storage manifest cannot be opened");
 		std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
 		constexpr std::size_t fixed = 8U + 4U + 4U + 8U + 8U + 8U + 8U;
 		if (bytes.size() < fixed || !std::equal(kManifestMagic.begin(), kManifestMagic.end(), bytes.begin()) || read_u32(bytes.data() + 8U) != kSchema || read_u32(bytes.data() + 12U) != payload_bytes_)
@@ -2464,8 +2596,10 @@ namespace texas::solver::multiway
 		if (run_count > (bytes.size() - fixed) / 24U || bytes.size() != fixed + run_count * 24U)
 			throw std::invalid_argument("external storage manifest has invalid run count");
 		auto hash = kHashOffset;
-		for (std::size_t index = 0U; index + 8U < bytes.size(); ++index) texas::core::fingerprint::append_u8(hash, bytes[index]);
-		if (hash != read_u64(bytes.data() + bytes.size() - 8U)) throw std::invalid_argument("external storage manifest checksum mismatch");
+		for (std::size_t index = 0U; index + 8U < bytes.size(); ++index)
+			texas::core::fingerprint::append_u8(hash, bytes[index]);
+		if (hash != read_u64(bytes.data() + bytes.size() - 8U))
+			throw std::invalid_argument("external storage manifest checksum mismatch");
 		std::vector<Run> runs;
 		runs.reserve(static_cast<std::size_t>(run_count));
 		std::size_t cursor = 40U;
@@ -2474,23 +2608,27 @@ namespace texas::solver::multiway
 		for (std::uint64_t index = 0U; index < run_count; ++index)
 		{
 			Run run;
-			run.generation = read_u64(bytes.data() + cursor); cursor += 8U;
-			run.record_count = read_u64(bytes.data() + cursor); cursor += 8U;
-			run.content_hash = read_u64(bytes.data() + cursor); cursor += 8U;
+			run.generation = read_u64(bytes.data() + cursor);
+			cursor += 8U;
+			run.record_count = read_u64(bytes.data() + cursor);
+			cursor += 8U;
+			run.content_hash = read_u64(bytes.data() + cursor);
+			cursor += 8U;
 			if (run.generation <= max_run_generation || run.record_count == 0U)
 				throw std::invalid_argument("external storage manifest run order is invalid");
 			max_run_generation = run.generation;
 			run.data_path = run_path(config_.directory, run.generation, ".dat");
 			run.index_path = run_path(config_.directory, run.generation, ".idx");
-			if (std::filesystem::file_size(run.data_path) != record_bytes(run.record_count, payload_bytes_) ||
-				std::filesystem::file_size(run.index_path) != run.record_count * 8U)
+			if (std::filesystem::file_size(run.data_path) != record_bytes(run.record_count, payload_bytes_) || std::filesystem::file_size(run.index_path) != run.record_count * 8U)
 				throw std::invalid_argument("external storage run length is invalid");
-			if (run_hash(run) != run.content_hash) throw std::invalid_argument("external storage run checksum mismatch");
+			if (run_hash(run) != run.content_hash)
+				throw std::invalid_argument("external storage run checksum mismatch");
 			load_run_key_range(run);
 			total_records = checked_add(total_records, run.record_count);
 			runs.push_back(std::move(run));
 		}
-		if (next_generation < max_run_generation) throw std::invalid_argument("external storage generation regressed");
+		if (next_generation < max_run_generation)
+			throw std::invalid_argument("external storage generation regressed");
 		generation_ = next_generation;
 		record_count_ = total_records;
 		runs_.swap(runs);
@@ -2502,28 +2640,37 @@ namespace texas::solver::multiway
 		const auto pinned_generations = load_pinned_run_generations(config_.directory);
 		for (const auto& entry : std::filesystem::directory_iterator(config_.directory))
 		{
-			if (!entry.is_regular_file()) throw std::invalid_argument("external storage directory contains a non-file entry");
+			if (!entry.is_regular_file())
+				throw std::invalid_argument("external storage directory contains a non-file entry");
 			const auto name = entry.path().filename().string();
-			if (name == "CURRENT" || name == "BATCH.wal") continue;
+			if (name == "CURRENT" || name == "BATCH.wal")
+				continue;
 			bool keep = false;
 			if (name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 14U && name.substr(name.size() - 4U) == ".PIN")
 			{
 				(void)read_checkpoint_pin(entry.path());
 				keep = true;
 			}
-			else if (name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 18U &&
-				name.substr(name.size() - 8U) == ".PIN.tmp")
+			else if (name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 18U && name.substr(name.size() - 8U) == ".PIN.tmp")
 				keep = false;
 			else if (name.rfind("run_", 0U) == 0U)
 			{
 				const auto separator = name.find('.', 4U);
-				if (separator == std::string::npos) throw std::invalid_argument("external storage run filename is invalid");
+				if (separator == std::string::npos)
+					throw std::invalid_argument("external storage run filename is invalid");
 				const auto generation_text = name.substr(4U, separator - 4U);
 				std::size_t consumed = 0U;
 				std::uint64_t run_generation = 0U;
-				try { run_generation = std::stoull(generation_text, &consumed, 10); }
-				catch (...) { throw std::invalid_argument("external storage run generation is invalid"); }
-				if (consumed != generation_text.size()) throw std::invalid_argument("external storage run generation is invalid");
+				try
+				{
+					run_generation = std::stoull(generation_text, &consumed, 10);
+				}
+				catch (...)
+				{
+					throw std::invalid_argument("external storage run generation is invalid");
+				}
+				if (consumed != generation_text.size())
+					throw std::invalid_argument("external storage run generation is invalid");
 				const auto suffix = name.substr(separator);
 				if (suffix != ".dat" && suffix != ".idx" && suffix != ".dat.tmp" && suffix != ".idx.tmp")
 					throw std::invalid_argument("external storage run filename has an invalid suffix");
@@ -2531,11 +2678,11 @@ namespace texas::solver::multiway
 				{
 					const auto run = std::lower_bound(runs_.begin(), runs_.end(), run_generation,
 						[](const Run& candidate, std::uint64_t generation) { return candidate.generation < generation; });
-					if (run != runs_.end() && run->generation == run_generation &&
-						entry.path() == (suffix == ".dat" ? run->data_path : run->index_path)) keep = true;
+					if (run != runs_.end() && run->generation == run_generation && entry.path() == (suffix == ".dat" ? run->data_path : run->index_path))
+						keep = true;
 				}
-				if ((suffix == ".dat" || suffix == ".idx") &&
-					std::binary_search(pinned_generations.begin(), pinned_generations.end(), run_generation)) keep = true;
+				if ((suffix == ".dat" || suffix == ".idx") && std::binary_search(pinned_generations.begin(), pinned_generations.end(), run_generation))
+					keep = true;
 			}
 			else if (name != "CURRENT.tmp")
 				throw std::invalid_argument("external storage directory contains an unrecognized file");
@@ -2543,35 +2690,41 @@ namespace texas::solver::multiway
 			{
 				std::error_code error;
 				std::filesystem::remove(entry.path(), error);
-				if (error) throw std::runtime_error("external storage orphan cannot be removed");
+				if (error)
+					throw std::runtime_error("external storage orphan cannot be removed");
 				removed = true;
 			}
 		}
-		if (removed) flush_directory();
+		if (removed)
+			flush_directory();
 	}
 
 	void MultiwayExternalRecordStore::recover_wal()
 	{
 		const auto path = config_.directory / "BATCH.wal";
-		if (!std::filesystem::exists(path)) return;
+		if (!std::filesystem::exists(path))
+			return;
 		const auto file_bytes = std::filesystem::file_size(path);
 		if (file_bytes > config_.maximum_wal_bytes)
 			throw std::invalid_argument("external storage WAL length is invalid");
 		const auto discard_uncommitted = [&]() {
 			std::error_code error;
 			std::filesystem::remove(path, error);
-			if (error) throw std::runtime_error("external storage uncommitted WAL cannot be removed");
+			if (error)
+				throw std::runtime_error("external storage uncommitted WAL cannot be removed");
 			if (generation_ != std::numeric_limits<std::uint64_t>::max())
 			{
 				const auto next_generation = generation_ + 1U;
 				for (const auto* suffix : { ".dat", ".idx", ".dat.tmp", ".idx.tmp" })
 				{
 					std::filesystem::remove(run_path(config_.directory, next_generation, suffix), error);
-					if (error) throw std::runtime_error("external storage orphan generation cannot be removed");
+					if (error)
+						throw std::runtime_error("external storage orphan generation cannot be removed");
 				}
 			}
 			std::filesystem::remove(config_.directory / "CURRENT.tmp", error);
-			if (error) throw std::runtime_error("external storage orphan manifest cannot be removed");
+			if (error)
+				throw std::runtime_error("external storage orphan manifest cannot be removed");
 			flush_directory();
 		};
 		if (file_bytes < 32U)
@@ -2580,12 +2733,15 @@ namespace texas::solver::multiway
 			return;
 		}
 		std::ifstream input(path, std::ios::binary);
-		if (!input) throw std::runtime_error("external storage WAL cannot be opened for recovery");
+		if (!input)
+			throw std::runtime_error("external storage WAL cannot be opened for recovery");
 		std::vector<std::uint8_t> bytes(static_cast<std::size_t>(file_bytes));
 		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		if (!input || !std::equal(kWalMagic.begin(), kWalMagic.end(), bytes.begin()))
 		{
-			input.close(); discard_uncommitted(); return;
+			input.close();
+			discard_uncommitted();
+			return;
 		}
 		const auto batch_number = read_u64(bytes.data() + 8U);
 		const auto merge_fingerprint = read_u64(bytes.data() + 16U);
@@ -2595,7 +2751,8 @@ namespace texas::solver::multiway
 		{
 			std::error_code error;
 			std::filesystem::remove(path, error);
-			if (error) throw std::runtime_error("external storage already committed WAL cannot be removed");
+			if (error)
+				throw std::runtime_error("external storage already committed WAL cannot be removed");
 			flush_directory();
 			return;
 		}
@@ -2637,7 +2794,8 @@ namespace texas::solver::multiway
 		for (std::uint64_t index = 0U; index < count; ++index)
 		{
 			MultiwayExternalRecord record;
-			record.key = read_u64(bytes.data() + cursor); cursor += 8U;
+			record.key = read_u64(bytes.data() + cursor);
+			cursor += 8U;
 			record.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(cursor),
 				bytes.begin() + static_cast<std::ptrdiff_t>(cursor + payload_bytes_));
 			cursor += payload_bytes_;
@@ -2648,23 +2806,28 @@ namespace texas::solver::multiway
 			}
 			records.push_back(std::move(record));
 		}
-		if (records.empty()) throw std::invalid_argument("external storage WAL contains no records");
-		if (generation_ == std::numeric_limits<std::uint64_t>::max()) throw std::overflow_error("external storage generation overflows");
+		if (records.empty())
+			throw std::invalid_argument("external storage WAL contains no records");
+		if (generation_ == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external storage generation overflows");
 		const auto next_generation = generation_ + 1U;
 		for (const auto* suffix : { ".dat", ".idx", ".dat.tmp", ".idx.tmp" })
 		{
 			std::error_code error;
 			std::filesystem::remove(run_path(config_.directory, next_generation, suffix), error);
-			if (error) throw std::runtime_error("external storage orphan generation cannot be removed");
+			if (error)
+				throw std::runtime_error("external storage orphan generation cannot be removed");
 		}
 		{
 			std::error_code error;
 			std::filesystem::remove(config_.directory / "CURRENT.tmp", error);
-			if (error) throw std::runtime_error("external storage orphan manifest cannot be removed");
+			if (error)
+				throw std::runtime_error("external storage orphan manifest cannot be removed");
 		}
 		std::error_code remove_error;
 		std::filesystem::remove(path, remove_error);
-		if (remove_error) throw std::runtime_error("external storage recovered WAL cannot be removed");
+		if (remove_error)
+			throw std::runtime_error("external storage recovered WAL cannot be removed");
 		flush_directory();
 		append_batch(batch_number, merge_fingerprint, records);
 	}
@@ -2680,9 +2843,12 @@ namespace texas::solver::multiway
 	void MultiwayExternalRecordStore::compact(bool retain_input_runs)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (export_filter_) throw std::logic_error("external storage cannot mutate during export filter session");
-		if (runs_.size() < config_.compaction_fan_in) return;
-		if (generation_ == std::numeric_limits<std::uint64_t>::max()) throw std::overflow_error("external storage generation overflows");
+		if (export_filter_)
+			throw std::logic_error("external storage cannot mutate during export filter session");
+		if (runs_.size() < config_.compaction_fan_in)
+			return;
+		if (generation_ == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external storage generation overflows");
 		cleanup_orphans();
 		const auto input_count = static_cast<std::size_t>(config_.compaction_fan_in);
 		const auto input_start = runs_.size() - input_count;
@@ -2705,20 +2871,36 @@ namespace texas::solver::multiway
 			bool complete = false;
 			~CompactionFailureLatch() noexcept
 			{
-				if (!complete) failed = true;
+				if (!complete)
+					failed = true;
 			}
 		} failure_latch{ failed_ };
 		const auto next_generation = generation_ + 1U;
 		const auto data_path = run_path(config_.directory, next_generation, ".dat");
 		const auto index_path = run_path(config_.directory, next_generation, ".idx");
-		auto data_temp = data_path; data_temp += ".tmp";
-		auto index_temp = index_path; index_temp += ".tmp";
-		struct Cursor { std::ifstream index; std::ifstream data; std::uint64_t generation = 0U; std::uint64_t count = 0U; std::uint64_t position = 0U; std::uint64_t key = 0U; std::vector<std::uint8_t> payload; };
+		auto data_temp = data_path;
+		data_temp += ".tmp";
+		auto index_temp = index_path;
+		index_temp += ".tmp";
+		struct Cursor
+		{
+			std::ifstream index;
+			std::ifstream data;
+			std::uint64_t generation = 0U;
+			std::uint64_t count = 0U;
+			std::uint64_t position = 0U;
+			std::uint64_t key = 0U;
+			std::vector<std::uint8_t> payload;
+		};
 		std::vector<Cursor> cursors(input_count);
-		struct Item { std::uint64_t key; std::uint64_t generation; std::size_t cursor; };
+		struct Item
+		{
+			std::uint64_t key;
+			std::uint64_t generation;
+			std::size_t cursor;
+		};
 		const auto greater = [](const Item& left, const Item& right) {
-			return left.key > right.key || (left.key == right.key && (left.generation < right.generation ||
-				(left.generation == right.generation && left.cursor > right.cursor)));
+			return left.key > right.key || (left.key == right.key && (left.generation < right.generation || (left.generation == right.generation && left.cursor > right.cursor)));
 		};
 		std::priority_queue<Item, std::vector<Item>, decltype(greater)> queue(greater);
 		std::vector<std::size_t> consumed;
@@ -2727,7 +2909,8 @@ namespace texas::solver::multiway
 			auto& cursor = cursors[index];
 			std::array<std::uint8_t, 8U> bytes{};
 			cursor.index.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
-			if (!cursor.index) return false;
+			if (!cursor.index)
+				return false;
 			cursor.key = read_u64(bytes.data());
 			cursor.data.seekg(static_cast<std::streamoff>(cursor.position * (payload_bytes_ + 8U)));
 			std::array<std::uint8_t, 8U> data_key_bytes{};
@@ -2735,7 +2918,8 @@ namespace texas::solver::multiway
 			if (!cursor.data || read_u64(data_key_bytes.data()) != cursor.key)
 				throw std::invalid_argument("external compaction index and data keys disagree");
 			cursor.data.read(reinterpret_cast<char*>(cursor.payload.data()), static_cast<std::streamsize>(payload_bytes_));
-			if (!cursor.data) throw std::runtime_error("external compaction input is truncated");
+			if (!cursor.data)
+				throw std::runtime_error("external compaction input is truncated");
 			return true;
 		};
 		for (std::size_t index = 0U; index < input_count; ++index)
@@ -2752,14 +2936,16 @@ namespace texas::solver::multiway
 		check_disk_reserve(checked_add(output_bytes, record_bytes(total_records, 0U)));
 		std::ofstream data(data_temp, std::ios::binary | std::ios::trunc);
 		std::ofstream index(index_temp, std::ios::binary | std::ios::trunc);
-		if (!data || !index) throw std::runtime_error("external compaction output cannot be opened");
+		if (!data || !index)
+			throw std::runtime_error("external compaction output cannot be opened");
 		std::uint64_t compacted_count = 0U;
 		std::uint64_t minimum_key = 0U;
 		std::uint64_t maximum_key = 0U;
 		bool has_key_range = false;
 		while (!queue.empty())
 		{
-			const auto item = queue.top(); queue.pop();
+			const auto item = queue.top();
+			queue.pop();
 			consumed.clear();
 			consumed.push_back(item.cursor);
 			while (!queue.empty() && queue.top().key == item.key)
@@ -2774,7 +2960,8 @@ namespace texas::solver::multiway
 				has_key_range = true;
 			}
 			maximum_key = item.key;
-			write_u64(data, item.key); data.write(reinterpret_cast<const char*>(newest.payload.data()), static_cast<std::streamsize>(payload_bytes_));
+			write_u64(data, item.key);
+			data.write(reinterpret_cast<const char*>(newest.payload.data()), static_cast<std::streamsize>(payload_bytes_));
 			write_u64(index, item.key);
 			++compacted_count;
 			for (const auto cursor_index : consumed)
@@ -2783,14 +2970,20 @@ namespace texas::solver::multiway
 				++cursor.position;
 				if (cursor.position < cursor.count)
 				{
-					if (!read_next(cursor_index)) throw std::runtime_error("external compaction input ended early");
+					if (!read_next(cursor_index))
+						throw std::runtime_error("external compaction input ended early");
 					queue.push({ cursor.key, cursor.generation, cursor_index });
 				}
 			}
 		}
-		data.flush(); index.flush();
-		if (!data || !index) throw std::runtime_error("external compaction write failed");
-		data.close(); index.close(); flush_file(data_temp); flush_file(index_temp);
+		data.flush();
+		index.flush();
+		if (!data || !index)
+			throw std::runtime_error("external compaction write failed");
+		data.close();
+		index.close();
+		flush_file(data_temp);
+		flush_file(index_temp);
 		texas::core::publish_atomic_replace(data_temp, data_path, "external compacted segment publish failed", texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		texas::core::publish_atomic_replace(index_temp, index_path, "external compacted index publish failed", texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		Run merged{ next_generation, compacted_count, 0U, data_path, index_path };
@@ -2830,8 +3023,7 @@ namespace texas::solver::multiway
 
 	MultiwayExternalPublicCatalog::MultiwayExternalPublicCatalog(
 		MultiwayExternalStorageConfig config, std::size_t maximum_ancestry_depth)
-		: store_(std::move(config), external_public_catalog_record_size()),
-		  maximum_ancestry_depth_(maximum_ancestry_depth)
+		: store_(std::move(config), external_public_catalog_record_size()), maximum_ancestry_depth_(maximum_ancestry_depth)
 	{
 		if (maximum_ancestry_depth_ == 0U)
 			throw std::invalid_argument("external public catalog requires a positive ancestry depth bound");
@@ -2846,8 +3038,7 @@ namespace texas::solver::multiway
 		existing_nodes.assign(states.size(), MultiwayPackedPublicNode{});
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
-			if (states[index].id.value == 0U ||
-				(index != 0U && states[index - 1U].id.value >= states[index].id.value))
+			if (states[index].id.value == 0U || (index != 0U && states[index - 1U].id.value >= states[index].id.value))
 				throw std::invalid_argument("external public-state classification requires sorted unique nonzero ids");
 			if (lookup(states[index].id, existing_nodes[index]))
 				new_state_flags[index] = 0U;
@@ -2862,8 +3053,7 @@ namespace texas::solver::multiway
 		MultiwayPackedPublicNode existing{};
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
-			if (states[index].id.value == 0U ||
-				(index != 0U && states[index - 1U].id.value >= states[index].id.value))
+			if (states[index].id.value == 0U || (index != 0U && states[index - 1U].id.value >= states[index].id.value))
 				throw std::invalid_argument("external public-state classification requires sorted unique nonzero ids");
 			if (lookup(states[index].id, existing))
 				new_state_flags[index] = 0U;
@@ -2873,7 +3063,8 @@ namespace texas::solver::multiway
 	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
 		std::uint64_t merge_fingerprint, const std::vector<MultiwayPackedPublicNode>& nodes)
 	{
-		if (nodes.empty()) return;
+		if (nodes.empty())
+			return;
 		const auto record_width = checked_add(external_public_catalog_record_size(), 8U);
 		const auto wal_limit = store_.maximum_batch_bytes();
 		if (wal_limit < 48U)
@@ -2886,8 +3077,7 @@ namespace texas::solver::multiway
 			max_records, std::numeric_limits<std::size_t>::max()));
 		for (std::size_t index = 0U; index < nodes.size(); ++index)
 		{
-			if (nodes[index].id.value == 0U || nodes[index].legal_menu_handle != 0U ||
-				(index != 0U && nodes[index - 1U].id.value >= nodes[index].id.value))
+			if (nodes[index].id.value == 0U || nodes[index].legal_menu_handle != 0U || (index != 0U && nodes[index - 1U].id.value >= nodes[index].id.value))
 				throw std::invalid_argument("external menu-less catalog batch requires sorted unique states with menu handle zero");
 			if (contains(nodes[index].id))
 				throw std::invalid_argument("external public catalog cannot append an existing state id");
@@ -2915,7 +3105,8 @@ namespace texas::solver::multiway
 				records.clear();
 			}
 		}
-		if (!records.empty()) store_.append_batch_continuation(batch_number, merge_fingerprint, records);
+		if (!records.empty())
+			store_.append_batch_continuation(batch_number, merge_fingerprint, records);
 	}
 
 	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
@@ -2943,23 +3134,20 @@ namespace texas::solver::multiway
 		const std::vector<std::uint8_t>* new_state_flags,
 		const std::vector<MultiwayPackedPublicNode>* packed_nodes)
 	{
-		if ((new_state_flags != nullptr && states.size() != new_state_flags->size()) ||
-			(packed_nodes != nullptr && packed_nodes->size() != states.size()))
+		if ((new_state_flags != nullptr && states.size() != new_state_flags->size()) || (packed_nodes != nullptr && packed_nodes->size() != states.size()))
 			throw std::invalid_argument("external public catalog discovery batch dimensions mismatch");
 		for (std::size_t index = 0U; index < states.size(); ++index)
-			if (states[index].id.value == 0U ||
-				(index != 0U && states[index - 1U].id.value >= states[index].id.value))
+			if (states[index].id.value == 0U || (index != 0U && states[index - 1U].id.value >= states[index].id.value))
 				throw std::invalid_argument("external public catalog discovery states must be sorted and unique");
-		if (new_state_flags != nullptr && std::any_of(new_state_flags->begin(), new_state_flags->end(),
-			[](std::uint8_t flag) { return flag > 1U; }))
+		if (new_state_flags != nullptr && std::any_of(new_state_flags->begin(), new_state_flags->end(), [](std::uint8_t flag) { return flag > 1U; }))
 			throw std::invalid_argument("external public catalog discovery flags are invalid");
 		if (new_state_flags != nullptr)
 			for (std::size_t index = 0U; index < states.size(); ++index)
 				if ((*new_state_flags)[index] == 0U && !contains(states[index].id))
 					throw std::invalid_argument("external public catalog classified a missing state as existing");
-		const auto new_count = new_state_flags == nullptr ? states.size() : static_cast<std::size_t>(
-			std::count(new_state_flags->begin(), new_state_flags->end(), 1U));
-		if (new_count == 0U) return;
+		const auto new_count = new_state_flags == nullptr ? states.size() : static_cast<std::size_t>(std::count(new_state_flags->begin(), new_state_flags->end(), 1U));
+		if (new_count == 0U)
+			return;
 		const auto record_width = checked_add(external_public_catalog_record_size(), 8U);
 		const auto wal_limit = store_.maximum_batch_bytes();
 		if (wal_limit < 48U)
@@ -2973,13 +3161,13 @@ namespace texas::solver::multiway
 		std::uint64_t previous_id = 0U;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
-			if (new_state_flags != nullptr && (*new_state_flags)[index] == 0U) continue;
+			if (new_state_flags != nullptr && (*new_state_flags)[index] == 0U)
+				continue;
 			const auto& descriptor = states[index];
 			const auto node = packed_nodes == nullptr
 				? MultiwayPublicCatalog::pack_node(descriptor)
 				: (*packed_nodes)[index];
-			if (node.id.value == 0U || descriptor.id != node.id || node.id.value <= previous_id ||
-				descriptor.legal_actions.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+			if (node.id.value == 0U || descriptor.id != node.id || node.id.value <= previous_id || descriptor.legal_actions.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 				throw std::invalid_argument("external public catalog batch has invalid identity, order, or menu size");
 			if (contains(node.id))
 				throw std::invalid_argument("external public catalog cannot append an existing state id");
@@ -2987,12 +3175,7 @@ namespace texas::solver::multiway
 			for (std::size_t action = 0U; action < descriptor.legal_actions.size(); ++action)
 			{
 				const auto& item = descriptor.legal_actions[action];
-				if (static_cast<std::uint8_t>(item.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn) ||
-					item.action_index != action || item.target_street_contribution < 0 || item.action_menu_id == 0U ||
-					(action != 0U && (item.action_menu_id != descriptor.legal_actions.front().action_menu_id ||
-						static_cast<std::uint8_t>(item.action) < static_cast<std::uint8_t>(descriptor.legal_actions[action - 1U].action) ||
-						(item.action == descriptor.legal_actions[action - 1U].action &&
-							item.target_street_contribution <= descriptor.legal_actions[action - 1U].target_street_contribution))))
+				if (static_cast<std::uint8_t>(item.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn) || item.action_index != action || item.target_street_contribution < 0 || item.action_menu_id == 0U || (action != 0U && (item.action_menu_id != descriptor.legal_actions.front().action_menu_id || static_cast<std::uint8_t>(item.action) < static_cast<std::uint8_t>(descriptor.legal_actions[action - 1U].action) || (item.action == descriptor.legal_actions[action - 1U].action && item.target_street_contribution <= descriptor.legal_actions[action - 1U].target_street_contribution))))
 					throw std::invalid_argument("external public catalog action menu is not canonical");
 			}
 		}
@@ -3002,7 +3185,8 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> payload;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
-			if (new_state_flags != nullptr && (*new_state_flags)[index] == 0U) continue;
+			if (new_state_flags != nullptr && (*new_state_flags)[index] == 0U)
+				continue;
 			const auto& descriptor = states[index];
 			const auto node = packed_nodes == nullptr
 				? MultiwayPublicCatalog::pack_node(descriptor)
@@ -3041,26 +3225,30 @@ namespace texas::solver::multiway
 				records.clear();
 			}
 		}
-		if (!records.empty()) store_.append_batch_continuation(batch_number, merge_fingerprint, records);
+		if (!records.empty())
+			store_.append_batch_continuation(batch_number, merge_fingerprint, records);
 	}
 
 	bool MultiwayExternalPublicCatalog::lookup(MultiwayPublicStateId id,
 		MultiwayPackedPublicNode& output) const
 	{
-		if (id.value == 0U) return false;
+		if (id.value == 0U)
+			return false;
 		std::vector<std::uint8_t> payload;
-		if (!store_.lookup(id.value, payload)) return false;
-		return payload.size() == external_public_catalog_record_size() &&
-			decode_external_public_node(payload.data(), external_public_node_record_size(), output) && output.id == id;
+		if (!store_.lookup(id.value, payload))
+			return false;
+		return payload.size() == external_public_catalog_record_size() && decode_external_public_node(payload.data(), external_public_node_record_size(), output) && output.id == id;
 	}
 
 	bool MultiwayExternalPublicCatalog::lookup_menu(MultiwayPublicStateId id,
 		MultiwayActionDescriptor* output, std::size_t output_capacity, std::size_t& action_count) const
 	{
 		action_count = 0U;
-		if (id.value == 0U) return false;
+		if (id.value == 0U)
+			return false;
 		std::vector<std::uint8_t> payload;
-		if (!store_.lookup(id.value, payload) || payload.size() != external_public_catalog_record_size()) return false;
+		if (!store_.lookup(id.value, payload) || payload.size() != external_public_catalog_record_size())
+			return false;
 		const auto* menu = payload.data() + external_public_node_record_size();
 		if (read_u32(menu) != kCatalogMenuMagic || read_u32(menu + 4U) != kCatalogMenuSchema)
 			throw std::invalid_argument("external public catalog menu header is invalid");
@@ -3070,8 +3258,7 @@ namespace texas::solver::multiway
 		auto checksum = kHashOffset;
 		for (std::size_t byte = 0U; byte < kCatalogMenuBytes - kCatalogMenuChecksumBytes; ++byte)
 			texas::core::fingerprint::append_u8(checksum, menu[byte]);
-		if (texas::core::fingerprint::finish(checksum) !=
-			read_u64(menu + kCatalogMenuBytes - kCatalogMenuChecksumBytes))
+		if (texas::core::fingerprint::finish(checksum) != read_u64(menu + kCatalogMenuBytes - kCatalogMenuChecksumBytes))
 			throw std::invalid_argument("external public catalog menu checksum is invalid");
 		const auto* action_bytes = menu + kCatalogMenuHeaderBytes;
 		std::uint64_t menu_id = 0U;
@@ -3081,15 +3268,15 @@ namespace texas::solver::multiway
 			if (index >= count)
 			{
 				for (std::size_t byte = 0U; byte < kCatalogMenuActionBytes; ++byte)
-					if (item[byte] != 0U) throw std::invalid_argument("external public catalog menu padding is invalid");
+					if (item[byte] != 0U)
+						throw std::invalid_argument("external public catalog menu padding is invalid");
 				continue;
 			}
 			const auto action_kind = item[0];
 			const auto action_index = read_u32(item + 1U);
 			const auto target = read_i32(item + 5U);
 			const auto current_menu_id = read_u64(item + 9U);
-			if (action_kind > static_cast<std::uint8_t>(MultiwayAction::AllIn) || action_index != index ||
-				target < 0 || current_menu_id == 0U || (index != 0U && current_menu_id != menu_id))
+			if (action_kind > static_cast<std::uint8_t>(MultiwayAction::AllIn) || action_index != index || target < 0 || current_menu_id == 0U || (index != 0U && current_menu_id != menu_id))
 				throw std::invalid_argument("external public catalog action record is invalid");
 			menu_id = current_menu_id;
 			output[index] = { static_cast<MultiwayAction>(action_kind), action_index, target, current_menu_id };
@@ -3134,7 +3321,8 @@ namespace texas::solver::multiway
 		MultiwayPublicStateDescriptor& output) const
 	{
 		std::vector<MultiwayPackedPublicNode> packed_chain;
-		if (!reconstruct_chain(id, packed_chain)) return false;
+		if (!reconstruct_chain(id, packed_chain))
+			return false;
 		const auto& packed = packed_chain.back();
 		MultiwayPublicStateDescriptor descriptor{};
 		descriptor.id = packed.id;
@@ -3203,8 +3391,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> allocator;
 		if (store_.lookup(0U, allocator))
 		{
-			if (allocator.size() != 8U + 6U * 24U || read_u32(allocator.data()) != 0x3152574dU ||
-				read_u32(allocator.data() + 4U) != 1U || read_u64(allocator.data() + 8U) == 0U)
+			if (allocator.size() != 8U + 6U * 24U || read_u32(allocator.data()) != 0x3152574dU || read_u32(allocator.data() + 4U) != 1U || read_u64(allocator.data() + 8U) == 0U)
 				throw std::invalid_argument("external row page-id allocator record is invalid");
 			next_page_id_ = read_u64(allocator.data() + 8U);
 		}
@@ -3216,19 +3403,19 @@ namespace texas::solver::multiway
 		std::uint64_t merge_fingerprint, const std::vector<MultiwaySparseRowShape>& rows,
 		std::uint64_t& next_page_id)
 	{
-		if (rows.empty()) return;
+		if (rows.empty())
+			return;
 		constexpr std::uint64_t row_payload_bytes = 8U + 6U * 24U;
 		const auto wal_limit = store_.maximum_batch_bytes();
 		const auto row_record_width = 8U + row_payload_bytes;
 		const auto segment_record_capacity = store_.segment_target_bytes() / row_record_width;
-		if (wal_limit < 48U + 2U * row_record_width ||
-			rows.size() > (wal_limit - 48U) / row_record_width - 1U ||
-			segment_record_capacity == 0U || rows.size() > segment_record_capacity - 1U)
+		if (wal_limit < 48U + 2U * row_record_width || rows.size() > (wal_limit - 48U) / row_record_width - 1U || segment_record_capacity == 0U || rows.size() > segment_record_capacity - 1U)
 			throw std::length_error("external row admission exceeds its bounded WAL or segment");
 		constexpr std::uint32_t row_magic = 0x3152574dU;
 		constexpr std::uint32_t row_schema = 1U;
 		std::vector<std::size_t> order(rows.size());
-		for (std::size_t index = 0U; index < order.size(); ++index) order[index] = index;
+		for (std::size_t index = 0U; index < order.size(); ++index)
+			order[index] = index;
 		std::sort(order.begin(), order.end(), [&rows](std::size_t left, std::size_t right) {
 			const auto& a = rows[left].infoset;
 			const auto& b = rows[right].infoset;
@@ -3246,10 +3433,11 @@ namespace texas::solver::multiway
 		{
 			const auto& first_row = rows[order[cursor]];
 			const auto state_id = first_row.infoset.public_state.value;
-			if (state_id == 0U) throw std::invalid_argument("external row state id is invalid");
+			if (state_id == 0U)
+				throw std::invalid_argument("external row state id is invalid");
 			std::vector<std::uint8_t> payload(8U + 6U * 24U, 0U);
 			if (!store_.lookup(state_id, payload))
-		{
+			{
 				for (unsigned shift = 0U; shift < 32U; shift += 8U)
 				{
 					payload[shift / 8U] = static_cast<std::uint8_t>(row_magic >> shift);
@@ -3263,28 +3451,26 @@ namespace texas::solver::multiway
 			{
 				const auto& row = rows[order[cursor]];
 				const auto seat = row.infoset.seat;
-				if (seat < 0 || seat >= 6 || seat <= prior_seat || row.bucket_count == 0U ||
-					row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+				if (seat < 0 || seat >= 6 || seat <= prior_seat || row.bucket_count == 0U || row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 					throw std::invalid_argument("external row metadata batch has invalid seat, order, or shape");
 				prior_seat = seat;
 				const auto slot = 8U + static_cast<std::size_t>(seat) * 24U;
 				if (payload[slot] != 0U)
 					throw std::invalid_argument("external row index cannot append an existing infoset");
 				const auto page_count64 = (static_cast<std::uint64_t>(row.bucket_count) + page_width_ - 1U) / page_width_;
-				if (page_count64 > std::numeric_limits<std::uint32_t>::max() || candidate_next_page_id == 0U ||
-					page_count64 > std::numeric_limits<std::uint64_t>::max() - candidate_next_page_id)
+				if (page_count64 > std::numeric_limits<std::uint32_t>::max() || candidate_next_page_id == 0U || page_count64 > std::numeric_limits<std::uint64_t>::max() - candidate_next_page_id)
 					throw std::overflow_error("external row page identity overflows");
 				payload[slot] = 1U;
 				payload[slot + 1U] = row.action_count;
 				for (unsigned shift = 0U; shift < 32U; shift += 8U)
 					payload[slot + 4U + shift / 8U] = static_cast<std::uint8_t>(row.bucket_count >> shift);
-			for (unsigned shift = 0U; shift < 64U; shift += 8U)
-				payload[slot + 8U + shift / 8U] = static_cast<std::uint8_t>(candidate_next_page_id >> shift);
-			const auto page_count = static_cast<std::uint32_t>(page_count64);
-			for (unsigned shift = 0U; shift < 32U; shift += 8U)
-				payload[slot + 16U + shift / 8U] = static_cast<std::uint8_t>(page_count >> shift);
-			candidate_next_page_id = checked_add(candidate_next_page_id, page_count64);
-			++cursor;
+				for (unsigned shift = 0U; shift < 64U; shift += 8U)
+					payload[slot + 8U + shift / 8U] = static_cast<std::uint8_t>(candidate_next_page_id >> shift);
+				const auto page_count = static_cast<std::uint32_t>(page_count64);
+				for (unsigned shift = 0U; shift < 32U; shift += 8U)
+					payload[slot + 16U + shift / 8U] = static_cast<std::uint8_t>(page_count >> shift);
+				candidate_next_page_id = checked_add(candidate_next_page_id, page_count64);
+				++cursor;
 			}
 			records.push_back({ state_id, std::move(payload) });
 		}
@@ -3305,16 +3491,17 @@ namespace texas::solver::multiway
 	bool MultiwayExternalRowIndex::lookup(MultiwayPublicStateId state,
 		std::int32_t seat, MultiwayExternalRowMetadata& output) const
 	{
-		if (state.value == 0U || seat < 0 || seat >= 6) return false;
+		if (state.value == 0U || seat < 0 || seat >= 6)
+			return false;
 		std::array<std::uint8_t, 8U + 6U * 24U> payload{};
-		if (!store_.lookup(state.value, payload.data(), payload.size())) return false;
-		if (payload.size() != 8U + 6U * 24U || read_u32(payload.data()) != 0x3152574dU ||
-			read_u32(payload.data() + 4U) != 1U)
+		if (!store_.lookup(state.value, payload.data(), payload.size()))
+			return false;
+		if (payload.size() != 8U + 6U * 24U || read_u32(payload.data()) != 0x3152574dU || read_u32(payload.data() + 4U) != 1U)
 			throw std::invalid_argument("external row metadata record schema is invalid");
 		const auto slot = 8U + static_cast<std::size_t>(seat) * 24U;
-		if (payload[slot] == 0U) return false;
-		if (payload[slot] != 1U || payload[slot + 2U] != 0U || payload[slot + 3U] != 0U ||
-			read_u32(payload.data() + slot + 20U) != 0U)
+		if (payload[slot] == 0U)
+			return false;
+		if (payload[slot] != 1U || payload[slot + 2U] != 0U || payload[slot + 3U] != 0U || read_u32(payload.data() + slot + 20U) != 0U)
 			throw std::invalid_argument("external row metadata flags or reserved fields are invalid");
 		output.action_count = payload[slot + 1U];
 		output.bucket_count = read_u32(payload.data() + slot + 4U);
@@ -3323,8 +3510,7 @@ namespace texas::solver::multiway
 		if (output.action_count == 0U || output.bucket_count == 0U || output.first_page_id == 0U || output.page_count == 0U)
 			throw std::invalid_argument("external row metadata contains an invalid shape");
 		const auto expected_pages = (static_cast<std::uint64_t>(output.bucket_count) + page_width_ - 1U) / page_width_;
-		if (output.page_count != expected_pages ||
-			output.page_count > std::numeric_limits<std::uint64_t>::max() - output.first_page_id)
+		if (output.page_count != expected_pages || output.page_count > std::numeric_limits<std::uint64_t>::max() - output.first_page_id)
 			throw std::invalid_argument("external row metadata page range is inconsistent");
 		return true;
 	}
@@ -3343,13 +3529,12 @@ namespace texas::solver::multiway
 		};
 		VisitorContext visitor_context{ visitor, context, page_width_, this };
 		const auto visit_record = [](void* opaque, std::uint64_t state_id,
-			const std::uint8_t* payload, std::size_t payload_size) {
+									  const std::uint8_t* payload, std::size_t payload_size) {
 			auto& current = *static_cast<VisitorContext*>(opaque);
 			constexpr std::size_t row_payload_size = 8U + 6U * 24U;
 			constexpr std::uint32_t row_magic = 0x3152574dU;
 			constexpr std::uint32_t row_schema = 1U;
-			if (payload == nullptr || payload_size != row_payload_size ||
-				read_u32(payload) != row_magic || read_u32(payload + 4U) != row_schema)
+			if (payload == nullptr || payload_size != row_payload_size || read_u32(payload) != row_magic || read_u32(payload + 4U) != row_schema)
 				throw std::invalid_argument("external ordered row record schema is invalid");
 			if (state_id == 0U)
 			{
@@ -3371,20 +3556,15 @@ namespace texas::solver::multiway
 							throw std::invalid_argument("external ordered row absent-seat metadata is nonzero");
 					continue;
 				}
-				if (payload[slot] != 1U || payload[slot + 2U] != 0U ||
-					payload[slot + 3U] != 0U || read_u32(payload + slot + 20U) != 0U)
+				if (payload[slot] != 1U || payload[slot + 2U] != 0U || payload[slot + 3U] != 0U || read_u32(payload + slot + 20U) != 0U)
 					throw std::invalid_argument("external ordered row seat flags are invalid");
 				MultiwayExternalRowMetadata row{};
 				row.action_count = payload[slot + 1U];
 				row.bucket_count = read_u32(payload + slot + 4U);
 				row.first_page_id = read_u64(payload + slot + 8U);
 				row.page_count = read_u32(payload + slot + 16U);
-				const auto expected_pages = (static_cast<std::uint64_t>(row.bucket_count) +
-					current.page_width - 1U) / current.page_width;
-				if (row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS ||
-					row.bucket_count == 0U || row.first_page_id == 0U || row.page_count == 0U ||
-					row.page_count != expected_pages ||
-					row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
+				const auto expected_pages = (static_cast<std::uint64_t>(row.bucket_count) + current.page_width - 1U) / current.page_width;
+				if (row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS || row.bucket_count == 0U || row.first_page_id == 0U || row.page_count == 0U || row.page_count != expected_pages || row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
 					throw std::invalid_argument("external ordered row shape is invalid");
 				found_row = true;
 				MultiwayExternalRowBinding binding;
@@ -3406,7 +3586,8 @@ namespace texas::solver::multiway
 		std::int32_t seat, std::uint32_t bucket, MultiwayExternalRowPage& output) const
 	{
 		MultiwayExternalRowMetadata metadata{};
-		if (!lookup(state, seat, metadata)) return false;
+		if (!lookup(state, seat, metadata))
+			return false;
 		MultiwayExternalRowBinding binding;
 		binding.owner_ = this;
 		binding.state_id_ = state.value;
@@ -3419,9 +3600,7 @@ namespace texas::solver::multiway
 		std::uint32_t bucket, MultiwayExternalRowPage& output) const
 	{
 		const auto& row = binding.row_;
-		if (binding.owner_ != this || binding.state_id_ == 0U || binding.seat_ < 0 || binding.seat_ >= 6 ||
-			row.bucket_count == 0U || row.action_count == 0U || row.first_page_id == 0U ||
-			row.page_count == 0U || bucket >= row.bucket_count)
+		if (binding.owner_ != this || binding.state_id_ == 0U || binding.seat_ < 0 || binding.seat_ >= 6 || row.bucket_count == 0U || row.action_count == 0U || row.first_page_id == 0U || row.page_count == 0U || bucket >= row.bucket_count)
 			return false;
 		const auto page_index = bucket / page_width_;
 		if (page_index >= row.page_count || page_index > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
@@ -3436,9 +3615,7 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayExternalCompactPages::page_payload_size() const noexcept
 	{
-		return kPageRecordHeaderBytes +
-			MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::size_t>(page_width_) * 12U +
-			kPageRecordChecksumBytes;
+		return kPageRecordHeaderBytes + MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::size_t>(page_width_) * 12U + kPageRecordChecksumBytes;
 	}
 
 	MultiwayExternalCompactPages::MultiwayExternalCompactPages(
@@ -3448,9 +3625,7 @@ namespace texas::solver::multiway
 	{
 		if (page_width_ == 0U || cache_bytes > std::numeric_limits<std::size_t>::max())
 			throw std::invalid_argument("external compact pages require bounded positive dimensions");
-		const auto payload = kPageRecordHeaderBytes +
-			MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::uint64_t>(page_width_) * 12U +
-			kPageRecordChecksumBytes;
+		const auto payload = kPageRecordHeaderBytes + MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::uint64_t>(page_width_) * 12U + kPageRecordChecksumBytes;
 		if (payload > std::numeric_limits<std::size_t>::max() || payload > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("external compact page payload width overflows");
 		const auto store_cache_bytes = payload + 1024U;
@@ -3491,7 +3666,8 @@ namespace texas::solver::multiway
 	MultiwayExternalCompactPages::Page* MultiwayExternalCompactPages::find(std::uint64_t page_id) noexcept
 	{
 		for (auto& page : pages_)
-			if (page.valid && page.page_id == page_id) return &page;
+			if (page.valid && page.page_id == page_id)
+				return &page;
 		return nullptr;
 	}
 
@@ -3505,21 +3681,31 @@ namespace texas::solver::multiway
 		if (texas::core::fingerprint::finish(hash) != read_u64(bytes + page_payload_size() - kPageRecordChecksumBytes))
 			throw std::invalid_argument("external compact page checksum is invalid");
 		std::size_t cursor = 8U;
-		page.page_id = read_u64(bytes + cursor); cursor += 8U;
-		page.state_id = read_u64(bytes + cursor); cursor += 8U;
-		page.seat = read_i32(bytes + cursor); cursor += 4U;
-		page.page_index = read_u32(bytes + cursor); cursor += 4U;
-		page.bucket_count = read_u32(bytes + cursor); cursor += 4U;
+		page.page_id = read_u64(bytes + cursor);
+		cursor += 8U;
+		page.state_id = read_u64(bytes + cursor);
+		cursor += 8U;
+		page.seat = read_i32(bytes + cursor);
+		cursor += 4U;
+		page.page_index = read_u32(bytes + cursor);
+		cursor += 4U;
+		page.bucket_count = read_u32(bytes + cursor);
+		cursor += 4U;
 		page.action_count = bytes[cursor++];
 		if (bytes[cursor] != 0U || bytes[cursor + 1U] != 0U || bytes[cursor + 2U] != 0U)
 			throw std::invalid_argument("external compact page reserved bytes are invalid");
 		cursor += 3U;
-		for (auto& value : page.regrets) { value = read_i32(bytes + cursor); cursor += 4U; }
-		for (auto& value : page.strategy_masses) { value = read_u64(bytes + cursor); cursor += 8U; }
-		if (cursor + kPageRecordChecksumBytes != page_payload_size() || page.page_id == 0U ||
-			page.state_id == 0U || page.seat < 0 || page.seat >= 6 || page.bucket_count == 0U ||
-			page.bucket_count > page_width_ || page.action_count == 0U ||
-			page.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+		for (auto& value : page.regrets)
+		{
+			value = read_i32(bytes + cursor);
+			cursor += 4U;
+		}
+		for (auto& value : page.strategy_masses)
+		{
+			value = read_u64(bytes + cursor);
+			cursor += 8U;
+		}
+		if (cursor + kPageRecordChecksumBytes != page_payload_size() || page.page_id == 0U || page.state_id == 0U || page.seat < 0 || page.seat >= 6 || page.bucket_count == 0U || page.bucket_count > page_width_ || page.action_count == 0U || page.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 			throw std::invalid_argument("external compact page identity or shape is invalid");
 	}
 
@@ -3537,10 +3723,13 @@ namespace texas::solver::multiway
 		append_u32(bytes, page.bucket_count);
 		bytes.push_back(page.action_count);
 		bytes.insert(bytes.end(), 3U, 0U);
-		for (const auto value : page.regrets) append_i32(bytes, value);
-		for (const auto value : page.strategy_masses) append_u64(bytes, value);
+		for (const auto value : page.regrets)
+			append_i32(bytes, value);
+		for (const auto value : page.strategy_masses)
+			append_u64(bytes, value);
 		auto hash = kHashOffset;
-		for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
+		for (const auto byte : bytes)
+			texas::core::fingerprint::append_u8(hash, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(hash));
 		if (bytes.size() != page_payload_size())
 			throw std::logic_error("external compact page codec width changed without a schema update");
@@ -3600,7 +3789,8 @@ namespace texas::solver::multiway
 		}
 		if (selected == nullptr)
 			throw std::length_error("external compact page cache has no clean unpinned page");
-		if (selected->valid) ++page_cache_evictions_;
+		if (selected->valid)
+			++page_cache_evictions_;
 		selected->valid = false;
 		decode_page(lookup_scratch_.data(), *selected);
 		if (selected->page_id != page_id)
@@ -3617,14 +3807,12 @@ namespace texas::solver::multiway
 		std::uint32_t page_index, std::uint32_t bucket_count, std::uint8_t action_count)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U ||
-			bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U || bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
 		if (auto* cached = find(page_id))
 		{
 			++page_cache_hits_;
-			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index ||
-				cached->bucket_count != bucket_count || cached->action_count != action_count)
+			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index || cached->bucket_count != bucket_count || cached->action_count != action_count)
 				throw std::invalid_argument("external compact page identity disagrees with row metadata");
 			if (cached->pin_count == std::numeric_limits<std::uint32_t>::max())
 				throw std::overflow_error("external compact page pin count overflows");
@@ -3645,16 +3833,16 @@ namespace texas::solver::multiway
 				break;
 			}
 		}
-		if (selected == nullptr) throw std::length_error("external compact page cache has no clean unpinned page");
-		if (selected->valid) ++page_cache_evictions_;
+		if (selected == nullptr)
+			throw std::length_error("external compact page cache has no clean unpinned page");
+		if (selected->valid)
+			++page_cache_evictions_;
 		selected->valid = false;
 		const auto found = store_->lookup(page_id, lookup_scratch_);
 		if (found)
 		{
 			decode_page(lookup_scratch_.data(), *selected);
-			if (selected->page_id != page_id || selected->state_id != state.value || selected->seat != seat ||
-				selected->page_index != page_index || selected->bucket_count != bucket_count ||
-				selected->action_count != action_count)
+			if (selected->page_id != page_id || selected->state_id != state.value || selected->seat != seat || selected->page_index != page_index || selected->bucket_count != bucket_count || selected->action_count != action_count)
 				throw std::invalid_argument("external compact page identity disagrees with requested row");
 		}
 		else
@@ -3681,8 +3869,7 @@ namespace texas::solver::multiway
 		MultiwayExternalPageProfile* profile)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U ||
-			bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U || bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
 		Page* cached = nullptr;
 		if (profile != nullptr)
@@ -3695,8 +3882,7 @@ namespace texas::solver::multiway
 		if (cached != nullptr)
 		{
 			++page_cache_hits_;
-			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index ||
-				cached->bucket_count != bucket_count || cached->action_count != action_count)
+			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index || cached->bucket_count != bucket_count || cached->action_count != action_count)
 				throw std::invalid_argument("external compact page identity disagrees with row metadata");
 			if (cached->pin_count == std::numeric_limits<std::uint32_t>::max())
 				throw std::overflow_error("external compact page pin count overflows");
@@ -3726,8 +3912,10 @@ namespace texas::solver::multiway
 		}
 		else
 			select_victim();
-		if (selected == nullptr) throw std::length_error("external compact page cache has no clean unpinned page");
-		if (selected->valid) ++page_cache_evictions_;
+		if (selected == nullptr)
+			throw std::length_error("external compact page cache has no clean unpinned page");
+		if (selected->valid)
+			++page_cache_evictions_;
 		selected->valid = false;
 		bool found = false;
 		if (profile != nullptr)
@@ -3741,9 +3929,7 @@ namespace texas::solver::multiway
 		{
 			const auto decode = [&]() {
 				decode_page(lookup_scratch_.data(), *selected);
-				if (selected->page_id != page_id || selected->state_id != state.value || selected->seat != seat ||
-					selected->page_index != page_index || selected->bucket_count != bucket_count ||
-					selected->action_count != action_count)
+				if (selected->page_id != page_id || selected->state_id != state.value || selected->seat != seat || selected->page_index != page_index || selected->bucket_count != bucket_count || selected->action_count != action_count)
 					throw std::invalid_argument("external compact page identity disagrees with requested row");
 			};
 			if (profile != nullptr)
@@ -3795,7 +3981,8 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactPages::mark_dirty(std::uint64_t page_id)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!batch_open_) throw std::logic_error("external compact page mutation requires an open batch");
+		if (!batch_open_)
+			throw std::logic_error("external compact page mutation requires an open batch");
 		auto* page = find(page_id);
 		if (page == nullptr || page->pin_count == 0U)
 			throw std::invalid_argument("external compact page mutation requires a pinned page");
@@ -3810,13 +3997,16 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactPages::commit_batch()
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!batch_open_) throw std::logic_error("external compact page batch is not open");
+		if (!batch_open_)
+			throw std::logic_error("external compact page batch is not open");
 		std::vector<Page*> dirty;
 		dirty.reserve(pages_.size());
 		for (auto& page : pages_)
 		{
-			if (page.pin_count != 0U) throw std::logic_error("external compact page batch cannot commit pinned pages");
-			if (page.dirty) dirty.push_back(&page);
+			if (page.pin_count != 0U)
+				throw std::logic_error("external compact page batch cannot commit pinned pages");
+			if (page.dirty)
+				dirty.push_back(&page);
 		}
 		if (dirty.empty())
 		{
@@ -3840,14 +4030,16 @@ namespace texas::solver::multiway
 		{
 			if (store_->generation() > prior_generation)
 			{
-				for (auto* page : dirty) page->dirty = false;
+				for (auto* page : dirty)
+					page->dirty = false;
 				batch_open_ = false;
 			}
 			else
 				abort_batch();
 			throw;
 		}
-		for (auto* page : dirty) page->dirty = false;
+		for (auto* page : dirty)
+			page->dirty = false;
 		batch_open_ = false;
 	}
 
@@ -3862,7 +4054,8 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactPages::abort_batch()
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!batch_open_) return;
+		if (!batch_open_)
+			return;
 		for (auto& page : pages_)
 		{
 			if (page.dirty)
@@ -3877,13 +4070,9 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayExternalCompactPages::memory_bytes() const noexcept
 	{
-		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) +
-			lookup_scratch_.capacity() + encode_scratch_.capacity() + pages_.capacity() * sizeof(Page);
+		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) + lookup_scratch_.capacity() + encode_scratch_.capacity() + pages_.capacity() * sizeof(Page);
 		for (const auto& page : pages_)
-			result += page.regrets.capacity() * sizeof(std::int32_t) +
-				page.strategy_masses.capacity() * sizeof(std::uint64_t) +
-				page.before_regrets.capacity() * sizeof(std::int32_t) +
-				page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
+			result += page.regrets.capacity() * sizeof(std::int32_t) + page.strategy_masses.capacity() * sizeof(std::uint64_t) + page.before_regrets.capacity() * sizeof(std::int32_t) + page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
 		return result;
 	}
 
@@ -3909,11 +4098,10 @@ namespace texas::solver::multiway
 	MultiwayExternalCompactStorage::MultiwayExternalCompactStorage(
 		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
 		std::uint32_t page_width, std::uint64_t page_cache_bytes)
-		: rows_(std::move(row_config), page_width),
-		  pages_(std::move(page_config), page_width, page_cache_bytes),
-		  next_page_id_(rows_.next_page_id()), page_width_(page_width)
+		: rows_(std::move(row_config), page_width), pages_(std::move(page_config), page_width, page_cache_bytes), next_page_id_(rows_.next_page_id()), page_width_(page_width)
 	{
-		if (page_width_ == 0U) throw std::invalid_argument("external compact storage page width is zero");
+		if (page_width_ == 0U)
+			throw std::invalid_argument("external compact storage page width is zero");
 	}
 
 	MultiwayPublicStateId MultiwayExternalRowBinding::public_state() const noexcept
@@ -4016,7 +4204,8 @@ namespace texas::solver::multiway
 		const MultiwayExternalRowBinding& binding, std::uint32_t bucket, bool writable,
 		MultiwayExternalPageProfile* profile) const
 	{
-		if (profile == nullptr) return pin_bucket(binding, bucket, writable);
+		if (profile == nullptr)
+			return pin_bucket(binding, bucket, writable);
 		MultiwayExternalRowPage row_page{};
 		bool located = false;
 		if (profile != nullptr)
@@ -4052,8 +4241,7 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactStorage::apply_delta(PinnedBucket& bucket,
 		std::uint8_t action, double regret, double strategy_sum)
 	{
-		if (bucket.owner != this || !bucket.writable || bucket.page.page_id == 0U ||
-			bucket.local_bucket >= bucket.page.bucket_count || action >= bucket.page.action_count)
+		if (bucket.owner != this || !bucket.writable || bucket.page.page_id == 0U || bucket.local_bucket >= bucket.page.bucket_count || action >= bucket.page.action_count)
 			throw std::invalid_argument("external compact pinned bucket is invalid");
 		const auto cell = static_cast<std::size_t>(action) * bucket.page.action_stride + bucket.local_bucket;
 		MultiwayCompactStorage::apply_delta_to_cells(
@@ -4063,8 +4251,7 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactStorage::regret_matched_strategy_into(
 		const PinnedBucket& bucket, double* output, std::size_t output_size) const
 	{
-		if (bucket.owner != this || bucket.page.page_id == 0U || output == nullptr ||
-			output_size != bucket.page.action_count || bucket.local_bucket >= bucket.page.bucket_count)
+		if (bucket.owner != this || bucket.page.page_id == 0U || output == nullptr || output_size != bucket.page.action_count || bucket.local_bucket >= bucket.page.bucket_count)
 			throw std::invalid_argument("external compact pinned bucket policy output is invalid");
 		Probability total = 0.0;
 		for (std::size_t action = 0U; action < output_size; ++action)
@@ -4076,35 +4263,33 @@ namespace texas::solver::multiway
 		if (total == 0.0)
 			std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
 		else
-			for (std::size_t action = 0U; action < output_size; ++action) output[action] /= total;
+			for (std::size_t action = 0U; action < output_size; ++action)
+				output[action] /= total;
 	}
 
 	void MultiwayExternalCompactStorage::average_strategy_into(
 		const PinnedBucket& bucket, double* output, std::size_t output_size) const
 	{
-		if (bucket.owner != this || bucket.page.page_id == 0U || output == nullptr ||
-			output_size != bucket.page.action_count || bucket.local_bucket >= bucket.page.bucket_count)
+		if (bucket.owner != this || bucket.page.page_id == 0U || output == nullptr || output_size != bucket.page.action_count || bucket.local_bucket >= bucket.page.bucket_count)
 			throw std::invalid_argument("external compact pinned bucket policy output is invalid");
 		std::uint64_t total = 0U;
 		for (std::size_t action = 0U; action < output_size; ++action)
 		{
 			const auto cell = action * bucket.page.action_stride + bucket.local_bucket;
-			output[action] = static_cast<double>(bucket.page.strategy_masses[cell]) /
-				static_cast<double>(MultiwayCompactStorage::kMassScale);
+			output[action] = static_cast<double>(bucket.page.strategy_masses[cell]) / static_cast<double>(MultiwayCompactStorage::kMassScale);
 			total += bucket.page.strategy_masses[cell];
 		}
 		if (total == 0U)
 			std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
 		else
-			for (std::size_t action = 0U; action < output_size; ++action) output[action] /= static_cast<double>(total) /
-				static_cast<double>(MultiwayCompactStorage::kMassScale);
+			for (std::size_t action = 0U; action < output_size; ++action)
+				output[action] /= static_cast<double>(total) / static_cast<double>(MultiwayCompactStorage::kMassScale);
 	}
 
 	bool MultiwayExternalCompactStorage::action_below_regret(const PinnedBucket& bucket,
 		std::uint8_t action, double threshold) const noexcept
 	{
-		if (bucket.owner != this || bucket.page.page_id == 0U || !std::isfinite(threshold) ||
-			bucket.local_bucket >= bucket.page.bucket_count || action >= bucket.page.action_count)
+		if (bucket.owner != this || bucket.page.page_id == 0U || !std::isfinite(threshold) || bucket.local_bucket >= bucket.page.bucket_count || action >= bucket.page.action_count)
 			return false;
 		const auto cell = static_cast<std::size_t>(action) * bucket.page.action_stride + bucket.local_bucket;
 		return static_cast<double>(bucket.page.regrets[cell]) / 1024.0 < threshold;
@@ -4146,8 +4331,7 @@ namespace texas::solver::multiway
 			regret = static_cast<std::int32_t>(std::clamp<long long>(
 				std::llround(static_cast<double>(regret) * factor),
 				MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax));
-			return regret != before;
-		}, [this] { flush_page_batch_and_continue(); });
+			return regret != before; }, [this] { flush_page_batch_and_continue(); });
 	}
 
 	std::size_t MultiwayExternalCompactStorage::scale_and_prune_regrets(
@@ -4170,8 +4354,7 @@ namespace texas::solver::multiway
 				regret = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
 				return true;
 			}
-			return false;
-		}, [this] { flush_page_batch_and_continue(); });
+			return false; }, [this] { flush_page_batch_and_continue(); });
 	}
 
 	std::size_t MultiwayExternalCompactStorage::prune_negative_regrets(
@@ -4189,8 +4372,7 @@ namespace texas::solver::multiway
 				regret = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
 				return true;
 			}
-			return false;
-		}, [this] { flush_page_batch_and_continue(); });
+			return false; }, [this] { flush_page_batch_and_continue(); });
 	}
 
 	void MultiwayExternalCompactStorage::regret_matched_strategy_into(
@@ -4216,7 +4398,8 @@ namespace texas::solver::multiway
 		if (total == 0.0)
 			std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
 		else
-			for (std::size_t action = 0U; action < output_size; ++action) output[action] /= total;
+			for (std::size_t action = 0U; action < output_size; ++action)
+				output[action] /= total;
 		pages_.unpin(row_page.page_id);
 	}
 
@@ -4238,15 +4421,14 @@ namespace texas::solver::multiway
 		for (std::size_t action = 0U; action < output_size; ++action)
 		{
 			const auto cell = action * page.action_stride + local_bucket;
-			output[action] = static_cast<double>(page.strategy_masses[cell]) /
-				static_cast<double>(MultiwayCompactStorage::kMassScale);
+			output[action] = static_cast<double>(page.strategy_masses[cell]) / static_cast<double>(MultiwayCompactStorage::kMassScale);
 			total += page.strategy_masses[cell];
 		}
 		if (total == 0U)
 			std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
 		else
-			for (std::size_t action = 0U; action < output_size; ++action) output[action] /= static_cast<double>(total) /
-				static_cast<double>(MultiwayCompactStorage::kMassScale);
+			for (std::size_t action = 0U; action < output_size; ++action)
+				output[action] /= static_cast<double>(total) / static_cast<double>(MultiwayCompactStorage::kMassScale);
 		pages_.unpin(row_page.page_id);
 	}
 
@@ -4254,8 +4436,7 @@ namespace texas::solver::multiway
 		std::uint32_t bucket, std::uint8_t action, double threshold) const
 	{
 		MultiwayExternalRowPage row_page{};
-		if (!std::isfinite(threshold) || !rows_.locate_bucket(binding, bucket, row_page) ||
-			action >= row_page.action_count)
+		if (!std::isfinite(threshold) || !rows_.locate_bucket(binding, bucket, row_page) || action >= row_page.action_count)
 			return false;
 		auto page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
 			row_page.page_index, row_page.bucket_count, row_page.action_count);
@@ -4316,21 +4497,9 @@ namespace texas::solver::multiway
 		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
 		std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
 		std::size_t maximum_ancestry_depth, bool synchronous_durability)
-		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)),
-		  row_config_(std::move(row_config)), page_config_(std::move(page_config)),
-		  page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes),
-		  maximum_ancestry_depth_(maximum_ancestry_depth),
-		  synchronous_durability_(synchronous_durability),
-		  transaction_(directory_, synchronous_durability)
+		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)), row_config_(std::move(row_config)), page_config_(std::move(page_config)), page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes), maximum_ancestry_depth_(maximum_ancestry_depth), synchronous_durability_(synchronous_durability), transaction_(directory_, synchronous_durability)
 	{
-		if (directory_.empty() || page_width_ == 0U || row_page_cache_bytes_ == 0U ||
-			maximum_ancestry_depth_ == 0U ||
-			catalog_config_.directory.lexically_normal() != (directory_ / "catalog").lexically_normal() ||
-			row_config_.directory.lexically_normal() != (directory_ / "rows").lexically_normal() ||
-			page_config_.directory.lexically_normal() != (directory_ / "pages").lexically_normal() ||
-			catalog_config_.synchronous_durability != synchronous_durability_ ||
-			row_config_.synchronous_durability != synchronous_durability_ ||
-			page_config_.synchronous_durability != synchronous_durability_)
+		if (directory_.empty() || page_width_ == 0U || row_page_cache_bytes_ == 0U || maximum_ancestry_depth_ == 0U || catalog_config_.directory.lexically_normal() != (directory_ / "catalog").lexically_normal() || row_config_.directory.lexically_normal() != (directory_ / "rows").lexically_normal() || page_config_.directory.lexically_normal() != (directory_ / "pages").lexically_normal() || catalog_config_.synchronous_durability != synchronous_durability_ || row_config_.synchronous_durability != synchronous_durability_ || page_config_.synchronous_durability != synchronous_durability_)
 			throw std::invalid_argument("external training storage component paths or bounds are invalid");
 		open_components();
 	}
@@ -4360,18 +4529,11 @@ namespace texas::solver::multiway
 		MultiwayPublicStateDescriptor existing;
 		if (manifest.generation != 0U)
 		{
-			if (manifest.public_state_count != catalog_->record_count() ||
-				manifest.row_generation != compact_->row_generation() ||
-				manifest.page_generation != compact_->page_generation() ||
-				compact_->next_page_id() == 0U ||
-				manifest.page_count != compact_->next_page_id() - 1U ||
-				!catalog_->reconstruct(root.id, existing) ||
-				!MultiwaySolverCoordinator::public_state_candidates_compatible(existing, root))
+			if (manifest.public_state_count != catalog_->record_count() || manifest.row_generation != compact_->row_generation() || manifest.page_generation != compact_->page_generation() || compact_->next_page_id() == 0U || manifest.page_count != compact_->next_page_id() - 1U || !catalog_->reconstruct(root.id, existing) || !MultiwaySolverCoordinator::public_state_candidates_compatible(existing, root))
 				throw std::invalid_argument("external training root does not match its committed catalog generation");
 			return;
 		}
-		if (catalog_->record_count() != 0U || compact_->row_generation() != 0U ||
-			compact_->page_generation() != 0U || compact_->next_page_id() != 1U)
+		if (catalog_->record_count() != 0U || compact_->row_generation() != 0U || compact_->page_generation() != 0U || compact_->next_page_id() != 1U)
 			throw std::invalid_argument("external training components exist without an aggregate generation");
 		constexpr std::uint64_t root_seed_fingerprint = 0x524f4f5453454544ULL;
 		begin_batch(1U);
@@ -4384,8 +4546,13 @@ namespace texas::solver::multiway
 		}
 		catch (...)
 		{
-			try { abort_batch(); }
-			catch (...) {}
+			try
+			{
+				abort_batch();
+			}
+			catch (...)
+			{
+			}
 			throw;
 		}
 	}
@@ -4413,8 +4580,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayPublicStateDescriptor>& states,
 		const std::vector<std::uint8_t>& new_state_flags)
 	{
-		if (batch_number_ == 0U || component_fingerprint == 0U ||
-			states.size() != new_state_flags.size())
+		if (batch_number_ == 0U || component_fingerprint == 0U || states.size() != new_state_flags.size())
 			throw std::invalid_argument("external training catalog discovery batch is invalid");
 		catalog_->append_discovered_batch(batch_number_, component_fingerprint,
 			states, new_state_flags);
@@ -4458,8 +4624,7 @@ namespace texas::solver::multiway
 			throw std::overflow_error("external training generation overflows");
 		if (current.logical_value_count == std::numeric_limits<std::uint64_t>::max())
 			throw std::invalid_argument("legacy external generation has no exact value count");
-		if (row_count < current.row_count || logical_value_count < current.logical_value_count ||
-			((row_count == 0U) != (logical_value_count == 0U)))
+		if (row_count < current.row_count || logical_value_count < current.logical_value_count || ((row_count == 0U) != (logical_value_count == 0U)))
 			throw std::invalid_argument("external training row or value counts are inconsistent");
 		MultiwayExternalGenerationManifest next{};
 		next.generation = current.generation + 1U;
@@ -4502,8 +4667,10 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalTrainingStorage::abort_batch()
 	{
-		if (batch_number_ == 0U) return;
-		if (compact_ != nullptr) compact_->abort_batch();
+		if (batch_number_ == 0U)
+			return;
+		if (compact_ != nullptr)
+			compact_->abort_batch();
 		catalog_.reset();
 		compact_.reset();
 		transaction_.abort_batch();
@@ -4534,7 +4701,8 @@ namespace texas::solver::multiway
 	MultiwayExternalPageCache::Page* MultiwayExternalPageCache::find(std::uint64_t key) noexcept
 	{
 		for (auto& page : pages_)
-			if (page.valid && page.key == key) return &page;
+			if (page.valid && page.key == key)
+				return &page;
 		return nullptr;
 	}
 
@@ -4559,9 +4727,11 @@ namespace texas::solver::multiway
 				break;
 			}
 		}
-		if (selected == nullptr) throw std::length_error("external page cache has no clean unpinned page");
+		if (selected == nullptr)
+			throw std::length_error("external page cache has no clean unpinned page");
 		const auto found = store_->lookup(key, lookup_scratch_);
-		if (!found) std::fill(lookup_scratch_.begin(), lookup_scratch_.end(), 0U);
+		if (!found)
+			std::fill(lookup_scratch_.begin(), lookup_scratch_.end(), 0U);
 		std::copy(lookup_scratch_.begin(), lookup_scratch_.end(), selected->bytes.begin());
 		selected->key = key;
 		selected->valid = true;
@@ -4573,15 +4743,18 @@ namespace texas::solver::multiway
 	void MultiwayExternalPageCache::unpin(std::uint64_t key)
 	{
 		auto* page = find(key);
-		if (page == nullptr || page->pin_count == 0U) throw std::invalid_argument("external page is not pinned");
+		if (page == nullptr || page->pin_count == 0U)
+			throw std::invalid_argument("external page is not pinned");
 		--page->pin_count;
 	}
 
 	void MultiwayExternalPageCache::mark_dirty(std::uint64_t key)
 	{
-		if (!batch_open_) throw std::logic_error("external page mutation requires an open batch");
+		if (!batch_open_)
+			throw std::logic_error("external page mutation requires an open batch");
 		auto* page = find(key);
-		if (page == nullptr || page->pin_count == 0U) throw std::invalid_argument("external page mutation requires a pinned page");
+		if (page == nullptr || page->pin_count == 0U)
+			throw std::invalid_argument("external page mutation requires a pinned page");
 		if (!page->dirty)
 		{
 			std::copy(page->bytes.begin(), page->bytes.end(), page->before_batch.begin());
@@ -4591,9 +4764,11 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalPageCache::begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint)
 	{
-		if (batch_open_ || batch_number == 0U) throw std::logic_error("external page batch state is invalid");
+		if (batch_open_ || batch_number == 0U)
+			throw std::logic_error("external page batch state is invalid");
 		for (const auto& page : pages_)
-			if (page.dirty || page.pin_count != 0U) throw std::logic_error("external page cache is not at a clean batch boundary");
+			if (page.dirty || page.pin_count != 0U)
+				throw std::logic_error("external page cache is not at a clean batch boundary");
 		batch_number_ = batch_number;
 		merge_fingerprint_ = merge_fingerprint;
 		batch_open_ = true;
@@ -4601,13 +4776,16 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalPageCache::commit_batch()
 	{
-		if (!batch_open_) throw std::logic_error("external page batch is not open");
+		if (!batch_open_)
+			throw std::logic_error("external page batch is not open");
 		std::vector<Page*> dirty;
 		dirty.reserve(pages_.size());
 		for (auto& page : pages_)
 		{
-			if (page.pin_count != 0U) throw std::logic_error("external page batch cannot commit pinned pages");
-			if (page.dirty) dirty.push_back(&page);
+			if (page.pin_count != 0U)
+				throw std::logic_error("external page batch cannot commit pinned pages");
+			if (page.dirty)
+				dirty.push_back(&page);
 		}
 		if (dirty.empty())
 		{
@@ -4617,7 +4795,8 @@ namespace texas::solver::multiway
 		std::sort(dirty.begin(), dirty.end(), [](const Page* left, const Page* right) { return left->key < right->key; });
 		std::vector<MultiwayExternalRecord> records;
 		records.reserve(dirty.size());
-		for (const auto* page : dirty) records.push_back({ page->key, page->bytes });
+		for (const auto* page : dirty)
+			records.push_back({ page->key, page->bytes });
 		const auto prior_generation = store_->generation();
 		try
 		{
@@ -4628,14 +4807,16 @@ namespace texas::solver::multiway
 		{
 			if (store_->generation() > prior_generation)
 			{
-				for (auto* page : dirty) page->dirty = false;
+				for (auto* page : dirty)
+					page->dirty = false;
 				batch_open_ = false;
 			}
 			else
 				abort_batch();
 			throw;
 		}
-		for (auto* page : dirty) page->dirty = false;
+		for (auto* page : dirty)
+			page->dirty = false;
 		batch_open_ = false;
 	}
 
@@ -4660,9 +4841,21 @@ namespace texas::solver::multiway
 		return pages_.capacity() * sizeof(Page) + pages_.size() * payload_bytes_ * 2U + lookup_scratch_.capacity();
 	}
 
-	std::uint64_t MultiwayExternalRecordStore::generation() const { std::lock_guard<std::mutex> lock(mutex_); return generation_; }
-	std::uint64_t MultiwayExternalRecordStore::record_count() const { std::lock_guard<std::mutex> lock(mutex_); return record_count_; }
-	std::uint64_t MultiwayExternalRecordStore::last_batch_number() const { std::lock_guard<std::mutex> lock(mutex_); return last_batch_number_; }
+	std::uint64_t MultiwayExternalRecordStore::generation() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		return generation_;
+	}
+	std::uint64_t MultiwayExternalRecordStore::record_count() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		return record_count_;
+	}
+	std::uint64_t MultiwayExternalRecordStore::last_batch_number() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		return last_batch_number_;
+	}
 	std::uint64_t MultiwayExternalRecordStore::content_hash() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -4677,8 +4870,14 @@ namespace texas::solver::multiway
 		}
 		return texas::core::fingerprint::finish(hash);
 	}
-	std::size_t MultiwayExternalRecordStore::cache_capacity_records() const noexcept { return cache_capacity_; }
-	std::size_t MultiwayExternalRecordStore::cache_bytes() const noexcept { return cache_capacity_ * (payload_bytes_ + sizeof(CacheEntry) + 8U); }
+	std::size_t MultiwayExternalRecordStore::cache_capacity_records() const noexcept
+	{
+		return cache_capacity_;
+	}
+	std::size_t MultiwayExternalRecordStore::cache_bytes() const noexcept
+	{
+		return cache_capacity_ * (payload_bytes_ + sizeof(CacheEntry) + 8U);
+	}
 	MultiwayExternalStorageStats MultiwayExternalRecordStore::stats() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);

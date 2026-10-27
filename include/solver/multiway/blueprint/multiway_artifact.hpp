@@ -326,7 +326,6 @@ namespace texas::solver::multiway
 			bool allow_runtime_identity_difference);
 		[[nodiscard]] static std::uint64_t payload_hash(const MultiwayFullBlueprintArtifact& artifact) noexcept;
 		[[nodiscard]] static std::uint64_t policy_content_hash(const MultiwayFullBlueprintArtifact& artifact);
-
 	};
 
 	class MultiwayBlueprintArtifacts

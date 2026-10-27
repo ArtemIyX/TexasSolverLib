@@ -450,8 +450,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool blocked() const noexcept
 		{
-			return status == MultiwayExportDiskGateStatus::Rejected ||
-				status == MultiwayExportDiskGateStatus::Unavailable;
+			return status == MultiwayExportDiskGateStatus::Rejected || status == MultiwayExportDiskGateStatus::Unavailable;
 		}
 	};
 

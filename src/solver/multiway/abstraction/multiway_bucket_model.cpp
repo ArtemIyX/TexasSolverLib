@@ -77,7 +77,8 @@ namespace texas::solver::multiway
 		bool is_live_hole(MultiwayBoardView board, const std::array<std::uint8_t, 2>& hole)
 		{
 			for (const auto card : board)
-				if (card == hole[0] || card == hole[1]) return false;
+				if (card == hole[0] || card == hole[1])
+					return false;
 			return true;
 		}
 
@@ -95,15 +96,16 @@ namespace texas::solver::multiway
 
 	bool operator==(const MultiwayBoardView::const_iterator& left, const MultiwayBoardView::const_iterator& right) noexcept
 	{
-		return left.bytes_ == right.bytes_ && left.packed_ == right.packed_ && left.size_ == right.size_ &&
-			left.is_packed_ == right.is_packed_ && left.index_ == right.index_;
+		return left.bytes_ == right.bytes_ && left.packed_ == right.packed_ && left.size_ == right.size_ && left.is_packed_ == right.is_packed_ && left.index_ == right.index_;
 	}
 
 	bool operator==(MultiwayBoardView left, MultiwayBoardView right) noexcept
 	{
-		if (left.size_ != right.size_) return false;
+		if (left.size_ != right.size_)
+			return false;
 		for (std::size_t index = 0U; index < left.size_; ++index)
-			if (left[index] != right[index]) return false;
+			if (left[index] != right[index])
+				return false;
 		return true;
 	}
 
@@ -112,16 +114,19 @@ namespace texas::solver::multiway
 		const auto count = std::min<std::size_t>(left.size_, right.size_);
 		for (std::size_t index = 0U; index < count; ++index)
 		{
-			if (left[index] != right[index]) return left[index] < right[index];
+			if (left[index] != right[index])
+				return left[index] < right[index];
 		}
 		return left.size_ < right.size_;
 	}
 
 	bool operator==(MultiwayBoardView left, const std::vector<std::uint8_t>& right) noexcept
 	{
-		if (left.size_ != right.size()) return false;
+		if (left.size_ != right.size())
+			return false;
 		for (std::size_t index = 0U; index < left.size_; ++index)
-			if (left[index] != right[index]) return false;
+			if (left[index] != right[index])
+				return false;
 		return true;
 	}
 
@@ -130,7 +135,8 @@ namespace texas::solver::multiway
 		const auto count = std::min<std::size_t>(left.size_, right.size());
 		for (std::size_t index = 0U; index < count; ++index)
 		{
-			if (left[index] != right[index]) return left[index] < right[index];
+			if (left[index] != right[index])
+				return left[index] < right[index];
 		}
 		return left.size_ < right.size();
 	}
@@ -175,18 +181,19 @@ namespace texas::solver::multiway
 
 	MultiwayBucketTable::~MultiwayBucketTable() = default;
 	MultiwayBucketTable::MultiwayBucketTable(const MultiwayBucketTable& other)
-		: owned_(other.owned_ == nullptr ? nullptr : std::make_unique<OwnedData>(*other.owned_)),
-		  mapped_directory_entry_(other.mapped_directory_entry_),
-		  mapped_artifact_data_(other.mapped_artifact_data_), mapped_identity_(other.mapped_identity_),
-		  mapped_assignment_width_(other.mapped_assignment_width_), mapped_schema5_(other.mapped_schema5_)
-	{}
+		: owned_(other.owned_ == nullptr ? nullptr : std::make_unique<OwnedData>(*other.owned_)), mapped_directory_entry_(other.mapped_directory_entry_), mapped_artifact_data_(other.mapped_artifact_data_), mapped_identity_(other.mapped_identity_), mapped_assignment_width_(other.mapped_assignment_width_), mapped_schema5_(other.mapped_schema5_)
+	{
+	}
 	MultiwayBucketTable& MultiwayBucketTable::operator=(const MultiwayBucketTable& other)
 	{
-		if (this == &other) return *this;
+		if (this == &other)
+			return *this;
 		owned_ = other.owned_ == nullptr ? nullptr : std::make_unique<OwnedData>(*other.owned_);
 		mapped_directory_entry_ = other.mapped_directory_entry_;
-		mapped_artifact_data_ = other.mapped_artifact_data_; mapped_identity_ = other.mapped_identity_;
-		mapped_assignment_width_ = other.mapped_assignment_width_; mapped_schema5_ = other.mapped_schema5_;
+		mapped_artifact_data_ = other.mapped_artifact_data_;
+		mapped_identity_ = other.mapped_identity_;
+		mapped_assignment_width_ = other.mapped_assignment_width_;
+		mapped_schema5_ = other.mapped_schema5_;
 		return *this;
 	}
 	MultiwayBucketTable::MultiwayBucketTable(MultiwayBucketTable&&) noexcept = default;
@@ -209,13 +216,13 @@ namespace texas::solver::multiway
 	std::uint32_t MultiwayBucketTable::bucket_count() const noexcept
 	{
 		if (mapped_schema5_)
-			return static_cast<std::uint32_t>(mapped_directory_entry_[12]) | (static_cast<std::uint32_t>(mapped_directory_entry_[13]) << 8U) |
-				(static_cast<std::uint32_t>(mapped_directory_entry_[14]) << 16U) | (static_cast<std::uint32_t>(mapped_directory_entry_[15]) << 24U);
+			return static_cast<std::uint32_t>(mapped_directory_entry_[12]) | (static_cast<std::uint32_t>(mapped_directory_entry_[13]) << 8U) | (static_cast<std::uint32_t>(mapped_directory_entry_[14]) << 16U) | (static_cast<std::uint32_t>(mapped_directory_entry_[15]) << 24U);
 		return owned_->bucket_count;
 	}
 	std::uint64_t MultiwayBucketTable::table_identity() const noexcept
 	{
-		if (mapped_schema5_) return read_mapped_u64(mapped_directory_entry_ + 24U);
+		if (mapped_schema5_)
+			return read_mapped_u64(mapped_directory_entry_ + 24U);
 		return owned_->table_identity;
 	}
 	const std::vector<std::uint32_t>& MultiwayBucketTable::assignments() const noexcept
@@ -223,10 +230,22 @@ namespace texas::solver::multiway
 		static const std::vector<std::uint32_t> empty;
 		return owned_ == nullptr ? empty : owned_->assignments;
 	}
-	std::size_t MultiwayBucketTable::owned_board_capacity() const noexcept { return owned_ == nullptr ? 0U : owned_->board.capacity(); }
-	std::size_t MultiwayBucketTable::owned_board_size() const noexcept { return owned_ == nullptr ? 0U : owned_->board.size(); }
-	std::size_t MultiwayBucketTable::owned_assignment_capacity() const noexcept { return owned_ == nullptr ? 0U : owned_->assignments.capacity(); }
-	std::size_t MultiwayBucketTable::owned_storage_bytes() const noexcept { return owned_ == nullptr ? 0U : sizeof(OwnedData); }
+	std::size_t MultiwayBucketTable::owned_board_capacity() const noexcept
+	{
+		return owned_ == nullptr ? 0U : owned_->board.capacity();
+	}
+	std::size_t MultiwayBucketTable::owned_board_size() const noexcept
+	{
+		return owned_ == nullptr ? 0U : owned_->board.size();
+	}
+	std::size_t MultiwayBucketTable::owned_assignment_capacity() const noexcept
+	{
+		return owned_ == nullptr ? 0U : owned_->assignments.capacity();
+	}
+	std::size_t MultiwayBucketTable::owned_storage_bytes() const noexcept
+	{
+		return owned_ == nullptr ? 0U : sizeof(OwnedData);
+	}
 
 	std::uint32_t MultiwayBucketTable::lookup(const std::array<std::uint8_t, 2>& hole) const
 	{
@@ -296,7 +315,8 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway bucket registry has invalid mapped table");
 			}
 		}
-		for (auto& table : tables_) table.mapped_identity_ = mapped_identity_storage_.get();
+		for (auto& table : tables_)
+			table.mapped_identity_ = mapped_identity_storage_.get();
 		std::sort(tables_.begin(), tables_.end(), [](const auto& left, const auto& right) {
 			if (left.street() != right.street())
 				return left.street() < right.street();
@@ -323,7 +343,8 @@ namespace texas::solver::multiway
 			{
 				const auto middle = first + (last - first) / 2U;
 				const auto* entry = mapped_directory_ + middle * 32U;
-				int comparison = entry[0] < static_cast<std::uint8_t>(street) ? -1 : entry[0] > static_cast<std::uint8_t>(street) ? 1 : 0;
+				int comparison = entry[0] < static_cast<std::uint8_t>(street) ? -1 : entry[0] > static_cast<std::uint8_t>(street) ? 1
+																																  : 0;
 				if (comparison == 0)
 				{
 					const auto packed = MultiwayBucketTable::read_mapped_u64(entry + 4U);
@@ -340,8 +361,10 @@ namespace texas::solver::multiway
 					if (comparison == 0 && board_size != canonical_board.size())
 						comparison = board_size < canonical_board.size() ? -1 : 1;
 				}
-				if (comparison < 0) first = middle + 1U;
-				else last = middle;
+				if (comparison < 0)
+					first = middle + 1U;
+				else
+					last = middle;
 			}
 			if (first < mapped_directory_count_)
 			{

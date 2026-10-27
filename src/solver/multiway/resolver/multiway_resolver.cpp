@@ -279,9 +279,7 @@ namespace texas::solver::multiway
 
 		bool has_release_search_configuration(const MultiwayResolverConfig& config) noexcept
 		{
-			return has_runtime_search_configuration(config) && config.buckets != nullptr &&
-				config.verified_blueprint != nullptr &&
-				(config.full_blueprint != nullptr || config.mapped_full_blueprint != nullptr);
+			return has_runtime_search_configuration(config) && config.buckets != nullptr && config.verified_blueprint != nullptr && (config.full_blueprint != nullptr || config.mapped_full_blueprint != nullptr);
 		}
 
 		void set_policy_provenance(
@@ -512,7 +510,8 @@ namespace texas::solver::multiway
 			MultiwayMemoryInputs inputs;
 			inputs.blueprint_index_bytes = config.full_blueprint == nullptr
 				? (config.mapped_full_blueprint == nullptr
-					? 0U : config.mapped_full_blueprint->sparse_index_bytes())
+						  ? 0U
+						  : config.mapped_full_blueprint->sparse_index_bytes())
 				: config.full_blueprint->memory_bytes();
 			if (config.mapped_full_blueprint != nullptr)
 			{
@@ -1042,8 +1041,7 @@ namespace texas::solver::multiway
 				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
 				return result;
 			}
-			if (config_.mapped_full_blueprint != nullptr &&
-				config_.mapped_full_blueprint->identity() != request.blueprint_identity)
+			if (config_.mapped_full_blueprint != nullptr && config_.mapped_full_blueprint->identity() != request.blueprint_identity)
 			{
 				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
 				return result;

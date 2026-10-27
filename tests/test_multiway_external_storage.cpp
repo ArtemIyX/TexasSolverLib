@@ -32,12 +32,19 @@ namespace
 			{
 				path_ = root / ("texassolver_external_store_" + std::to_string(next.fetch_add(1U)));
 				std::error_code error;
-				if (std::filesystem::create_directory(path_, error)) break;
-				if (error) throw std::runtime_error("test directory cannot be created");
+				if (std::filesystem::create_directory(path_, error))
+					break;
+				if (error)
+					throw std::runtime_error("test directory cannot be created");
 			}
 		}
-		~TestDirectory() { std::error_code ignored; std::filesystem::remove_all(path_, ignored); }
+		~TestDirectory()
+		{
+			std::error_code ignored;
+			std::filesystem::remove_all(path_, ignored);
+		}
 		const std::filesystem::path& path() const noexcept { return path_; }
+
 	private:
 		std::filesystem::path path_;
 	};
@@ -62,16 +69,16 @@ namespace
 	void write_empty_component_manifests(const std::filesystem::path& directory,
 		const texas::solver::multiway::MultiwayExternalGenerationManifest& generation)
 	{
-		const std::array<std::pair<const char*, std::uint64_t>, 3U> components = {{
+		const std::array<std::pair<const char*, std::uint64_t>, 3U> components = { {
 			{ "catalog", generation.catalog_generation },
 			{ "rows", generation.row_generation },
 			{ "pages", generation.page_generation },
-		}};
+		} };
 		for (const auto& component : components)
 		{
 			const auto component_directory = directory / component.first;
 			std::filesystem::create_directories(component_directory);
-			std::vector<std::uint8_t> bytes{ 'T','X','M','W','E','X','T','1' };
+			std::vector<std::uint8_t> bytes{ 'T', 'X', 'M', 'W', 'E', 'X', 'T', '1' };
 			append_u32(bytes, 1U);
 			append_u32(bytes, 8U);
 			append_u64(bytes, component.second);
@@ -83,7 +90,8 @@ namespace
 			append_u64(bytes, texas::core::fingerprint::finish(hash));
 			std::ofstream output(component_directory / "CURRENT", std::ios::binary);
 			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-			if (!output) throw std::runtime_error("test component manifest cannot be written");
+			if (!output)
+				throw std::runtime_error("test component manifest cannot be written");
 		}
 	}
 
@@ -127,7 +135,7 @@ namespace
 			binding.first_page_id(), binding.page_count() });
 		return true;
 	}
-}
+} // namespace
 
 TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 {
@@ -339,8 +347,14 @@ TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 	second.committed_batch_number = 8U;
 	std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
 	bool publication_rejected = false;
-	try { publish_multiway_external_generation(directory.path(), second, false); }
-	catch (const std::runtime_error&) { publication_rejected = true; }
+	try
+	{
+		publish_multiway_external_generation(directory.path(), second, false);
+	}
+	catch (const std::runtime_error&)
+	{
+		publication_rejected = true;
+	}
 	EXPECT_TRUE(publication_rejected);
 	EXPECT_TRUE(load_multiway_external_generation(directory.path(), loaded));
 	EXPECT_EQ(loaded.generation, first.generation);
@@ -356,8 +370,14 @@ TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 		current.write(&byte, 1);
 	}
 	bool corruption_rejected = false;
-	try { load_multiway_external_generation(directory.path(), loaded); }
-	catch (const std::invalid_argument&) { corruption_rejected = true; }
+	try
+	{
+		load_multiway_external_generation(directory.path(), loaded);
+	}
+	catch (const std::invalid_argument&)
+	{
+		corruption_rejected = true;
+	}
 	EXPECT_TRUE(corruption_rejected);
 }
 
@@ -365,7 +385,7 @@ TEST_CASE(multiway_external_generation_manifest_loads_schema_one_fail_closed)
 {
 	using namespace texas::solver::multiway;
 	const auto legacy_bytes = [](std::uint64_t row_count) {
-		std::vector<std::uint8_t> bytes{ 'T','X','M','W','G','E','N','1' };
+		std::vector<std::uint8_t> bytes{ 'T', 'X', 'M', 'W', 'G', 'E', 'N', '1' };
 		const auto append_u32 = [&bytes](std::uint32_t value) {
 			for (unsigned shift = 0U; shift < 32U; shift += 8U)
 				bytes.push_back(static_cast<std::uint8_t>(value >> shift));
@@ -377,7 +397,7 @@ TEST_CASE(multiway_external_generation_manifest_loads_schema_one_fail_closed)
 		append_u32(1U);
 		append_u32(0U);
 		for (const auto field : std::array<std::uint64_t, 10U>{
-			1U, 1U, 7U, 0U, 0U, 0U, row_count, 0U, 0U, 9U })
+				 1U, 1U, 7U, 0U, 0U, 0U, row_count, 0U, 0U, 9U })
 			append_u64(field);
 		auto checksum = texas::core::fingerprint::FNV1A_OFFSET;
 		for (const auto byte : bytes)
@@ -386,7 +406,7 @@ TEST_CASE(multiway_external_generation_manifest_loads_schema_one_fail_closed)
 		return bytes;
 	};
 	const auto write_legacy = [&legacy_bytes](const std::filesystem::path& directory,
-		std::uint64_t row_count) {
+								  std::uint64_t row_count) {
 		std::filesystem::create_directories(directory);
 		const auto bytes = legacy_bytes(row_count);
 		std::ofstream output(directory / "TRAINING_CURRENT", std::ios::binary);
@@ -463,7 +483,7 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	auto inconsistent_progress = checkpoint;
 	inconsistent_progress.completed_batches = checkpoint.generation.committed_batch_number;
 	EXPECT_THROW(save_multiway_external_checkpoint_manifest(
-		directory.path() / "invalid.manifest", storage_directory, inconsistent_progress, false),
+					 directory.path() / "invalid.manifest", storage_directory, inconsistent_progress, false),
 		std::invalid_argument);
 	bool model_mismatch_rejected = false;
 	try
@@ -471,7 +491,10 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
 			99U, 12U, 13U, 14U));
 	}
-	catch (const std::invalid_argument&) { model_mismatch_rejected = true; }
+	catch (const std::invalid_argument&)
+	{
+		model_mismatch_rejected = true;
+	}
 	EXPECT_TRUE(model_mismatch_rejected);
 	auto newer_generation = checkpoint.generation;
 	++newer_generation.generation;
@@ -500,7 +523,10 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
 			11U, 12U, 13U, 14U));
 	}
-	catch (const std::invalid_argument&) { checksum_mismatch_rejected = true; }
+	catch (const std::invalid_argument&)
+	{
+		checksum_mismatch_rejected = true;
+	}
 	EXPECT_TRUE(checksum_mismatch_rejected);
 }
 
@@ -535,7 +561,8 @@ TEST_CASE(multiway_external_checkpoint_capture_uses_published_generation_without
 	EXPECT_TRUE(checkpoint.segments[0].empty());
 
 	EXPECT_THROW(make_multiway_external_checkpoint_manifest(
-		directory.path(), 0U, 12U, 13U, 14U, 500U), std::invalid_argument);
+					 directory.path(), 0U, 12U, 13U, 14U, 500U),
+		std::invalid_argument);
 }
 
 TEST_CASE(multiway_external_checkpoint_manifest_loads_legacy_schema6_without_training_extension)
@@ -602,11 +629,14 @@ TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_pr
 	{
 		save_multiway_external_checkpoint_manifest(path, storage_directory, next, false, { true });
 	}
-	catch (const std::runtime_error&) { publication_failed = true; }
+	catch (const std::runtime_error&)
+	{
+		publication_failed = true;
+	}
 	EXPECT_TRUE(publication_failed);
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
 	EXPECT_THROW(save_multiway_external_checkpoint_manifest(
-		path, storage_directory, next, false, {}, std::numeric_limits<std::uint64_t>::max()),
+					 path, storage_directory, next, false, {}, std::numeric_limits<std::uint64_t>::max()),
 		std::length_error);
 	const auto loaded = load_multiway_external_checkpoint_manifest(path, storage_directory,
 		11U, 12U, 13U, 14U);
@@ -619,7 +649,8 @@ TEST_CASE(multiway_external_checkpoint_parallel_segment_validation_rejects_corru
 	TestDirectory directory;
 	constexpr std::uint64_t kBatchCount = 12U;
 	const std::array<std::filesystem::path, 3U> component_paths = {
-		directory.path() / "catalog", directory.path() / "rows", directory.path() / "pages" };
+		directory.path() / "catalog", directory.path() / "rows", directory.path() / "pages"
+	};
 	std::array<std::uint64_t, 3U> component_generations{};
 	for (std::size_t component = 0U; component < component_paths.size(); ++component)
 	{
@@ -650,8 +681,7 @@ TEST_CASE(multiway_external_checkpoint_parallel_segment_validation_rejects_corru
 		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U);
 	EXPECT_EQ(loaded.segments[2].size(), checkpoint.segments[2].size());
 
-	const auto corrupted_segment = component_paths[2] /
-		("run_" + std::to_string(checkpoint.segments[2].back().generation) + ".dat");
+	const auto corrupted_segment = component_paths[2] / ("run_" + std::to_string(checkpoint.segments[2].back().generation) + ".dat");
 	std::fstream file(corrupted_segment, std::ios::binary | std::ios::in | std::ios::out);
 	char byte = 0;
 	file.read(&byte, 1);
@@ -662,7 +692,8 @@ TEST_CASE(multiway_external_checkpoint_parallel_segment_validation_rejects_corru
 	EXPECT_TRUE(static_cast<bool>(file));
 	file.close();
 	EXPECT_THROW(load_multiway_external_checkpoint_manifest(
-		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U), std::invalid_argument);
+					 checkpoint_path, directory.path(), 11U, 12U, 13U, 14U),
+		std::invalid_argument);
 }
 
 TEST_CASE(multiway_external_reopen_removes_only_unreferenced_and_temporary_runs)
@@ -677,7 +708,7 @@ TEST_CASE(multiway_external_reopen_removes_only_unreferenced_and_temporary_runs)
 		store.compact();
 	}
 	for (const auto* name : { "run_2.dat", "run_2.idx", "run_01.dat", "run_4.dat.tmp",
-		"run_99.idx", "CURRENT.tmp" })
+			 "run_99.idx", "CURRENT.tmp" })
 	{
 		std::ofstream output(directory.path() / name, std::ios::binary);
 		output.put('x');
@@ -693,7 +724,7 @@ TEST_CASE(multiway_external_reopen_removes_only_unreferenced_and_temporary_runs)
 		for (const auto* name : { "run_1.dat", "run_1.idx", "run_4.dat", "run_4.idx" })
 			EXPECT_TRUE(std::filesystem::exists(directory.path() / name));
 		for (const auto* name : { "run_2.dat", "run_2.idx", "run_01.dat", "run_4.dat.tmp",
-			"run_99.idx", "CURRENT.tmp" })
+				 "run_99.idx", "CURRENT.tmp" })
 			EXPECT_TRUE(!std::filesystem::exists(directory.path() / name));
 	}
 }
@@ -703,7 +734,8 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	const std::array<std::filesystem::path, 3U> component_paths = {
-		directory.path() / "catalog", directory.path() / "rows", directory.path() / "pages" };
+		directory.path() / "catalog", directory.path() / "rows", directory.path() / "pages"
+	};
 	for (const auto& component_path : component_paths)
 	{
 		MultiwayExternalRecordStore store(config(component_path), 4U);
@@ -747,8 +779,7 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 	const auto usage = reopened.disk_usage();
 	EXPECT_TRUE(usage.live_segment_bytes > 0U);
 	EXPECT_EQ(usage.retained_segment_bytes,
-		std::filesystem::file_size(component_paths[0] / "run_2.dat") +
-		std::filesystem::file_size(component_paths[0] / "run_2.idx"));
+		std::filesystem::file_size(component_paths[0] / "run_2.dat") + std::filesystem::file_size(component_paths[0] / "run_2.idx"));
 	std::vector<std::uint8_t> payload;
 	EXPECT_TRUE(reopened.lookup(10U, payload));
 	EXPECT_EQ(payload[0], 10U);
@@ -769,7 +800,10 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 		static_cast<void>(restore_multiway_external_checkpoint(
 			checkpoint_path, directory.path(), 11U, 12U, 13U, 14U, false, { 1U, false }));
 	}
-	catch (const std::runtime_error&) { partial_restore_failed = true; }
+	catch (const std::runtime_error&)
+	{
+		partial_restore_failed = true;
+	}
 	EXPECT_TRUE(partial_restore_failed);
 	MultiwayExternalGenerationManifest after_failed_restore{};
 	EXPECT_TRUE(load_multiway_external_generation(directory.path(), after_failed_restore));
@@ -780,7 +814,10 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 		static_cast<void>(restore_multiway_external_checkpoint(
 			checkpoint_path, directory.path(), 11U, 12U, 13U, 14U, false, { 1U, false, true }));
 	}
-	catch (const std::runtime_error&) { interrupted_restore = true; }
+	catch (const std::runtime_error&)
+	{
+		interrupted_restore = true;
+	}
 	EXPECT_TRUE(interrupted_restore);
 	MultiwayExternalBatchTransaction recovered_restore(directory.path(), false);
 	EXPECT_EQ(recovered_restore.current_manifest().generation, 2U);
@@ -923,8 +960,14 @@ TEST_CASE(multiway_external_batch_transaction_rolls_back_when_global_publish_fai
 	second.logical_value_count = 2U;
 	std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
 	bool commit_rejected = false;
-	try { transaction.commit_batch(second); }
-	catch (const std::runtime_error&) { commit_rejected = true; }
+	try
+	{
+		transaction.commit_batch(second);
+	}
+	catch (const std::runtime_error&)
+	{
+		commit_rejected = true;
+	}
 	EXPECT_TRUE(commit_rejected);
 	transaction.abort_batch();
 	MultiwayExternalBatchTransaction reopened(directory.path(), false);
@@ -1054,8 +1097,14 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		reopened.compact_storage().unpin_bucket(dirty_page);
 		std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
 		bool publication_failed = false;
-		try { reopened.commit_batch(0xdefU, 2U, 5U); }
-		catch (const std::runtime_error&) { publication_failed = true; }
+		try
+		{
+			reopened.commit_batch(0xdefU, 2U, 5U);
+		}
+		catch (const std::runtime_error&)
+		{
+			publication_failed = true;
+		}
 		EXPECT_TRUE(publication_failed);
 		reopened.abort_batch();
 		EXPECT_EQ(reopened.current_manifest().generation, 1U);
@@ -1168,8 +1217,14 @@ TEST_CASE(multiway_external_batch_transaction_keeps_published_generation_after_c
 	std::filesystem::create_directory(catalog_backup);
 	std::ofstream(catalog_backup / "held", std::ios::binary).put('x');
 	bool cleanup_failed = false;
-	try { transaction.commit_batch(second); }
-	catch (const std::runtime_error&) { cleanup_failed = true; }
+	try
+	{
+		transaction.commit_batch(second);
+	}
+	catch (const std::runtime_error&)
+	{
+		cleanup_failed = true;
+	}
 	EXPECT_TRUE(cleanup_failed);
 	MultiwayExternalBatchTransaction reopened(directory.path(), false);
 	EXPECT_EQ(reopened.current_manifest().committed_batch_number, 2U);
@@ -1295,12 +1350,24 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		MultiwayPublicStateDescriptor missing_candidate{};
 		missing_candidate.id.value = 4U;
 		bool stale_classification_rejected = false;
-		try { catalog.append_discovered_batch(3U, 0x47U, { missing_candidate }, { 0U }); }
-		catch (const std::invalid_argument&) { stale_classification_rejected = true; }
+		try
+		{
+			catalog.append_discovered_batch(3U, 0x47U, { missing_candidate }, { 0U });
+		}
+		catch (const std::invalid_argument&)
+		{
+			stale_classification_rejected = true;
+		}
 		EXPECT_TRUE(stale_classification_rejected);
 		bool unsorted_rejected = false;
-		try { catalog.classify_batch({ child_candidate, root_candidate }, new_flags, existing_nodes); }
-		catch (const std::invalid_argument&) { unsorted_rejected = true; }
+		try
+		{
+			catalog.classify_batch({ child_candidate, root_candidate }, new_flags, existing_nodes);
+		}
+		catch (const std::invalid_argument&)
+		{
+			unsorted_rejected = true;
+		}
 		EXPECT_TRUE(unsorted_rejected);
 		std::vector<MultiwayPackedPublicNode> chain;
 		EXPECT_TRUE(catalog.reconstruct_chain(child.id, chain));
@@ -1311,8 +1378,14 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		EXPECT_TRUE(catalog.lookup_menu(child.id, nullptr, 0U, empty_menu_count));
 		EXPECT_EQ(empty_menu_count, 0U);
 		bool duplicate_rejected = false;
-		try { catalog.append_batch(3U, 0x45U, { child }); }
-		catch (const std::invalid_argument&) { duplicate_rejected = true; }
+		try
+		{
+			catalog.append_batch(3U, 0x45U, { child });
+		}
+		catch (const std::invalid_argument&)
+		{
+			duplicate_rejected = true;
+		}
 		EXPECT_TRUE(duplicate_rejected);
 	}
 	MultiwayExternalPublicCatalog reopened(config(directory.path()), 8U);
@@ -1332,7 +1405,8 @@ TEST_CASE(multiway_external_public_catalog_persists_action_menus)
 	descriptor.id = root.id;
 	descriptor.legal_actions = {
 		{ texas::games::multiway::MultiwayAction::Check, 0U, 100, 0xabcU },
-		{ texas::games::multiway::MultiwayAction::Bet, 1U, 300, 0xabcU } };
+		{ texas::games::multiway::MultiwayAction::Bet, 1U, 300, 0xabcU }
+	};
 	{
 		MultiwayExternalPublicCatalog catalog(config(directory.path()), 8U);
 		catalog.append_discovered_batch(1U, 0x55U, { descriptor }, { 1U });
@@ -1369,10 +1443,11 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 	{
 		MultiwayExternalRowIndex rows(config(directory.path()), 16U);
 		rows.append_batch(1U, 0x77U, {
-			{ { { 10U }, 0 }, 17U, 3U },
-			{ { { 10U }, 1 }, 17U, 2U },
-			{ { { 20U }, 2 }, 16U, 1U },
-		}, next_page_id);
+										 { { { 10U }, 0 }, 17U, 3U },
+										 { { { 10U }, 1 }, 17U, 2U },
+										 { { { 20U }, 2 }, 16U, 1U },
+									 },
+			next_page_id);
 		EXPECT_EQ(next_page_id, 6U);
 		MultiwayExternalRowMetadata metadata{};
 		EXPECT_TRUE(rows.lookup({ 10U }, 1, metadata));
@@ -1393,17 +1468,22 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		try
 		{
 			rows.append_batch(2U, 0x78U, {
-				{ { { 30U }, 0 }, 1U, 1U },
-				{ { { 30U }, 6 }, 1U, 1U },
-			}, unchanged_page_id);
+											 { { { 30U }, 0 }, 1U, 1U },
+											 { { { 30U }, 6 }, 1U, 1U },
+										 },
+				unchanged_page_id);
 		}
-		catch (const std::invalid_argument&) { invalid_rejected = true; }
+		catch (const std::invalid_argument&)
+		{
+			invalid_rejected = true;
+		}
 		EXPECT_TRUE(invalid_rejected);
 		EXPECT_EQ(unchanged_page_id, 6U);
 		rows.append_batch(2U, 0x79U, {
-			{ { { 30U }, 0 }, 1U, 1U },
-			{ { { 25U }, 1 }, 1U, 1U },
-		}, next_page_id);
+										 { { { 30U }, 0 }, 1U, 1U },
+										 { { { 25U }, 1 }, 1U, 1U },
+									 },
+			next_page_id);
 		EXPECT_EQ(next_page_id, 8U);
 	}
 	MultiwayExternalRowIndex reopened(config(directory.path()), 16U);
@@ -1486,7 +1566,7 @@ TEST_CASE(multiway_external_sparse_page_lookup_fixture)
 		{
 			pages.begin_batch(generation, generation);
 			for (const auto id : std::array<std::uint64_t, 3U>{ generation * 100U,
-				generation * 100U + 3000U, 6000U })
+					 generation * 100U + 3000U, 6000U })
 			{
 				auto page = pages.pin(id, { id }, 0, 0U, 1U, 2U);
 				pages.mark_dirty(id);
@@ -1499,11 +1579,12 @@ TEST_CASE(multiway_external_sparse_page_lookup_fixture)
 	MultiwayExternalCompactPages pages(page_config, 16U, 10000U);
 	const bool filter_enabled = std::getenv("TEXASSOLVER_PB12_FILTER") != nullptr;
 	const auto fixture_started = std::chrono::steady_clock::now();
-	if (filter_enabled) pages.begin_export_filter();
+	if (filter_enabled)
+		pages.begin_export_filter();
 	const auto filter_finished = std::chrono::steady_clock::now();
 	MultiwayExternalPageProfile profile;
 	for (const auto request : { std::pair<std::uint64_t, std::uint64_t>{ 100U, 1U },
-		std::pair<std::uint64_t, std::uint64_t>{ 6000U, 24U } })
+			 std::pair<std::uint64_t, std::uint64_t>{ 6000U, 24U } })
 	{
 		auto page = pages.pin_profiled(request.first, { request.first }, 0, 0U, 1U, 2U, &profile);
 		EXPECT_EQ(page.strategy_masses[0], request.second);
@@ -1517,23 +1598,27 @@ TEST_CASE(multiway_external_sparse_page_lookup_fixture)
 		const auto id = 1U + ((i * 7919U) % 5500U);
 		auto page = pages.pin_profiled(id, { id }, 0, 0U, 1U, 2U, &profile);
 		const auto expected = id % 100U == 0U && id >= 100U && id <= 2400U
-			? id / 100U : (id % 100U == 0U && id >= 3100U && id <= 5400U
-				? (id - 3000U) / 100U : 0U);
+			? id / 100U
+			: (id % 100U == 0U && id >= 3100U && id <= 5400U
+					  ? (id - 3000U) / 100U
+					  : 0U);
 		EXPECT_EQ(page.strategy_masses[0], expected);
 		hits += expected != 0U;
 		pages.unpin(id);
 	}
 	EXPECT_TRUE(profile.record_lookup.index_opens > 0U);
 	EXPECT_TRUE(profile.zero_pages > profile.decoded_pages);
-	if (filter_enabled) EXPECT_TRUE(profile.record_lookup.membership_misses > 0U);
+	if (filter_enabled)
+		EXPECT_TRUE(profile.record_lookup.membership_misses > 0U);
 	std::cout << "PB12_SPARSE_PAGE_PROFILE index_opens=" << profile.record_lookup.index_opens
-		<< " index_reads=" << profile.record_lookup.index_reads
-		<< " range_skips=" << profile.record_lookup.run_range_skips
-		<< " membership_misses=" << profile.record_lookup.membership_misses
-		<< " filter_build_ns=" << std::chrono::duration_cast<std::chrono::nanoseconds>(filter_finished - fixture_started).count()
-		<< " data_reads=" << profile.record_lookup.data_reads
-		<< " zero_pages=" << profile.zero_pages << " hits=" << hits << '\n';
-	if (filter_enabled) pages.end_export_filter();
+			  << " index_reads=" << profile.record_lookup.index_reads
+			  << " range_skips=" << profile.record_lookup.run_range_skips
+			  << " membership_misses=" << profile.record_lookup.membership_misses
+			  << " filter_build_ns=" << std::chrono::duration_cast<std::chrono::nanoseconds>(filter_finished - fixture_started).count()
+			  << " data_reads=" << profile.record_lookup.data_reads
+			  << " zero_pages=" << profile.zero_pages << " hits=" << hits << '\n';
+	if (filter_enabled)
+		pages.end_export_filter();
 }
 
 TEST_CASE(multiway_external_export_filter_rejects_corruption_and_allows_retry)
@@ -1586,8 +1671,7 @@ TEST_CASE(multiway_external_compact_pages_match_reference_cell_encoding)
 	external.begin_batch(1U, 0xabcU);
 	auto page = external.pin(1U, { 42U }, 3, 0U, 16U, 4U);
 	const auto* row = reference.metadata(shape.infoset);
-	const std::array<std::array<double, 2U>, 4U> deltas = {{
-		{{ -1.25, 0.5 }}, {{ 2.0, 3.25 }}, {{ -0.75, 1.0 }}, {{ 4.5, 2.0 }} }};
+	const std::array<std::array<double, 2U>, 4U> deltas = { { { { -1.25, 0.5 } }, { { 2.0, 3.25 } }, { { -0.75, 1.0 } }, { { 4.5, 2.0 } } } };
 	for (std::uint8_t action = 0U; action < shape.action_count; ++action)
 	{
 		reference.apply_delta(*row, 7U, action, deltas[action][0], deltas[action][1]);
@@ -1627,14 +1711,14 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 	MultiwayExternalRowBinding binding{};
 	EXPECT_TRUE(external.lookup_row(shape.infoset, binding));
 	external.begin_batch(1U, 0xabcU);
-	const std::array<MultiwayWorkerDelta, 6U> deltas = {{
+	const std::array<MultiwayWorkerDelta, 6U> deltas = { {
 		{ shape.infoset, 0U, 0U, -2.5, 1.25, 0U },
 		{ shape.infoset, 0U, 1U, 3.0, 4.5, 1U },
 		{ shape.infoset, 15U, 1U, -0.75, 2.0, 2U },
 		{ shape.infoset, 16U, 2U, 1'900'000.0, 1'099'511'627'776.0, 3U },
 		{ shape.infoset, 16U, 2U, 200'000.0, 1'099'511'627'776.0, 4U },
 		{ shape.infoset, 16U, 0U, -2'500'000.0, 0.0, 5U },
-	}};
+	} };
 	std::size_t delta_index = 0U;
 	while (delta_index < deltas.size())
 	{
@@ -1701,7 +1785,10 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 	{
 		reopened.apply_delta(reopened_pinned, 2U, 1.0, 0.0);
 	}
-	catch (const std::invalid_argument&) { read_only_update_rejected = true; }
+	catch (const std::invalid_argument&)
+	{
+		read_only_update_rejected = true;
+	}
 	EXPECT_TRUE(read_only_update_rejected);
 	reopened.unpin_bucket(reopened_pinned);
 	bool foreign_binding_rejected = false;
@@ -1710,7 +1797,10 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 		external.regret_matched_strategy_into(reopened_binding, 16U,
 			reopened_policy.data(), reopened_policy.size());
 	}
-	catch (const std::invalid_argument&) { foreign_binding_rejected = true; }
+	catch (const std::invalid_argument&)
+	{
+		foreign_binding_rejected = true;
+	}
 	EXPECT_TRUE(foreign_binding_rejected);
 }
 
@@ -1945,13 +2035,25 @@ TEST_CASE(multiway_external_record_store_fails_closed_after_compaction_read_fail
 	store.append_batch(2U, 2U, records(8U));
 	std::filesystem::remove(directory.path() / "run_1.dat");
 	bool compaction_failed = false;
-	try { store.compact(); }
-	catch (const std::runtime_error&) { compaction_failed = true; }
+	try
+	{
+		store.compact();
+	}
+	catch (const std::runtime_error&)
+	{
+		compaction_failed = true;
+	}
 	EXPECT_TRUE(compaction_failed);
 	std::vector<std::uint8_t> payload;
 	bool later_lookup_failed_closed = false;
-	try { static_cast<void>(store.lookup(1U, payload)); }
-	catch (const std::runtime_error&) { later_lookup_failed_closed = true; }
+	try
+	{
+		static_cast<void>(store.lookup(1U, payload));
+	}
+	catch (const std::runtime_error&)
+	{
+		later_lookup_failed_closed = true;
+	}
 	EXPECT_TRUE(later_lookup_failed_closed);
 }
 
@@ -2041,7 +2143,8 @@ TEST_CASE(multiway_external_page_cache_does_not_evict_pinned_or_dirty_pages)
 	for (std::size_t index = 0U; index < cache.page_capacity(); ++index)
 		pinned.push_back(cache.pin(index + 1U));
 	EXPECT_THROW(cache.pin(cache.page_capacity() + 1U), std::length_error);
-	for (const auto page : pinned) cache.unpin(page.key);
+	for (const auto page : pinned)
+		cache.unpin(page.key);
 	cache.begin_batch(1U, 1U);
 	for (const auto page : pinned)
 	{

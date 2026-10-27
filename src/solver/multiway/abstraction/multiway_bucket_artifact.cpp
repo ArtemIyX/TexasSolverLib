@@ -47,7 +47,8 @@ namespace texas::solver::multiway
 
 		std::uint32_t bucket_assignment_width(std::uint32_t bucket_count) noexcept
 		{
-			return bucket_count <= 0x100U ? 1U : bucket_count <= 0x10000U ? 2U : 4U;
+			return bucket_count <= 0x100U ? 1U : bucket_count <= 0x10000U ? 2U
+																		  : 4U;
 		}
 
 		std::size_t board_size_for(Street street) noexcept
@@ -188,8 +189,7 @@ namespace texas::solver::multiway
 							bool blocked = false;
 							for (const auto card : table.canonical_board())
 								blocked = blocked || card == hole[0] || card == hole[1];
-							if ((blocked && bucket != MULTIWAY_INVALID_BUCKET) ||
-								(!blocked && (bucket == MULTIWAY_INVALID_BUCKET || bucket >= table.bucket_count())))
+							if ((blocked && bucket != MULTIWAY_INVALID_BUCKET) || (!blocked && (bucket == MULTIWAY_INVALID_BUCKET || bucket >= table.bucket_count())))
 							{
 								invalid.store(true, std::memory_order_relaxed);
 								return;
@@ -256,9 +256,11 @@ namespace texas::solver::multiway
 		for (std::size_t index = 0U; index < board.size(); ++index)
 		{
 			const auto card = board[index];
-			if (!is_card_index(card) || (index != 0U && card < prior)) return false;
+			if (!is_card_index(card) || (index != 0U && card < prior))
+				return false;
 			for (std::size_t before = 0U; before < index; ++before)
-				if (board[before] == card) return false;
+				if (board[before] == card)
+					return false;
 			prior = card;
 		}
 		return true;
@@ -464,8 +466,7 @@ namespace texas::solver::multiway
 		if (tables.size() != 0U && directory_bytes / kDirectoryEntryBytes != tables.size())
 			throw std::overflow_error("multiway bucket directory size overflows address space");
 		const auto assignment_offset = kHeaderBytes + directory_bytes;
-		if (tables.size() > (std::numeric_limits<std::size_t>::max() - assignment_offset) /
-			(MULTIWAY_HOLE_COMBINATION_COUNT * width))
+		if (tables.size() > (std::numeric_limits<std::size_t>::max() - assignment_offset) / (MULTIWAY_HOLE_COMBINATION_COUNT * width))
 			throw std::overflow_error("multiway bucket payload size overflows address space");
 		std::vector<std::uint8_t> directory;
 		directory.reserve(directory_bytes);
@@ -498,7 +499,8 @@ namespace texas::solver::multiway
 		}
 		auto section_hash = [](const std::vector<std::uint8_t>& section) {
 			auto hash = texas::core::fingerprint::FNV1A_OFFSET;
-			for (const auto byte : section) texas::core::fingerprint::append_u8(hash, byte);
+			for (const auto byte : section)
+				texas::core::fingerprint::append_u8(hash, byte);
 			return hash;
 		};
 		std::vector<std::uint8_t> output;
@@ -541,19 +543,15 @@ namespace texas::solver::multiway
 			const auto assignment_hash = read_u64(bytes, cursor);
 			constexpr std::size_t header_size = 4U + 4U + kIdentityFieldCount * 8U + 4U + 4U + 6U * 8U;
 			constexpr std::size_t entry_size = 32U;
-			if (count == 0U || (width != 1U && width != 2U && width != 4U) || directory_offset != header_size ||
-				directory_length != static_cast<std::uint64_t>(count) * entry_size ||
-				assignment_offset != directory_offset + directory_length || assignment_offset > bytes.size() ||
-				assignment_length != bytes.size() - static_cast<std::size_t>(assignment_offset) ||
-				assignment_length != static_cast<std::uint64_t>(count) * MULTIWAY_HOLE_COMBINATION_COUNT * width)
+			if (count == 0U || (width != 1U && width != 2U && width != 4U) || directory_offset != header_size || directory_length != static_cast<std::uint64_t>(count) * entry_size || assignment_offset != directory_offset + directory_length || assignment_offset > bytes.size() || assignment_length != bytes.size() - static_cast<std::size_t>(assignment_offset) || assignment_length != static_cast<std::uint64_t>(count) * MULTIWAY_HOLE_COMBINATION_COUNT * width)
 				throw std::invalid_argument("multiway bucket artifact has invalid section bounds");
 			auto hash_section = [](const std::uint8_t* data, std::size_t size) {
 				auto hash = texas::core::fingerprint::FNV1A_OFFSET;
-				for (std::size_t index = 0U; index < size; ++index) texas::core::fingerprint::append_u8(hash, data[index]);
+				for (std::size_t index = 0U; index < size; ++index)
+					texas::core::fingerprint::append_u8(hash, data[index]);
 				return hash;
 			};
-			if (hash_section(bytes.data() + directory_offset, static_cast<std::size_t>(directory_length)) != directory_hash ||
-				hash_section(bytes.data() + assignment_offset, static_cast<std::size_t>(assignment_length)) != assignment_hash)
+			if (hash_section(bytes.data() + directory_offset, static_cast<std::size_t>(directory_length)) != directory_hash || hash_section(bytes.data() + assignment_offset, static_cast<std::size_t>(assignment_length)) != assignment_hash)
 				throw std::invalid_argument("multiway bucket artifact section hash mismatch");
 			std::vector<MultiwayBucketTable> tables;
 			tables.reserve(count);
@@ -569,12 +567,11 @@ namespace texas::solver::multiway
 				const auto offset = read_u64(bytes, directory_cursor);
 				const auto expected_table_identity = read_u64(bytes, directory_cursor);
 				const auto expected_offset = assignment_offset + static_cast<std::uint64_t>(table_index) * MULTIWAY_HOLE_COMBINATION_COUNT * width;
-				if (board_size != board_size_for(street) || reserved_a != 0U || reserved_b != 0U || (board_key >> (board_size * 6U)) != 0U ||
-					bucket_count == 0U || bucket_assignment_width(bucket_count) > width || offset != expected_offset ||
-					offset > assignment_offset + assignment_length - MULTIWAY_HOLE_COMBINATION_COUNT * width)
+				if (board_size != board_size_for(street) || reserved_a != 0U || reserved_b != 0U || (board_key >> (board_size * 6U)) != 0U || bucket_count == 0U || bucket_assignment_width(bucket_count) > width || offset != expected_offset || offset > assignment_offset + assignment_length - MULTIWAY_HOLE_COMBINATION_COUNT * width)
 					throw std::invalid_argument("multiway bucket artifact has invalid table directory entry");
 				std::vector<std::uint8_t> board(board_size);
-				for (std::size_t card = 0U; card < board_size; ++card) board[card] = static_cast<std::uint8_t>((board_key >> (card * 6U)) & 0x3fU);
+				for (std::size_t card = 0U; card < board_size; ++card)
+					board[card] = static_cast<std::uint8_t>((board_key >> (card * 6U)) & 0x3fU);
 				if (!is_multiway_canonical_board(street, board))
 					throw std::invalid_argument("multiway bucket artifact board is not canonical");
 				std::vector<std::uint32_t> assignments;
@@ -588,21 +585,21 @@ namespace texas::solver::multiway
 					if (width < 4U && value == ((1U << (width * 8U)) - 1U))
 					{
 						const auto& hole = canonical_combos().cards(static_cast<CanonicalComboId>(index));
-						const bool blocked = std::find(board.begin(), board.end(), hole[0]) != board.end() ||
-							std::find(board.begin(), board.end(), hole[1]) != board.end();
-						if (bucket_count != (1U << (width * 8U)) || blocked) value = MULTIWAY_INVALID_BUCKET;
+						const bool blocked = std::find(board.begin(), board.end(), hole[0]) != board.end() || std::find(board.begin(), board.end(), hole[1]) != board.end();
+						if (bucket_count != (1U << (width * 8U)) || blocked)
+							value = MULTIWAY_INVALID_BUCKET;
 					}
 					assignments.push_back(value);
 				}
 				tables.emplace_back(identity, street, std::move(board), bucket_count, std::move(assignments));
 				if (tables.back().table_identity() != expected_table_identity)
 					throw std::invalid_argument("multiway bucket artifact table identity mismatch");
-				if (table_index != 0U && !(tables[table_index - 1U].street() < street ||
-					(tables[table_index - 1U].street() == street && tables[table_index - 1U].canonical_board() < tables.back().canonical_board())))
+				if (table_index != 0U && !(tables[table_index - 1U].street() < street || (tables[table_index - 1U].street() == street && tables[table_index - 1U].canonical_board() < tables.back().canonical_board())))
 					throw std::invalid_argument("multiway bucket artifact directory is not uniquely sorted");
 			}
 			std::uint32_t maximum_bucket_count = 0U;
-			for (const auto& table : tables) maximum_bucket_count = std::max(maximum_bucket_count, table.bucket_count());
+			for (const auto& table : tables)
+				maximum_bucket_count = std::max(maximum_bucket_count, table.bucket_count());
 			if (bucket_assignment_width(maximum_bucket_count) != width)
 				throw std::invalid_argument("multiway bucket artifact assignment width is not minimal");
 			return MultiwayBucketRegistry(std::move(tables));
@@ -722,16 +719,18 @@ namespace texas::solver::multiway
 		if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
 		{
 			assignment_width = read32();
-			directory_offset = read64(); directory_length = read64(); assignment_offset = read64(); assignment_length = read64();
-			const auto directory_hash = read64(); const auto assignment_hash = read64();
-			if ((assignment_width != 1U && assignment_width != 2U && assignment_width != 4U) || directory_offset != kHeaderBytes ||
-				directory_length != static_cast<std::uint64_t>(table_count) * 32U || assignment_offset != directory_offset + directory_length ||
-				assignment_offset > bytes || assignment_length != bytes - assignment_offset ||
-				assignment_length != static_cast<std::uint64_t>(table_count) * MULTIWAY_HOLE_COMBINATION_COUNT * assignment_width)
+			directory_offset = read64();
+			directory_length = read64();
+			assignment_offset = read64();
+			assignment_length = read64();
+			const auto directory_hash = read64();
+			const auto assignment_hash = read64();
+			if ((assignment_width != 1U && assignment_width != 2U && assignment_width != 4U) || directory_offset != kHeaderBytes || directory_length != static_cast<std::uint64_t>(table_count) * 32U || assignment_offset != directory_offset + directory_length || assignment_offset > bytes || assignment_length != bytes - assignment_offset || assignment_length != static_cast<std::uint64_t>(table_count) * MULTIWAY_HOLE_COMBINATION_COUNT * assignment_width)
 				throw std::invalid_argument("multiway bucket artifact has invalid section bounds");
 			auto hash_range = [&](std::uint64_t offset, std::uint64_t length) {
 				auto hash = texas::core::fingerprint::FNV1A_OFFSET;
-				for (std::uint64_t i = 0U; i < length; ++i) texas::core::fingerprint::append_u8(hash, input[offset + i]);
+				for (std::uint64_t i = 0U; i < length; ++i)
+					texas::core::fingerprint::append_u8(hash, input[offset + i]);
 				return hash;
 			};
 			if (hash_range(directory_offset, directory_length) != directory_hash || hash_range(assignment_offset, assignment_length) != assignment_hash)
@@ -747,8 +746,7 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway bucket metadata exceeds the 128 MiB limit");
 		}
 		tables.reserve(table_count);
-		if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION &&
-			static_cast<std::uint64_t>(tables.capacity()) * sizeof(MultiwayBucketTable) + sizeof(MultiwayModelIdentity) > 128ULL * 1024ULL * 1024ULL)
+		if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION && static_cast<std::uint64_t>(tables.capacity()) * sizeof(MultiwayBucketTable) + sizeof(MultiwayModelIdentity) > 128ULL * 1024ULL * 1024ULL)
 			throw std::invalid_argument("multiway bucket metadata exceeds the 128 MiB limit");
 		for (std::uint32_t index = 0U; index < table_count; ++index)
 		{
@@ -758,15 +756,16 @@ namespace texas::solver::multiway
 			std::uint64_t expected_table_identity = 0U;
 			if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
 			{
-				street = static_cast<Street>(read_byte()); board_size = read_byte();
-				const auto reserved_a = read_byte(); const auto reserved_b = read_byte();
+				street = static_cast<Street>(read_byte());
+				board_size = read_byte();
+				const auto reserved_a = read_byte();
+				const auto reserved_b = read_byte();
 				const auto board_key = read64();
 				bucket_count = read32();
-				const auto offset = read64(); expected_table_identity = read64();
+				const auto offset = read64();
+				expected_table_identity = read64();
 				const auto expected_offset = assignment_offset + static_cast<std::uint64_t>(index) * MULTIWAY_HOLE_COMBINATION_COUNT * assignment_width;
-				if (board_size != board_size_for(street) || reserved_a != 0U || reserved_b != 0U || (board_key >> (board_size * 6U)) != 0U ||
-					bucket_count == 0U || bucket_assignment_width(bucket_count) > assignment_width || offset != expected_offset ||
-					offset > assignment_offset + assignment_length - MULTIWAY_HOLE_COMBINATION_COUNT * assignment_width)
+				if (board_size != board_size_for(street) || reserved_a != 0U || reserved_b != 0U || (board_key >> (board_size * 6U)) != 0U || bucket_count == 0U || bucket_assignment_width(bucket_count) > assignment_width || offset != expected_offset || offset > assignment_offset + assignment_length - MULTIWAY_HOLE_COMBINATION_COUNT * assignment_width)
 					throw std::invalid_argument("multiway bucket artifact has invalid table directory entry");
 				MultiwayBucketTable table;
 				table.mapped_directory_entry_ = input + cursor - 32U;
@@ -774,19 +773,20 @@ namespace texas::solver::multiway
 				table.mapped_assignment_width_ = static_cast<std::uint8_t>(assignment_width);
 				table.mapped_schema5_ = true;
 				const auto board = table.canonical_board();
-				if (!is_multiway_canonical_board(street, board)) throw std::invalid_argument("multiway bucket artifact board is not canonical");
+				if (!is_multiway_canonical_board(street, board))
+					throw std::invalid_argument("multiway bucket artifact board is not canonical");
 				auto table_hash = texas::core::fingerprint::FNV1A_OFFSET;
 				texas::core::fingerprint::append_u64(table_hash, identity.combined_hash);
 				texas::core::fingerprint::append_u64(table_hash, static_cast<std::uint8_t>(street));
 				texas::core::fingerprint::append_u64(table_hash, board.size());
-				for (const auto card : board) texas::core::fingerprint::append_u64(table_hash, card);
+				for (const auto card : board)
+					texas::core::fingerprint::append_u64(table_hash, card);
 				texas::core::fingerprint::append_u64(table_hash, bucket_count);
 				for (std::size_t assignment = 0U; assignment < MULTIWAY_HOLE_COMBINATION_COUNT; ++assignment)
 					texas::core::fingerprint::append_u64(table_hash, table.assignment_at(assignment));
 				if (table_hash != expected_table_identity)
 					throw std::invalid_argument("multiway bucket artifact table identity mismatch");
-				if (!tables.empty() && !(tables.back().street() < street ||
-					(tables.back().street() == street && tables.back().canonical_board() < table.canonical_board())))
+				if (!tables.empty() && !(tables.back().street() < street || (tables.back().street() == street && tables.back().canonical_board() < table.canonical_board())))
 					throw std::invalid_argument("multiway bucket artifact directory is not uniquely sorted");
 				tables.push_back(std::move(table));
 				continue;
@@ -817,7 +817,7 @@ namespace texas::solver::multiway
 			table.owned_->street = street;
 			table.owned_->board = board;
 			table.owned_->bucket_count = bucket_count;
-				table.mapped_directory_entry_ = input + record_start;
+			table.mapped_directory_entry_ = input + record_start;
 			auto table_hash = texas::core::fingerprint::FNV1A_OFFSET;
 			texas::core::fingerprint::append_u64(table_hash, identity.combined_hash);
 			texas::core::fingerprint::append_u64(table_hash, static_cast<std::uint8_t>(street));
@@ -836,7 +836,8 @@ namespace texas::solver::multiway
 		if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
 		{
 			std::uint32_t maximum_bucket_count = 0U;
-			for (const auto& table : tables) maximum_bucket_count = std::max(maximum_bucket_count, table.bucket_count());
+			for (const auto& table : tables)
+				maximum_bucket_count = std::max(maximum_bucket_count, table.bucket_count());
 			if (bucket_assignment_width(maximum_bucket_count) != assignment_width)
 				throw std::invalid_argument("multiway bucket artifact assignment width is not minimal");
 			cursor = mapped->size;
