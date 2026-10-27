@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## Fix Linux page-fault telemetry parsing
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Skip the process state character in `/proc/self/stat` before parsing numeric page-fault fields.
+- Extend the Linux snapshot test to check that total faults equal the minor and major counts.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `tests/test_multiway_memory.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the parser field order and focused diff; `git diff --check` passed. No build or tests were run because the project skills require an explicit request.
+
+### Limitations
+
+- The Ubuntu CI test has not been rerun.
+
 ## Fix GCC blueprint export compilation
 
 **Status:** Complete

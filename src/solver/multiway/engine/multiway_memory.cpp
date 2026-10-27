@@ -95,9 +95,14 @@ namespace texas::solver::multiway
 			if (cursor == nullptr)
 				return;
 			++cursor;
+			while (*cursor == ' ' || *cursor == '\t')
+				++cursor;
+			if (*cursor == '\0' || *cursor == '\n')
+				return;
+			++cursor; // Field 3 is the process state character.
 			std::uint64_t minor = 0U;
 			std::uint64_t major = 0U;
-			for (unsigned field = 3U; field <= 12U; ++field)
+			for (unsigned field = 4U; field <= 12U; ++field)
 			{
 				while (*cursor == ' ' || *cursor == '\t')
 					++cursor;

@@ -247,6 +247,8 @@ TEST_CASE(multiway_process_memory_snapshot_reports_supported_fields)
 	EXPECT_TRUE(snapshot.minor_page_faults_available);
 	EXPECT_TRUE(snapshot.major_page_faults_available);
 	EXPECT_TRUE(snapshot.total_page_faults_available);
+	EXPECT_EQ(snapshot.total_page_faults,
+		multiway_memory_saturating_add(snapshot.minor_page_faults, snapshot.major_page_faults));
 #endif
 }
 
