@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External filter construction measurement
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Measured bounded filter construction on reopened synthetic stores from 5,000 to 1,000,000 page-sized records, including checksum validation and absent-key false positives.
+- The one-million-record case took 3.957 seconds to construct the filter and yielded 494 positives among 10,000 absent queries. Inputs were recently written and may have been cached.
+
+### Files
+
+- `scripts/benchmark/pb12_filter_construction/CMakeLists.txt`
+- `scripts/benchmark/pb12_filter_construction/main.cpp`
+- `scripts/run/measure_pb12_filter_construction.ps1`
+- `docs/md/PB12_FILTER_CONSTRUCTION_MEASUREMENT.md`
+
+### Validation
+
+- Standalone Debug harness configured and built successfully against the current working-tree filter implementation.
+- Four synthetic measurements completed within their 120-second limits. Present-key checks passed; no timeout occurred. Each run preserved its data and diagnostics.
+
+### Limitations
+
+- Measurements use synthetic, recently written files and sampled whole-process memory. Production-scale construction cost, cold-cache behavior, full export throughput and policy equivalence remain unverified.
+- The harness depends on the pre-existing uncommitted filter implementation, which is not included in this measurement commit.
+
 ## PB-12 External page-pinned policy export validation
 
 **Status:** Incomplete; export stopped at the user's request after sustained low throughput
