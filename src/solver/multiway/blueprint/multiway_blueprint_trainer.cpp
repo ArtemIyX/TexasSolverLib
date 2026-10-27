@@ -1367,22 +1367,43 @@ namespace texas::solver::multiway
 				const MultiwayPackedMenuView menu{ menu_actions.data(),
 					static_cast<std::uint8_t>(action_count), menu_actions[0].action_menu_id };
 				validate_export_menu(shape, menu);
-				for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
+				std::uint32_t first_bucket = 0U;
+				while (first_bucket < shape.bucket_count)
 				{
-					current.storage->compact_storage().average_strategy_into(
-						binding, bucket, current.strategy, shape.action_count);
-					quantize_compact_strategy(current.strategy, shape.action_count, menu,
-						current.actions);
-					MultiwayFullBlueprintRowView row;
-					row.infoset = shape.infoset;
-					row.bucket = bucket;
-					row.action_menu_id = menu.action_menu_id;
-					row.actions = current.actions;
-					row.action_count = shape.action_count;
-					if (current.sharded_writer != nullptr)
-						current.sharded_writer->write_row(row);
-					else
-						current.writer->write_row(row);
+					auto pinned = current.storage->compact_storage().pin_bucket(binding, first_bucket, false);
+					try
+					{
+						const auto page_bucket_count = pinned.page.bucket_count;
+						if (pinned.local_bucket != 0U || page_bucket_count == 0U ||
+							page_bucket_count > shape.bucket_count - first_bucket)
+							throw std::runtime_error("external blueprint page bucket range is invalid");
+						for (std::uint32_t local_bucket = 0U; local_bucket < page_bucket_count; ++local_bucket)
+						{
+							const auto bucket = first_bucket + local_bucket;
+							pinned.local_bucket = local_bucket;
+							current.storage->compact_storage().average_strategy_into(
+								pinned, current.strategy, shape.action_count);
+							quantize_compact_strategy(current.strategy, shape.action_count, menu,
+								current.actions);
+							MultiwayFullBlueprintRowView row;
+							row.infoset = shape.infoset;
+							row.bucket = bucket;
+							row.action_menu_id = menu.action_menu_id;
+							row.actions = current.actions;
+							row.action_count = shape.action_count;
+							if (current.sharded_writer != nullptr)
+								current.sharded_writer->write_row(row);
+							else
+								current.writer->write_row(row);
+						}
+						first_bucket += page_bucket_count;
+					}
+					catch (...)
+					{
+						current.storage->compact_storage().unpin_bucket(pinned);
+						throw;
+					}
+					current.storage->compact_storage().unpin_bucket(pinned);
 				}
 				return true;
 			};

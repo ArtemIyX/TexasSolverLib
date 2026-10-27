@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External page-pinned policy export validation
+
+**Status:** Incomplete; export stopped at the user's request after sustained low throughput
+**Recorded:** 2026-10-27
+
+- Reused one pinned External row page while exporting its buckets in ascending order, with exception-safe unpinning.
+- Added a focused comparison of External pinned-page averages and bucket order against Compact across a full and partial page.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+- `tmp/pb12_external_export_pagepin_d3b266eb3a03424d874123196f78ff11/export_status_report.md`
+
+### Validation
+
+- Focused `test_multiway_external_storage` build and CTest passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- The zero-batch External checkpoint export wrote 28,180,480 bytes in 4,439 seconds before it was stopped. Its observed rate was about 6,348 bytes/second, similar to the prior attempt.
+
+### Limitations
+
+- No final External report or policy hash was produced. The Compact hash and counts therefore remain unverified against External.
+- Page reuse passed the focused equivalence test but did not improve the observed end-to-end export rate. The remaining bottleneck is unresolved.
+- No additional trajectories or larger pilot were run; no 50M feasibility claim is made.
+
 ## PB-12 External checkpoint-only export follow-up
 
 **Status:** Complete

@@ -1501,6 +1501,80 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 	EXPECT_TRUE(foreign_binding_rejected);
 }
 
+TEST_CASE(multiway_external_pinned_page_average_matches_bucket_order)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path() / "pages");
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	const auto row_config = config(directory.path() / "rows");
+	constexpr std::uint32_t bucket_count = 17U;
+	constexpr std::uint32_t page_width = 16U;
+	constexpr std::uint8_t action_count = 3U;
+	const MultiwaySparseRowShape shape{ { { 42U }, 3 }, bucket_count, action_count };
+	MultiwayCompactStorage reference(1U, 51U, page_width);
+	reference.admit_row(shape);
+	MultiwayExternalCompactStorage external(row_config, page_config, page_width, 16000U);
+	external.admit_rows(1U, 0xdefU, { shape });
+	MultiwayExternalRowBinding binding{};
+	EXPECT_TRUE(external.lookup_row(shape.infoset, binding));
+	external.begin_batch(1U, 0xdefU);
+	for (std::uint32_t bucket = 0U; bucket < bucket_count; ++bucket)
+	{
+		for (std::uint8_t action = 0U; action < action_count; ++action)
+		{
+			const auto strategy_sum = static_cast<double>((bucket + 1U) * (action + 1U));
+			reference.apply_delta(shape.infoset, bucket, action, 0.0, strategy_sum);
+			external.apply_delta(binding, bucket, action, 0.0, strategy_sum);
+		}
+	}
+	external.commit_batch();
+
+	std::array<double, action_count> expected{};
+	std::array<double, action_count> direct{};
+	std::array<double, action_count> reused_page{};
+	std::uint32_t next_bucket = 0U;
+	std::uint32_t page_count = 0U;
+	for (std::uint32_t first_bucket = 0U; first_bucket < bucket_count;)
+	{
+		auto pinned = external.pin_bucket(binding, first_bucket, false);
+		try
+		{
+			const auto buckets_in_page = pinned.page.bucket_count;
+			EXPECT_EQ(pinned.local_bucket, 0U);
+			if (buckets_in_page == 0U || buckets_in_page > bucket_count - first_bucket)
+				throw std::runtime_error("pinned external page has an invalid bucket range");
+			for (std::uint32_t local_bucket = 0U; local_bucket < buckets_in_page; ++local_bucket)
+			{
+				const auto bucket = first_bucket + local_bucket;
+				EXPECT_EQ(bucket, next_bucket);
+				pinned.local_bucket = local_bucket;
+				reference.average_strategy_into(shape.infoset, bucket,
+					expected.data(), expected.size());
+				external.average_strategy_into(binding, bucket, direct.data(), direct.size());
+				external.average_strategy_into(pinned, reused_page.data(), reused_page.size());
+				for (std::size_t action = 0U; action < action_count; ++action)
+				{
+					EXPECT_EQ(direct[action], expected[action]);
+					EXPECT_EQ(reused_page[action], direct[action]);
+				}
+				++next_bucket;
+			}
+			first_bucket += buckets_in_page;
+			++page_count;
+		}
+		catch (...)
+		{
+			external.unpin_bucket(pinned);
+			throw;
+		}
+		external.unpin_bucket(pinned);
+	}
+	EXPECT_EQ(next_bucket, bucket_count);
+	EXPECT_EQ(page_count, 2U);
+}
+
 TEST_CASE(multiway_external_record_store_compacts_deterministically)
 {
 	using namespace texas::solver::multiway;
