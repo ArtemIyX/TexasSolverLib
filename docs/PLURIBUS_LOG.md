@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Checkpoint page-store scale assessment
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Inspected checkpoint and page-store metadata read-only. The checkpoint lists 8,321 singleton runs and 162,370 allocated page IDs; the original indexes contain 7,016 distinct stored IDs.
+- Simulated the existing 1 MiB filter on those index keys. It returned zero false positives for the 155,354 absent allocated IDs. No production export was run.
+
+### Files
+
+- `scripts/analyze/read_pb12_page_metadata.py`
+- `docs/md/PB12_CHECKPOINT_PAGE_SCALE_ASSESSMENT.md`
+
+### Validation
+
+- Verified the checkpoint SHA-256 and both manifest checksums, compared original and snapshot page manifests to the checkpoint, and checked referenced page-file lengths. Read original index keys and simulated the filter without writing production inputs.
+- Independently checked the original page manifest header, generation, run count and batch using PowerShell.
+
+### Limitations
+
+- Segment contents and the old snapshot's complete integrity were not verified. Actual filter-construction time for 8,321 singleton files and production export throughput remain unknown.
+
 ## PB-12 External filter construction measurement
 
 **Status:** Complete
