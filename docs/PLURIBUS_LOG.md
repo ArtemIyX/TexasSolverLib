@@ -1,5 +1,47 @@
 # Pluribus Roadmap Progress Log
 
+## Add CI job log artifacts
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Capture command output for each CI job and upload its log on success or failure.
+
+### Files
+
+- `.github/workflows/c-cpp.yml`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the workflow changes and checked the diff for whitespace errors.
+- Builds and tests were not run because they were not explicitly requested.
+
+### Limitations
+
+- The updated workflow has not been run on GitHub Actions. Checkout and artifact action details remain in the GitHub Actions logs.
+
+## Sequence CI checks
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Check project C++ formatting before Linux Debug build and a separate CTest job, then Linux Release, followed by parallel Windows Release and Debug builds.
+
+### Files
+
+- `.github/workflows/c-cpp.yml`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Project formatting check passed for 373 files with clang-format 23.1.3; reviewed the workflow dependencies and diff.
+- Builds and tests were not run because they were not explicitly requested.
+
+### Limitations
+
+- The updated workflow has not been run on GitHub Actions. The formatting script excludes vendored and generated directories.
+
 ## Fix Linux page-fault telemetry parsing
 
 **Status:** Complete
