@@ -107,7 +107,8 @@ namespace texas::solver::multiway
 		if (public_state->board.size() > sample.board.size())
 			sample.identity_context_complete = false;
 		sample.board_count = static_cast<std::uint8_t>(public_state->board.size() < sample.board.size()
-			? public_state->board.size() : sample.board.size());
+				? public_state->board.size()
+				: sample.board.size());
 		for (std::size_t index = 0U; index < sample.board_count; ++index)
 			sample.board[index] = public_state->board[index];
 
@@ -148,16 +149,19 @@ namespace texas::solver::multiway
 			|| public_state->history.size() > std::numeric_limits<std::uint32_t>::max())
 			sample.identity_context_complete = false;
 		sample.history_count = static_cast<std::uint32_t>(public_state->history.size() <= std::numeric_limits<std::uint32_t>::max()
-			? public_state->history.size() : std::numeric_limits<std::uint32_t>::max());
+				? public_state->history.size()
+				: std::numeric_limits<std::uint32_t>::max());
 		sample.history_stored_count = static_cast<std::uint8_t>(public_state->history.size() < sample.history.size()
-			? public_state->history.size() : sample.history.size());
+				? public_state->history.size()
+				: sample.history.size());
 		for (std::size_t index = 0U; index < sample.history_stored_count; ++index)
 			sample.history[index] = public_state->history[index];
 
 		if (public_state->legal_actions.size() > sample.legal_actions.size())
 			sample.identity_context_complete = false;
 		sample.legal_action_count = static_cast<std::uint8_t>(public_state->legal_actions.size() < sample.legal_actions.size()
-			? public_state->legal_actions.size() : sample.legal_actions.size());
+				? public_state->legal_actions.size()
+				: sample.legal_actions.size());
 		for (std::size_t index = 0U; index < sample.legal_action_count; ++index)
 			sample.legal_actions[index] = public_state->legal_actions[index];
 		if (sample.identity_context_complete)

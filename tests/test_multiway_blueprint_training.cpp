@@ -245,10 +245,8 @@ TEST_CASE(multiway_lookup_audit_queries_policy_for_first_local_admission)
 	const auto remainder = static_cast<std::uint32_t>(65535U % action_count);
 	for (std::size_t index = 0U; index < action_count; ++index)
 	{
-		root_row.actions.push_back({
-			fixture.root.public_state.legal_actions[index],
-			static_cast<std::uint16_t>(base_probability + (index < remainder ? 1U : 0U))
-		});
+		root_row.actions.push_back({ fixture.root.public_state.legal_actions[index],
+			static_cast<std::uint16_t>(base_probability + (index < remainder ? 1U : 0U)) });
 	}
 	const texas::MultiwayBlueprintStore store(config.identity(), { std::move(root_row) });
 	const texas::MultiwayBlueprintPolicyProvider provider(store);
