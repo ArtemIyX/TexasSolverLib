@@ -1,0 +1,20 @@
+name: Build or installation
+description: Report a build, installation, or dependency problem.
+title: "[Build]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: Platform, compiler, and dependency versions
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Build or installation commands
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Error output and expected result

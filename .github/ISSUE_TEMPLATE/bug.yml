@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible software defect.
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Steps or input to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: field_4
+    attributes:
+      label: Version, platform, and relevant logs

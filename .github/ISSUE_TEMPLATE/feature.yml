@@ -1,0 +1,20 @@
+name: Feature request
+description: Propose a user-facing capability or improvement.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: Problem and use case
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Proposed behavior and examples
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Alternatives, constraints, and compatibility considerations

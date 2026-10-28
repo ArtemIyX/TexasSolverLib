@@ -1,0 +1,20 @@
+name: Performance regression
+description: Report a slowdown or propose a measured optimization.
+title: "[Performance]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: Workload, configuration, hardware, and version
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Baseline and current measurements
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Reproduction and profiling evidence
