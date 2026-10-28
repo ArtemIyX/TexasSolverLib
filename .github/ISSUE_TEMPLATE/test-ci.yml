@@ -1,0 +1,20 @@
+name: Tests or CI
+description: Report failing, flaky, or missing test coverage or CI behavior.
+title: "[CI]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: Test or workflow and environment
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Failure output or CI run link
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Reproduction and expected behavior

@@ -1,0 +1,24 @@
+name: Solver correctness
+description: Report incorrect strategies, values, or convergence behavior.
+title: "[Solver]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: Game configuration, ranges, and seed
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Observed and expected results
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Reproduction and reference or evidence
+  - type: textarea
+    id: field_4
+    attributes:
+      label: Version and platform

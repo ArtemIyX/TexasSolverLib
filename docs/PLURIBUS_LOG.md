@@ -1,5 +1,90 @@
 # Pluribus Roadmap Progress Log
 
+## Add GitHub issue forms
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Added ten issue forms for defects, solver correctness, game rules, performance, memory, determinism, builds, CI, features, and documentation.
+
+### Files
+
+- `.github/ISSUE_TEMPLATE/*.yml`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Parsed all ten forms as YAML and checked their names, descriptions, and field identifiers and labels.
+- Builds and tests were not run because they were not requested.
+
+### Limitations
+
+- GitHub will display the forms after they reach the default branch; the issue chooser has not been verified on GitHub.
+
+## Expand GitHub pull request template
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Added optional performance and known limitations sections to the PR template.
+
+### Files
+
+- `.github/pull_request_template.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changes and checked for whitespace errors.
+- Builds and tests were not run because they were not requested.
+
+### Limitations
+
+- GitHub will use the template after it reaches the default branch.
+
+## Add GitHub pull request template
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Added a GitHub PR template matching the shared draft structure.
+
+### Files
+
+- `.github/pull_request_template.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the template and checked the diff for whitespace errors.
+- Builds and tests were not run because they were not requested.
+
+### Limitations
+
+- GitHub will use the template after it reaches the default branch.
+
+## Add merge request draft skill
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Added a personal skill for committed-branch analysis and local PR/MR drafts using a shared template.
+
+### Files
+
+- `C:/Users/xeuse/.codex/skills/merge-request-draft/SKILL.md`
+- `C:/Users/xeuse/.codex/skills/merge-request-draft/references/template.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- The skill creator's validator passed; reviewed the instructions and template against the requested scenarios.
+- Builds and tests were not run because they were not requested.
+
+### Limitations
+
+- The skill was not exercised end-to-end against a real PR or MR.
+
 ## Add CI job log artifacts
 
 **Status:** Complete

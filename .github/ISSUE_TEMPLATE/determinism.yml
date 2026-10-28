@@ -1,0 +1,20 @@
+name: Determinism or concurrency
+description: Report inconsistent results or a concurrency issue.
+title: "[Determinism]: "
+body:
+  - type: textarea
+    id: field_1
+    attributes:
+      label: Configuration, seed, and thread count
+    validations:
+      required: true
+  - type: textarea
+    id: field_2
+    attributes:
+      label: Expected and observed results across runs
+    validations:
+      required: true
+  - type: textarea
+    id: field_3
+    attributes:
+      label: Reproduction, platform, and diagnostics
