@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - run: echo 'Format job log' > "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install clang-format 23
       run: |
         exec > >(tee -a "$RUNNER_TEMP/ci-log.txt") 2>&1
@@ -39,7 +39,7 @@ jobs:
       run: python3 scripts/python/format_cpp.py project --check 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - name: Upload format log
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: format-log
         path: ${{ runner.temp }}/ci-log.txt
@@ -51,14 +51,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - run: echo 'Linux Debug build log' > "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DTEXASSOLVER_BUILD_TESTS=ON 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - run: cmake --build build --config Debug --parallel 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - name: Archive Linux Debug build
       run: tar --create --gzip --file linux-debug-build.tar.gz build 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
         name: linux-debug-build
         path: linux-debug-build.tar.gz
@@ -66,7 +66,7 @@ jobs:
         retention-days: 1
     - name: Upload Linux Debug build log
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux-debug-log
         path: ${{ runner.temp }}/ci-log.txt
@@ -78,10 +78,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - run: echo 'Linux Debug CTest log' > "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v7
       with:
         name: linux-debug-build
         path: artifacts
@@ -89,7 +89,7 @@ jobs:
     - run: ctest --test-dir build -C Debug --output-on-failure --no-tests=error 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - name: Upload Linux Debug CTest log
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux-debug-ctest-log
         path: ${{ runner.temp }}/ci-log.txt
@@ -101,14 +101,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - run: echo 'Linux Release build log' > "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTEXASSOLVER_BUILD_TESTS=ON 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - run: cmake --build build --config Release --parallel 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - name: Upload Linux Release build log
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux-release-log
         path: ${{ runner.temp }}/ci-log.txt
@@ -120,14 +120,14 @@ jobs:
     runs-on: windows-2022
     steps:
     - run: echo 'Windows Release build log' > "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DTEXASSOLVER_BUILD_TESTS=ON 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - run: cmake --build build --config Release --parallel 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - name: Upload Windows Release build log
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: windows-release-log
         path: ${{ runner.temp }}/ci-log.txt
@@ -139,14 +139,14 @@ jobs:
     runs-on: windows-2022
     steps:
     - run: echo 'Windows Debug build log' > "$RUNNER_TEMP/ci-log.txt"
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: recursive
     - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DTEXASSOLVER_BUILD_TESTS=ON 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - run: cmake --build build --config Debug --parallel 2>&1 | tee -a "$RUNNER_TEMP/ci-log.txt"
     - name: Upload Windows Debug build log
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: windows-debug-log
         path: ${{ runner.temp }}/ci-log.txt

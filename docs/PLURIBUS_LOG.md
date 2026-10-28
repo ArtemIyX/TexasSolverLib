@@ -1,5 +1,26 @@
 # Pluribus Roadmap Progress Log
 
+## Update CI actions to Node 24
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Updated checkout, artifact upload, and artifact download actions to versions that run on Node.js 24.
+
+### Files
+
+- `.github/workflows/ci.yml`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed action release notes and the workflow diff; checked the diff for whitespace errors.
+- Builds and tests were not run because they were not requested.
+
+### Limitations
+
+- The updated workflow has not yet run on GitHub Actions.
+
 ## Add GitHub issue forms
 
 **Status:** Complete
