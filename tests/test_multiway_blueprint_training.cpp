@@ -227,6 +227,42 @@ namespace
 
 } // namespace
 
+TEST_CASE(multiway_lookup_audit_queries_policy_for_first_local_admission)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	texas::MultiwayBlueprintTrainingConfig config;
+	config.rules.player_count = 3U;
+	config.blueprint.player_count = 3U;
+	config.cfr.player_count = 3U;
+	config.limits = export_limits(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+
+	texas::MultiwayBlueprintRow root_row;
+	root_row.infoset = fixture.root.root_infoset;
+	root_row.bucket = fixture.root.root_bucket;
+	root_row.action_menu_id = fixture.root.public_state.legal_actions.front().action_menu_id;
+	const auto action_count = fixture.root.public_state.legal_actions.size();
+	const auto base_probability = static_cast<std::uint32_t>(65535U / action_count);
+	const auto remainder = static_cast<std::uint32_t>(65535U % action_count);
+	for (std::size_t index = 0U; index < action_count; ++index)
+	{
+		root_row.actions.push_back({
+			fixture.root.public_state.legal_actions[index],
+			static_cast<std::uint16_t>(base_probability + (index < remainder ? 1U : 0U))
+		});
+	}
+	const texas::MultiwayBlueprintStore store(config.identity(), { std::move(root_row) });
+	const texas::MultiwayBlueprintPolicyProvider provider(store);
+	texas::MultiwaySolverCoordinator coordinator(fixture.request);
+	texas::MultiwayRootExternalSamplingTraversal traversal(
+		coordinator, fixture.request.root(), fixture.abstraction, fixture.buckets,
+		&fixture.evaluator, 1U, 0U, &provider);
+	texas::MultiwayWorkerDeltaStream stream(0U, fixture.request.limits().regret_delta_capacity());
+	texas::MultiwayBlueprintLookupAudit audit;
+	const auto accepted = traversal.run(1, 0U, 0x1234U, stream, 1.0, nullptr, nullptr, 0U, &audit);
+	EXPECT_TRUE(accepted);
+	EXPECT_TRUE(audit.lookup_hits > 0U);
+}
+
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts)
 {
 	texas::MultiwayBlueprintTrainingConfig config;

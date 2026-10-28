@@ -1,11 +1,14 @@
 #pragma once
 
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 
 #include <cstdint>
+#include <cstddef>
 #include <filesystem>
+#include <vector>
 
 namespace texas::solver::multiway
 {
@@ -25,6 +28,8 @@ namespace texas::solver::multiway
 		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t replay_fingerprint = 0U;
 		std::uint64_t second_replay_fingerprint = 0U;
+		std::size_t diagnostic_sample_limit = 0U;
+		std::vector<MultiwayBlueprintLookupDiagnostic> diagnostic_samples;
 
 		void validate() const;
 
@@ -42,14 +47,16 @@ namespace texas::solver::multiway
 		const MultiwayBucketRegistry& buckets,
 		const MultiwayFullBlueprintArtifact& blueprint,
 		std::uint64_t trajectory_count,
-		MultiwayEvidenceHeader evidence);
+		MultiwayEvidenceHeader evidence,
+		std::size_t diagnostic_sample_limit = 0U);
 	[[nodiscard]] MultiwayLookupQualificationReport qualify_multiway_required_lookups(
 		const MultiwayBlueprintTrainingConfig& config,
 		const MultiwayRootSnapshot& root,
 		const MultiwayBucketRegistry& buckets,
 		const MultiwayMappedShardedBlueprintProvider& blueprint,
 		std::uint64_t trajectory_count,
-		MultiwayEvidenceHeader evidence);
+		MultiwayEvidenceHeader evidence,
+		std::size_t diagnostic_sample_limit = 0U);
 
 	void save_multiway_lookup_qualification_report_atomic(
 		const std::filesystem::path& path,

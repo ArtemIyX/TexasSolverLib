@@ -1367,8 +1367,12 @@ namespace texas::solver::multiway
 				  infoset, blueprint_bucket, state.legal_actions.data(), action_count, strategy.data());
 		if (context.lookup_audit != nullptr && blueprint_policy_ != nullptr && actor != context.traverser)
 		{
-			context.lookup_audit->record(lookup, infoset, blueprint_bucket,
-				state.legal_actions.front().action_menu_id);
+			const auto audited_lookup = row_was_admitted
+				? lookup
+				: blueprint_policy_->strategy_into(
+					infoset, blueprint_bucket, state.legal_actions.data(), action_count, strategy.data());
+			context.lookup_audit->record(audited_lookup, infoset, blueprint_bucket,
+				state.legal_actions.front().action_menu_id, context.trajectory_id, &state);
 		}
 		if (lookup != MultiwayBlueprintLookupStatus::Hit && row_was_admitted)
 		{

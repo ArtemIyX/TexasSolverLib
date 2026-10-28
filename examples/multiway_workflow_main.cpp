@@ -219,7 +219,8 @@ namespace
 		else
 		{
 			std::cout << "  --artifacts <dir>      Verified artifact directory\n"
-					  << "  --duplicates <integer> Duplicate deal count\n";
+					  << "  --duplicates <integer> Duplicate deal count\n"
+					  << "  --diagnostic-limit <0..16> Capture bounded public context for missing infosets\n";
 		}
 	}
 
@@ -1404,7 +1405,8 @@ namespace
 	int run_evaluate(const std::filesystem::path& config_path,
 		const std::filesystem::path& artifacts_path,
 		std::uint64_t trajectories,
-		const std::filesystem::path& report_path)
+		const std::filesystem::path& report_path,
+		std::size_t diagnostic_sample_limit)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -1476,7 +1478,7 @@ namespace
 			const auto blueprint = MultiwayMappedShardedBlueprintProvider::load_verified_for_policy_lookup(
 				blueprint_path, identity);
 			report = qualify_multiway_required_lookups(
-				config, root, buckets, *blueprint, trajectories, evidence);
+				config, root, buckets, *blueprint, trajectories, evidence, diagnostic_sample_limit);
 			repeat = qualify_multiway_required_lookups(
 				config, root, buckets, *blueprint, trajectories, evidence);
 		}
@@ -1485,7 +1487,7 @@ namespace
 			const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified_for_policy_lookup(
 				blueprint_path, identity);
 			report = qualify_multiway_required_lookups(
-				config, root, buckets, blueprint, trajectories, evidence);
+				config, root, buckets, blueprint, trajectories, evidence, diagnostic_sample_limit);
 			repeat = qualify_multiway_required_lookups(
 				config, root, buckets, blueprint, trajectories, evidence);
 		}
@@ -1575,6 +1577,7 @@ namespace
 		std::uint64_t batches = 0U;
 		bool batches_specified = false;
 		std::uint64_t duplicates = 0U;
+		std::size_t lookup_diagnostic_limit = 0U;
 		std::uint32_t threads = (std::min)(texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS,
 			texas::solver::multiway::multiway_bucket_physical_core_count());
 		bool threads_specified = false;
@@ -1626,7 +1629,7 @@ namespace
 				profile_external_export = true;
 				continue;
 			}
-			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--external-storage-snapshot-dir" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
+			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--external-storage-snapshot-dir" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--diagnostic-limit" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
 				{
@@ -1656,6 +1659,13 @@ namespace
 				}
 				if (argument == "--duplicates")
 					duplicates = std::stoull(argv[index]);
+				if (argument == "--diagnostic-limit")
+				{
+					const auto parsed = std::stoull(argv[index]);
+					if (parsed > texas::solver::multiway::MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_SAMPLES)
+						throw std::invalid_argument("--diagnostic-limit must be between 0 and 16");
+					lookup_diagnostic_limit = static_cast<std::size_t>(parsed);
+				}
 				if (argument == "--threads")
 				{
 					const auto parsed = std::stoull(argv[index]);
@@ -1817,7 +1827,8 @@ namespace
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{
-			return run_evaluate(config_path, artifacts_path, duplicates, report_path);
+			return run_evaluate(config_path, artifacts_path, duplicates, report_path,
+				lookup_diagnostic_limit);
 		}
 		if (workflow == Workflow::Finalize)
 		{

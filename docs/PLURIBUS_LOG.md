@@ -1,5 +1,42 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External policy lookup replay diagnostics
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Corrected lookup qualification to query the verified provider on first local visits when auditing. That result is diagnostic only; the existing uniform first-visit strategy remains unchanged.
+- Added opt-in samples selected by deterministic hash priority across distinct missing policy keys, capped at 16 entries and 64 public history actions per entry. Samples include the exact policy key and the public inputs used to build its state ID, plus a reconstructed ID. Private cards are excluded.
+- Training row admission and policy export use the same public-state/seat/bucket/action-menu key. The earlier 25,149 `Missing` statuses included first local visits where provider lookup was skipped, so they do not establish policy misses.
+- Added `--diagnostic-limit`; zero keeps the existing report shape. Lookup fingerprints now include actual provider results on first local visits, so their values may differ from the old audit while remaining deterministic.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/application_and_script_io.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Read the preserved `tmp/pb12_lookup_replay_20261027/lookup_report.json` and confirmed its aggregate counts, policy hash, and equal replay fingerprints match the logged results. The old miss count is not an accurate provider-coverage measurement.
+- Reviewed the training admission, export, and provider lookup key paths and the changed C++ diff.
+- C++ review found no actionable issues. `git diff --check --ignore-submodules=all` passed.
+- Targeted Debug build succeeded; both focused CTest targets passed (2/2). The repository `full_build.py` workflow also passed the full Debug build and all 116 CTest tests.
+- Corrected replay against the preserved policy reported 39,742 hits, 8 actual missing infosets, zero missing buckets, and zero action-menu mismatches. Policy hash remained `11500758613148677101`; replay fingerprints both matched at `9162681264995464848`. The report captured all 8 distinct missing keys from trajectory 529 (lookup ordinals 21,492–21,499); every captured state ID reconstructed successfully and no private cards were included. Qualification correctly failed the zero-miss gate.
+- The original adjacent `compact.cfg` was rejected because its discovery capacity exceeds the current 1,000,000-entry resource limit. Replay used the matching model-profile config at `tmp/pb12_phase9_3_1k_7e662d3c0c6f40029b3ee4cc9ec13ac0/compact.cfg`, whose capacity is valid.
+- Final report: `tmp/pb12_lookup_diagnostics_20261028/lookup_report.json` (identical to `lookup_report_final.json`).
+
+### Limitations
+
+- The preserved replay package contains the policy and bucket artifacts but no original evaluator config or training checkpoint. The replay used a separate compact 1,000-trajectory config with the same model profile. No training checkpoint or admission catalog was found beside it, so true misses cannot be classified as unadmitted branches versus training-to-export identity problems.
+
 ## Update CI actions to Node 24
 
 **Status:** Complete
@@ -240,8 +277,8 @@
 **Status:** Complete
 **Completed:** 2026-10-27
 
-- Compared the deterministic 1,000-trajectory replay with the exported policy. The provider reported 25,149 absent infosets, with zero missing-bucket and action-menu mismatches. The policy hash validated and both replay fingerprints matched.
-- The export contains 31,070 admitted public rows across streets from 1,000 accepted training trajectories. The misses are consistent with replay reaching branches absent from this sampled policy, rather than an artifact or bucket/menu mismatch.
+- Compared the deterministic 1,000-trajectory replay with the exported policy. The audit recorded 25,149 `Missing` statuses and zero bucket/menu mismatch statuses among lookups it performed. Later source tracing showed first local row visits skipped the provider and were also recorded as `Missing`; the aggregate does not establish actual coverage or mismatch counts.
+- The export contains 31,070 admitted public rows across streets from 1,000 accepted training trajectories. Policy coverage remains undetermined until replay queries the provider on first local visits.
 
 ### Files
 
@@ -249,12 +286,12 @@
 
 ### Validation
 
-- Evaluator replay: 14,601 hits, 25,149 missing infosets, zero missing buckets, zero action-menu mismatches; qualification failed its zero-miss gate.
+- Evaluator replay: 14,601 recorded hits, 25,149 recorded `Missing` statuses, zero reported missing buckets, zero reported action-menu mismatches; qualification failed its status gate. First local row visits skipped provider lookup, so the totals do not establish actual coverage or mismatch counts.
 - Prepared plan, policy artifact, and protected bucket SHA-256 hashes matched their recorded values.
 
 ### Limitations
 
-- The report stores aggregate miss categories, not individual missing keys, so a subset-specific state-key mismatch cannot be fully excluded.
+- The report stores aggregate statuses without distinguishing skipped provider lookups from actual misses. It does not resolve whether any true provider miss or bucket/menu mismatch is a sampled branch or a state-key mismatch.
 - Any new production export requires separate authorization.
 
 ## PB-12 External policy lookup identity compatibility
