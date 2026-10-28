@@ -1,5 +1,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
@@ -7,15 +9,46 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace
 {
+	class ExternalCoordinatorDirectory
+	{
+	public:
+		ExternalCoordinatorDirectory()
+		{
+			const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+			path_ = std::filesystem::temp_directory_path() / ("texassolver_external_coordinator_" + std::to_string(stamp));
+			std::error_code error;
+			owned_ = std::filesystem::create_directory(path_, error);
+			if (error || !owned_)
+				throw std::runtime_error("external coordinator test directory cannot be created");
+		}
+
+		~ExternalCoordinatorDirectory()
+		{
+			if (owned_)
+			{
+				std::error_code ignored;
+				std::filesystem::remove_all(path_, ignored);
+			}
+		}
+
+		[[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
+
+	private:
+		std::filesystem::path path_;
+		bool owned_ = false;
+	};
 
 	constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit)
 	{
@@ -588,6 +621,7 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 {
 	auto limits = valid_limits();
 	limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	limits.max_sparse_values = 4096U;
 	texas::MultiwayCFRConfig cfr;
 	cfr.player_count = 2;
 	texas::MultiwaySolverCoordinator coordinator(
@@ -598,6 +632,7 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	texas::MultiwaySolverCoordinator reference(
 		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
 	reference.admit_infoset_row(root_row());
+	EXPECT_TRUE(coordinator.memory_snapshot().merge_scratch.retained_capacity_bytes < limits.max_sparse_values * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
 	texas::MultiwayWorkerDeltaStream first(0, 1U);
 	texas::MultiwayWorkerDeltaStream second(1, 1U);
 	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 2.0)));
@@ -617,11 +652,233 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	EXPECT_EQ(checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
 }
 
+TEST_CASE(multiway_solver_request_accepts_external_storage_configuration)
+{
+	auto limits = valid_limits();
+	limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.external_storage.directory = "external_training_fixture";
+	limits.external_storage.public_catalog_cache_bytes = 4096U;
+	limits.external_storage.row_page_cache_bytes = 4096U;
+	limits.external_storage.maximum_wal_bytes = 4096U;
+	limits.external_storage.segment_target_bytes = 4096U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 4096U;
+	limits.external_storage.disk_reserve_bytes = 4096U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	texas::MultiwaySolveRequest request(valid_root(), cfr, limits);
+	EXPECT_EQ(request.limits().storage_backend,
+		texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32);
+}
+
+TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
+{
+	using texas::MultiwayCFRConfig;
+	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolveRequest;
+	using texas::MultiwaySolverLimits;
+	using texas::MultiwayWorkerDeltaStream;
+	ExternalCoordinatorDirectory directory;
+	auto limits = valid_limits();
+	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.external_storage.directory = directory.path();
+	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	limits.external_storage.row_page_cache_bytes = 65536U;
+	limits.external_storage.maximum_wal_bytes = 65536U;
+	limits.external_storage.segment_target_bytes = 65536U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 65536U;
+	limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	limits.external_storage.synchronous_durability = false;
+	MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(valid_root(), cfr, limits));
+	auto reference_limits = valid_limits();
+	reference_limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
+	reference_limits.compact_page_width = limits.compact_page_width;
+	MultiwaySolverCoordinator reference(MultiwaySolveRequest(valid_root(), cfr, reference_limits));
+	coordinator.admit_infoset_row(root_row());
+	reference.admit_infoset_row(root_row());
+	EXPECT_TRUE(coordinator.has_infoset_row(root_infoset()));
+	coordinator.admit_infoset_row(root_row());
+	std::array<double, 3U> strategy{};
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	EXPECT_EQ(strategy, (std::array<double, 3U>{ 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 }));
+
+	MultiwayWorkerDeltaStream first(0U, 2U);
+	MultiwayWorkerDeltaStream second(1U, 2U);
+	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 1.0, 0U)));
+	EXPECT_TRUE(second.try_append(delta(1U, 2.0, 2.0, 1U)));
+	first.sort_fixed_order();
+	second.sort_fixed_order();
+	reference.merge_worker_streams({ first, second });
+	coordinator.merge_worker_streams({ first, second });
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	std::array<double, 3U> reference_strategy{};
+	reference.regret_matched_strategy_into(root_infoset(), 0U, reference_strategy.data(), reference_strategy.size());
+	EXPECT_EQ(strategy, reference_strategy);
+	EXPECT_NEAR(strategy[0], 1.0 / 3.0, 0.0);
+	EXPECT_NEAR(strategy[1], 2.0 / 3.0, 0.0);
+	EXPECT_EQ(strategy[2], 0.0);
+
+	MultiwayWorkerDeltaStream valid(0U, 1U);
+	MultiwayWorkerDeltaStream invalid(1U, 1U);
+	EXPECT_TRUE(valid.try_append(delta(0U, 3.0, 3.0, 2U)));
+	EXPECT_TRUE(invalid.try_append(delta(3U, 4.0, 4.0, 3U)));
+	valid.sort_fixed_order();
+	invalid.sort_fixed_order();
+	EXPECT_THROW(coordinator.merge_worker_streams({ valid, invalid }), std::invalid_argument);
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	EXPECT_NEAR(strategy[0], 1.0 / 3.0, 0.0);
+	EXPECT_NEAR(strategy[1], 2.0 / 3.0, 0.0);
+	EXPECT_EQ(strategy[2], 0.0);
+}
+
+TEST_CASE(multiway_solver_external_coordinator_reopens_committed_rows_and_states)
+{
+	using texas::MultiwayCFRConfig;
+	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolveRequest;
+	using texas::MultiwaySolverLimits;
+	using texas::MultiwayWorkerDeltaStream;
+	ExternalCoordinatorDirectory directory;
+	auto limits = valid_limits();
+	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.external_storage.directory = directory.path();
+	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	limits.external_storage.row_page_cache_bytes = 65536U;
+	limits.external_storage.maximum_wal_bytes = 65536U;
+	limits.external_storage.segment_target_bytes = 65536U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 65536U;
+	limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	limits.external_storage.synchronous_durability = false;
+	MultiwayCFRConfig cfr;
+	cfr.player_count = 2U;
+	const auto root = valid_root();
+	const auto child = checked_action_child_public_state();
+	const texas::MultiwaySparseRowShape child_row = {
+		{ child.id, child.betting.current_player }, 2U,
+		static_cast<std::uint8_t>(child.legal_actions.size())
+	};
+	{
+		MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(root, cfr, limits));
+		coordinator.admit_public_state(child);
+		coordinator.admit_infoset_row(root_row());
+		coordinator.admit_infoset_row(child_row);
+		MultiwayWorkerDeltaStream stream(0U, 2U);
+		MultiwayWorkerDeltaStream empty_stream(1U, 2U);
+		EXPECT_TRUE(stream.try_append(delta(0U, 1.0, 2.0, 0U)));
+		EXPECT_TRUE(stream.try_append({ child_row.infoset, 1U, 0U, 2.0, 3.0, 1U }));
+		stream.sort_fixed_order();
+		empty_stream.sort_fixed_order();
+		coordinator.merge_worker_streams({ stream, empty_stream });
+	}
+	{
+		MultiwaySolverCoordinator reopened(MultiwaySolveRequest(root, cfr, limits));
+		EXPECT_TRUE(reopened.has_public_state(child.id));
+		EXPECT_TRUE(reopened.has_infoset_row(root_infoset()));
+		EXPECT_TRUE(reopened.has_infoset_row(child_row.infoset));
+		const auto* reconstructed = reopened.find_public_state(child.id);
+		EXPECT_TRUE(reconstructed != nullptr);
+		EXPECT_EQ(reconstructed->history, child.history);
+		std::array<double, 3U> root_strategy{};
+		reopened.regret_matched_strategy_into(root_infoset(), 0U,
+			root_strategy.data(), root_strategy.size());
+		EXPECT_EQ(root_strategy, (std::array<double, 3U>{ 1.0, 0.0, 0.0 }));
+		std::vector<double> child_strategy(child.legal_actions.size());
+		reopened.regret_matched_strategy_into(child_row.infoset, 1U,
+			child_strategy.data(), child_strategy.size());
+		EXPECT_EQ(child_strategy[0], 1.0);
+		for (std::size_t action = 1U; action < child_strategy.size(); ++action)
+			EXPECT_EQ(child_strategy[action], 0.0);
+	}
+}
+
+TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatches)
+{
+	using texas::MultiwayCFRConfig;
+	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolveRequest;
+	using texas::MultiwaySolverLimits;
+	using texas::MultiwayWorkerDeltaStream;
+	ExternalCoordinatorDirectory directory;
+	auto limits = valid_limits();
+	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.compact_page_width = 1U;
+	limits.external_storage.directory = directory.path();
+	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	limits.external_storage.row_page_cache_bytes = 2400U;
+	limits.external_storage.maximum_wal_bytes = 65536U;
+	limits.external_storage.segment_target_bytes = 65536U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 65536U;
+	limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	limits.external_storage.synchronous_durability = false;
+	MultiwayCFRConfig cfr;
+	cfr.player_count = 2U;
+	const auto child = checked_action_child_public_state();
+	const texas::MultiwaySparseRowShape child_row = {
+		{ child.id, child.betting.current_player }, 2U,
+		static_cast<std::uint8_t>(child.legal_actions.size())
+	};
+	MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(valid_root(), cfr, limits));
+	coordinator.admit_public_state(child);
+	coordinator.admit_infoset_row(root_row());
+	coordinator.admit_infoset_row(child_row);
+	// Establish a committed nonempty generation so a later aborted batch proves
+	// that aggregate rollback restores real page data, not only an empty store.
+	MultiwayWorkerDeltaStream seed(0U, 2U);
+	MultiwayWorkerDeltaStream seed_empty(1U, 2U);
+	EXPECT_TRUE(seed.try_append(delta(0U, 1.0, 1.0, 0U)));
+	EXPECT_TRUE(seed.try_append({ child_row.infoset, 0U, 0U, 1.0, 1.0, 1U }));
+	seed.sort_fixed_order();
+	seed_empty.sort_fixed_order();
+	coordinator.merge_worker_streams({ seed, seed_empty });
+	MultiwayWorkerDeltaStream valid(0U, 3U);
+	MultiwayWorkerDeltaStream empty(1U, 3U);
+	EXPECT_TRUE(valid.try_append(delta(1U, 1.0, 1.0, 2U)));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 1U, 1.0, 1.0, 3U }));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 1U, 255U, 1.0, 1.0, 2U }));
+	valid.sort_fixed_order();
+	empty.sort_fixed_order();
+	EXPECT_THROW(coordinator.merge_worker_streams({ valid, empty }), std::invalid_argument);
+	std::array<double, 3U> root_strategy{};
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U,
+		root_strategy.data(), root_strategy.size());
+	EXPECT_EQ(root_strategy, (std::array<double, 3U>{ 1.0, 0.0, 0.0 }));
+	std::vector<double> child_strategy(child.legal_actions.size());
+	coordinator.regret_matched_strategy_into(child_row.infoset, 0U,
+		child_strategy.data(), child_strategy.size());
+	EXPECT_EQ(child_strategy[0], 1.0);
+	for (std::size_t action = 1U; action < child_strategy.size(); ++action)
+		EXPECT_EQ(child_strategy[action], 0.0);
+}
+
+TEST_CASE(multiway_public_catalog_packs_external_node_without_catalog_state)
+{
+	const auto state = valid_root().public_state;
+	texas::MultiwayPublicCatalog catalog(1U);
+	catalog.admit(state);
+	const auto* in_memory_node = catalog.checkpoint_node_at(0U);
+	EXPECT_TRUE(in_memory_node != nullptr);
+	if (in_memory_node == nullptr)
+		return;
+	const auto external_node = texas::MultiwayPublicCatalog::pack_node(
+		state, in_memory_node->legal_menu_handle);
+	std::vector<std::uint8_t> expected_bytes;
+	std::vector<std::uint8_t> external_bytes;
+	texas::encode_external_public_node(*in_memory_node, expected_bytes);
+	texas::encode_external_public_node(external_node, external_bytes);
+	EXPECT_EQ(external_bytes, expected_bytes);
+}
+
 TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canonical_rows)
 {
 	const auto child = checked_action_child_public_state();
 	auto compact_limits = valid_limits();
 	compact_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	compact_limits.compact_page_width = 1U;
 	auto reference_limits = compact_limits;
 	reference_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::Float64Reference;
 	texas::MultiwayCFRConfig cfr;
@@ -630,16 +887,38 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 		texas::MultiwaySolveRequest(valid_root(), cfr, compact_limits));
 	texas::MultiwaySolverCoordinator reference(
 		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
+	ExternalCoordinatorDirectory external_directory;
+	auto external_limits = valid_limits();
+	external_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	external_limits.compact_page_width = 1U;
+	external_limits.external_storage.directory = external_directory.path();
+	external_limits.external_storage.public_catalog_cache_bytes = 65536U;
+	external_limits.external_storage.row_page_cache_bytes = 2400U;
+	external_limits.external_storage.maximum_wal_bytes = 65536U;
+	external_limits.external_storage.segment_target_bytes = 65536U;
+	external_limits.external_storage.compaction_fan_in = 2U;
+	external_limits.external_storage.compaction_scratch_bytes = 65536U;
+	external_limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	external_limits.external_storage.synchronous_durability = false;
+	texas::MultiwaySolverCoordinator external(
+		texas::MultiwaySolveRequest(valid_root(), cfr, external_limits));
 	const texas::MultiwaySparseRowShape child_row = {
 		{ child.id, child.betting.current_player }, 2U,
 		static_cast<std::uint8_t>(child.legal_actions.size())
 	};
 	compact.admit_public_state(child);
 	reference.admit_public_state(child);
+	external.admit_public_state(child);
 	compact.admit_infoset_row(root_row());
 	reference.admit_infoset_row(root_row());
+	external.admit_infoset_row(root_row());
 	compact.admit_infoset_row(child_row);
 	reference.admit_infoset_row(child_row);
+	external.admit_infoset_row(child_row);
+	const auto* external_child = external.find_public_state(child.id);
+	EXPECT_TRUE(external_child != nullptr);
+	EXPECT_EQ(external_child->id, child.id);
+	EXPECT_EQ(external_child->history, child.history);
 
 	texas::MultiwayWorkerDeltaStream first(0U, 2U);
 	texas::MultiwayWorkerDeltaStream second(1U, 2U);
@@ -649,6 +928,7 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 	second.sort_fixed_order();
 	compact.merge_worker_streams({ first, second });
 	reference.merge_worker_streams({ first, second });
+	external.merge_worker_streams({ first, second });
 
 	const auto compact_checkpoint = compact.checkpoint();
 	const auto reference_checkpoint = reference.checkpoint();
@@ -661,6 +941,59 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 	}
 	EXPECT_EQ(compact_checkpoint.storage.regrets, reference_checkpoint.storage.regrets);
 	EXPECT_EQ(compact_checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
+	std::array<double, 3U> compact_strategy{};
+	std::array<double, 3U> external_strategy{};
+	compact.regret_matched_strategy_into(root_infoset(), 0U, compact_strategy.data(), compact_strategy.size());
+	external.regret_matched_strategy_into(root_infoset(), 0U, external_strategy.data(), external_strategy.size());
+	EXPECT_EQ(external_strategy, compact_strategy);
+	std::vector<double> compact_child_strategy(child.legal_actions.size());
+	std::vector<double> external_child_strategy(child.legal_actions.size());
+	compact.regret_matched_strategy_into(child_row.infoset, 1U,
+		compact_child_strategy.data(), compact_child_strategy.size());
+	external.regret_matched_strategy_into(child_row.infoset, 1U,
+		external_child_strategy.data(), external_child_strategy.size());
+	EXPECT_EQ(external_child_strategy, compact_child_strategy);
+	EXPECT_THROW(external.scale_regrets(0.0), std::invalid_argument);
+	EXPECT_THROW(external.scale_and_prune_regrets(0.5, 0.1, 0.0), std::invalid_argument);
+	compact.scale_regrets(0.5);
+	external.scale_regrets(0.5);
+	compact.regret_matched_strategy_into(root_infoset(), 0U, compact_strategy.data(), compact_strategy.size());
+	external.regret_matched_strategy_into(root_infoset(), 0U, external_strategy.data(), external_strategy.size());
+	EXPECT_EQ(external_strategy, compact_strategy);
+	compact.regret_matched_strategy_into(child_row.infoset, 1U,
+		compact_child_strategy.data(), compact_child_strategy.size());
+	external.regret_matched_strategy_into(child_row.infoset, 1U,
+		external_child_strategy.data(), external_child_strategy.size());
+	EXPECT_EQ(external_child_strategy, compact_child_strategy);
+	EXPECT_EQ(external.scale_and_prune_regrets(0.5, 0.0, 0.0),
+		compact.scale_and_prune_regrets(0.5, 0.0, 0.0));
+	compact.regret_matched_strategy_into(root_infoset(), 0U, compact_strategy.data(), compact_strategy.size());
+	external.regret_matched_strategy_into(root_infoset(), 0U, external_strategy.data(), external_strategy.size());
+	EXPECT_EQ(external_strategy, compact_strategy);
+	compact.regret_matched_strategy_into(child_row.infoset, 1U,
+		compact_child_strategy.data(), compact_child_strategy.size());
+	external.regret_matched_strategy_into(child_row.infoset, 1U,
+		external_child_strategy.data(), external_child_strategy.size());
+	EXPECT_EQ(external_child_strategy, compact_child_strategy);
+	EXPECT_THROW(external.prune_negative_regrets(0.3, 0.05), std::invalid_argument);
+	EXPECT_EQ(external.prune_negative_regrets(0.0, 0.05),
+		compact.prune_negative_regrets(0.0, 0.05));
+	compact.regret_matched_strategy_into(root_infoset(), 0U, compact_strategy.data(), compact_strategy.size());
+	external.regret_matched_strategy_into(root_infoset(), 0U, external_strategy.data(), external_strategy.size());
+	EXPECT_EQ(external_strategy, compact_strategy);
+	compact.regret_matched_strategy_into(child_row.infoset, 1U,
+		compact_child_strategy.data(), compact_child_strategy.size());
+	external.regret_matched_strategy_into(child_row.infoset, 1U,
+		external_child_strategy.data(), external_child_strategy.size());
+	EXPECT_EQ(external_child_strategy, compact_child_strategy);
+	texas::MultiwayWorkerDeltaStream empty_first(0U, 1U);
+	texas::MultiwayWorkerDeltaStream empty_second(1U, 1U);
+	empty_first.sort_fixed_order();
+	empty_second.sort_fixed_order();
+	external.merge_worker_streams({ empty_first, empty_second });
+	external.regret_matched_strategy_into(root_infoset(), 0U, external_strategy.data(), external_strategy.size());
+	compact.regret_matched_strategy_into(root_infoset(), 0U, compact_strategy.data(), compact_strategy.size());
+	EXPECT_EQ(external_strategy, compact_strategy);
 }
 
 TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows)

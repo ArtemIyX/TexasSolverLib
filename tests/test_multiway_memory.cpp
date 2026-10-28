@@ -247,6 +247,8 @@ TEST_CASE(multiway_process_memory_snapshot_reports_supported_fields)
 	EXPECT_TRUE(snapshot.minor_page_faults_available);
 	EXPECT_TRUE(snapshot.major_page_faults_available);
 	EXPECT_TRUE(snapshot.total_page_faults_available);
+	EXPECT_EQ(snapshot.total_page_faults,
+		multiway_memory_saturating_add(snapshot.minor_page_faults, snapshot.major_page_faults));
 #endif
 }
 
@@ -349,6 +351,34 @@ TEST_CASE(multiway_export_memory_gates_saturate_and_fail_closed)
 		plan, {}, unavailable, system_config);
 	EXPECT_EQ(system_gate.status, MultiwayExportGateStatus::Unavailable);
 	EXPECT_EQ(system_gate.rejection_reason, MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable);
+}
+
+TEST_CASE(multiway_export_disk_gate_reserves_publication_space_and_fails_closed)
+{
+	using namespace texas::solver::multiway;
+	const auto admitted = evaluate_multiway_export_disk_gate(100U, 50U, true, 250U);
+	EXPECT_EQ(admitted.status, MultiwayExportDiskGateStatus::Admitted);
+	EXPECT_EQ(admitted.required_free_bytes, 250U);
+	const auto bounded_shard = evaluate_multiway_export_disk_gate(
+		200U, 40U, 10U, true, 250U);
+	EXPECT_EQ(bounded_shard.status, MultiwayExportDiskGateStatus::Admitted);
+	EXPECT_EQ(bounded_shard.temporary_overlap_bytes, 40U);
+	EXPECT_EQ(bounded_shard.required_free_bytes, 250U);
+	const auto bounded_shard_insufficient = evaluate_multiway_export_disk_gate(
+		200U, 40U, 10U, true, 249U);
+	EXPECT_EQ(bounded_shard_insufficient.status, MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(bounded_shard_insufficient.required_free_bytes, 250U);
+	const auto insufficient = evaluate_multiway_export_disk_gate(100U, 50U, true, 249U);
+	EXPECT_EQ(insufficient.status, MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(insufficient.rejection_reason, MultiwayExportDiskRejectionReason::InsufficientFreeSpace);
+	const auto unavailable = evaluate_multiway_export_disk_gate(100U, 0U, false, 0U);
+	EXPECT_EQ(unavailable.status, MultiwayExportDiskGateStatus::Unavailable);
+	EXPECT_EQ(unavailable.rejection_reason, MultiwayExportDiskRejectionReason::FreeSpaceUnavailable);
+	const auto overflow = evaluate_multiway_export_disk_gate(
+		std::numeric_limits<std::uint64_t>::max(), 0U, true,
+		std::numeric_limits<std::uint64_t>::max());
+	EXPECT_EQ(overflow.status, MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(overflow.rejection_reason, MultiwayExportDiskRejectionReason::RequiredSpaceOverflow);
 }
 
 TEST_CASE(multiway_export_memory_gates_honor_process_and_system_boundaries)
@@ -460,7 +490,7 @@ TEST_CASE(multiway_memory_preflight_accounts_for_all_runtime_search_components)
 	EXPECT_TRUE(result.estimate.merge_scratch_bytes > 0U);
 	EXPECT_TRUE(result.estimate.discovery_stream_bytes > 0U);
 	EXPECT_EQ(result.estimate.ledger.discovery_stream_bytes, result.estimate.discovery_stream_bytes);
-	EXPECT_TRUE(result.estimate.export_bytes > 0U);
+	EXPECT_EQ(result.estimate.export_bytes, 0U);
 	EXPECT_EQ(result.estimate.continuation_cache_bytes, 23U);
 	EXPECT_EQ(result.estimate.admitted_bytes, result.estimate.total_bytes);
 	EXPECT_EQ(
@@ -484,7 +514,73 @@ TEST_CASE(multiway_memory_preflight_uses_each_explicit_worker_stream_capacity)
 	const auto expected_merge_bytes = workers * (2U * (sizeof(texas::MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*)) + 3U * sizeof(texas::MultiwayContinuationDelta));
 	EXPECT_EQ(result.estimate.worker_delta_bytes, expected_worker_bytes);
 	EXPECT_EQ(result.estimate.discovery_stream_bytes, expected_discovery_bytes);
-	EXPECT_EQ(result.estimate.merge_scratch_bytes, expected_merge_bytes);
+	EXPECT_EQ(result.estimate.merge_scratch_bytes,
+		expected_merge_bytes + explicit_limits.max_sparse_values * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
+}
+
+TEST_CASE(multiway_memory_preflight_uses_packed_catalog_and_separates_output_cache)
+{
+	auto large = limits();
+	large.max_public_states = 4'000'000U;
+	large.max_sparse_rows = 5'000'000U;
+	large.max_sparse_values = 100'000'000U;
+	large.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	texas::MultiwayMemoryInputs inputs;
+	inputs.public_catalog_menu_capacity = 4'000'000U;
+	inputs.public_catalog_action_capacity = 4'000'000U * texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+	inputs.checkpoint_peak_bytes = 4096U;
+	inputs.export_peak_bytes = 2048U;
+	inputs.disk_output_bytes = 9'000'000U;
+	inputs.file_cache_allowance_bytes = 7'000'000U;
+	const auto result = texas::preflight_multiway_memory(
+		large, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
+	const auto expected = texas::estimate_multiway_catalog_capacity(
+		4'000'000U, 4'000'000U, 4'000'000U * texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+	EXPECT_EQ(result.estimate.public_state_bytes, expected.total_bytes);
+	EXPECT_EQ(result.estimate.export_bytes, 0U);
+	EXPECT_EQ(result.estimate.disk_output_bytes, 9'000'000U);
+	EXPECT_EQ(result.estimate.file_cache_allowance_bytes, 7'000'000U);
+	EXPECT_EQ(result.estimate.checkpoint_transient_bytes, 4096U);
+	EXPECT_EQ(result.estimate.export_transient_bytes, 2048U);
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+		result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes + 4096U);
+}
+
+TEST_CASE(multiway_memory_preflight_34m_catalog_fixture_has_no_kibibyte_multiplier)
+{
+	auto large = limits();
+	large.max_public_states = 34'000'000U;
+	large.max_sparse_rows = 5'000'000U;
+	large.max_sparse_values = 100'000'000U;
+	large.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	large.worker_count = 8U;
+	large.max_regret_delta_entries_per_worker = 64'000U;
+	large.max_continuation_delta_entries_per_worker = 1'024U;
+	large.max_discovery_public_states_per_worker = 200'000U;
+	large.max_discovery_rows_per_worker = 100'000U;
+	texas::MultiwayMemoryInputs inputs;
+	inputs.public_catalog_menu_capacity = 34'000'000U;
+	inputs.public_catalog_action_capacity = 34'000'000U * texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+	inputs.existing_working_set_bytes = 15'950'000'000ULL;
+	inputs.existing_private_committed_bytes = 546'232'440ULL;
+	inputs.mapped_virtual_bytes = 15'369'522'466ULL;
+	inputs.checkpoint_peak_bytes = 34'000'000ULL * 2U * sizeof(std::uint32_t) + 5'000'000ULL * sizeof(std::uint32_t) + texas::MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES;
+	texas::MultiwayExportPlanMemoryValues export_plan;
+	texas::MultiwayExportProcessGateConfig export_config;
+	inputs.export_peak_bytes = texas::make_multiway_export_scratch_estimate(export_plan, export_config).total_bytes;
+	const auto result = texas::preflight_multiway_memory(
+		large, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
+	const auto expected = texas::estimate_multiway_catalog_capacity(
+		34'000'000U, 34'000'000U, 34'000'000U * texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+	EXPECT_EQ(result.estimate.public_state_bytes, expected.total_bytes);
+	EXPECT_EQ(result.estimate.sparse_value_bytes, 100'000'000ULL * (sizeof(std::int32_t) + sizeof(std::uint64_t)));
+	EXPECT_EQ(result.estimate.compact_page_bytes,
+		100'000'000ULL * texas::MultiwayCompactStorage::page_metadata_size());
+	EXPECT_TRUE(result.estimate.merge_scratch_bytes >= 100'000'000ULL * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
+	EXPECT_TRUE(result.estimate.public_state_bytes < 34'000'000ULL * 1024ULL);
+	const auto working_set_gate = texas::evaluate_multiway_working_set_preflight(
+		result, { 51'539'607'552ULL, 0U });
+	EXPECT_TRUE(working_set_gate.rejected());
 }
 
 TEST_CASE(multiway_memory_preflight_drops_optional_cache_before_operating_cap)
@@ -510,11 +606,34 @@ TEST_CASE(multiway_memory_preflight_drops_optional_cache_before_operating_cap)
 		texas::MultiwayMemoryAdmissionStage::WorkerDeltas);
 }
 
+TEST_CASE(multiway_working_set_runtime_gate_checks_private_commit_and_fails_closed)
+{
+	using namespace texas::solver::multiway;
+	MultiwayWorkingSetGateConfig config{ 48U, 0U, 64U };
+	MultiwayProcessMemorySnapshot snapshot;
+	snapshot.current_working_set_available = true;
+	snapshot.current_working_set_bytes = 40U;
+	const auto missing = evaluate_multiway_working_set_runtime(snapshot, config);
+	EXPECT_EQ(missing.status, MultiwayWorkingSetGateStatus::Unavailable);
+	EXPECT_EQ(std::string(missing.rejected_category), std::string("private commit telemetry"));
+
+	snapshot.private_committed_available = true;
+	snapshot.private_committed_bytes = 65U;
+	const auto over_limit = evaluate_multiway_working_set_runtime(snapshot, config);
+	EXPECT_EQ(over_limit.status, MultiwayWorkingSetGateStatus::Rejected);
+	EXPECT_EQ(std::string(over_limit.rejected_category), std::string("process private commit"));
+
+	snapshot.private_committed_bytes = 60U;
+	const auto admitted = evaluate_multiway_working_set_runtime(snapshot, config);
+	EXPECT_EQ(admitted.status, MultiwayWorkingSetGateStatus::Admitted);
+	EXPECT_EQ(admitted.observed_private_commit_bytes, 60U);
+}
+
 TEST_CASE(multiway_memory_preflight_stops_before_rejected_row_allocation)
 {
 	const auto roomy = texas::preflight_multiway_memory(
 		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U });
-	const auto root_bytes = roomy.estimate.mandatory_bytes - roomy.estimate.sparse_row_bytes - roomy.estimate.sparse_value_bytes - roomy.estimate.worker_delta_bytes - roomy.estimate.discovery_stream_bytes - roomy.estimate.merge_scratch_bytes - roomy.estimate.continuation_scratch_bytes;
+	const auto root_bytes = roomy.estimate.public_state_bytes + roomy.estimate.public_catalog_reallocation_peak_bytes + roomy.estimate.blueprint_index_bytes + roomy.estimate.range_row_bytes + roomy.estimate.future_bucket_cache_bytes + roomy.estimate.off_tree_menu_bytes + roomy.estimate.export_bytes;
 	const auto rejected = texas::preflight_multiway_memory(
 		limits(),
 		texas::MultiwayMemoryBudget{ 1U, roomy.estimate.total_bytes + 1U, root_bytes });
@@ -550,9 +669,9 @@ TEST_CASE(multiway_memory_estimate_separates_zero_mapping_from_baselines)
 	EXPECT_EQ(result.estimate.existing_working_set_bytes, 100U);
 	EXPECT_EQ(result.estimate.existing_private_committed_bytes, 80U);
 	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
-		80U + result.estimate.additional_private_capacity_bytes);
+		80U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-		100U + result.estimate.additional_private_capacity_bytes);
+		100U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 }
 
 TEST_CASE(multiway_memory_estimate_does_not_add_cold_mapping_to_private_peak)
@@ -567,9 +686,9 @@ TEST_CASE(multiway_memory_estimate_does_not_add_cold_mapping_to_private_peak)
 	EXPECT_EQ(result.estimate.mapped_virtual_bytes, 1'000U);
 	EXPECT_EQ(result.estimate.mapped_resident_allowance_bytes, 1'000U);
 	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
-		80U + result.estimate.additional_private_capacity_bytes);
+		80U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-		100U + 1'000U + result.estimate.additional_private_capacity_bytes);
+		100U + 1'000U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 }
 
 TEST_CASE(multiway_memory_estimate_excludes_fully_resident_mapping_from_allowance)
@@ -582,7 +701,7 @@ TEST_CASE(multiway_memory_estimate_excludes_fully_resident_mapping_from_allowanc
 		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
 	EXPECT_EQ(result.estimate.mapped_resident_allowance_bytes, 0U);
 	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-		1'100U + result.estimate.additional_private_capacity_bytes);
+		1'100U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 }
 
 TEST_CASE(multiway_memory_estimate_counts_only_partial_mapping_residency_allowance)
@@ -595,9 +714,9 @@ TEST_CASE(multiway_memory_estimate_counts_only_partial_mapping_residency_allowan
 	const auto result = texas::preflight_multiway_memory(
 		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
 	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-		1'100U + 400U + result.estimate.additional_private_capacity_bytes);
+		1'100U + 400U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
-		100U + result.estimate.additional_private_capacity_bytes);
+		100U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 }
 
 TEST_CASE(multiway_memory_estimate_prefers_known_retained_capacity_over_configured_growth)
@@ -612,7 +731,8 @@ TEST_CASE(multiway_memory_estimate_prefers_known_retained_capacity_over_configur
 	EXPECT_EQ(result.estimate.additional_private_capacity_bytes, 2'500U);
 	EXPECT_EQ(result.estimate.actual_retained_capacity_bytes, 2'500U);
 	EXPECT_TRUE(result.estimate.configured_capacity_growth_bytes != 2'500U);
-	EXPECT_EQ(result.estimate.estimated_private_peak_bytes, 3'000U);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
+		3'000U + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 }
 
 TEST_CASE(multiway_memory_estimate_counts_checkpoint_and_export_maximum_once)
@@ -647,9 +767,9 @@ TEST_CASE(multiway_memory_estimate_accounts_for_allocator_overhead_in_both_peaks
 		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
 	EXPECT_EQ(result.estimate.allocator_overhead_bytes, 33U);
 	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
-		80U + result.estimate.additional_private_capacity_bytes + 33U);
+		80U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes + 33U);
 	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-		100U + result.estimate.additional_private_capacity_bytes + 33U);
+		100U + result.estimate.additional_private_capacity_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes + 33U);
 }
 
 TEST_CASE(multiway_memory_estimate_saturates_each_peak_on_overflow)
@@ -696,8 +816,8 @@ TEST_CASE(multiway_memory_estimate_matches_task_d_f1_a1_and_a3_baselines)
 			f1_limits, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
 		EXPECT_EQ(result.estimate.mapped_virtual_bytes, 15'369'522'466ULL);
 		EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
-			fixture.private_committed + result.estimate.configured_capacity_growth_bytes);
+			fixture.private_committed + result.estimate.configured_capacity_growth_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 		EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
-			fixture.working_set + result.estimate.configured_capacity_growth_bytes);
+			fixture.working_set + result.estimate.configured_capacity_growth_bytes + result.estimate.public_catalog_reallocation_peak_bytes + result.estimate.compact_reallocation_peak_bytes);
 	}
 }

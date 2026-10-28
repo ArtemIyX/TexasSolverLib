@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <array>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <shared_mutex>
 #include <optional>
@@ -20,6 +21,7 @@ namespace texas::solver::multiway
 {
 
 	class MultiwayCompactStorage;
+	class MultiwayExternalTrainingStorage;
 	struct MultiwayMemoryComponent;
 	struct MultiwayPublicCatalogMemorySnapshot;
 	struct MultiwaySparseStorageMemorySnapshot;
@@ -261,6 +263,13 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayPublicCatalogMemorySnapshot memory_snapshot() const noexcept;
+		// Packs a validated descriptor without requiring an in-memory catalog.
+		// External catalogs persist their action menu separately, so handle zero
+		// is the canonical packed form for that backend.
+		[[nodiscard]] static MultiwayPackedPublicNode pack_node(
+			const MultiwayPublicStateDescriptor& state,
+			std::uint32_t menu_handle = 0U,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr) noexcept;
 
 	private:
 		friend class MultiwaySolverCoordinator;
@@ -293,10 +302,6 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			std::vector<std::uint8_t>& new_state_flags,
 			std::vector<const MultiwayPackedPublicNode*>& existing_nodes) const;
-		[[nodiscard]] MultiwayPackedPublicNode pack_node(
-			const MultiwayPublicStateDescriptor& state,
-			std::uint32_t menu_handle,
-			MultiwayAdmissionDiagnostics* diagnostics) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool compatible_with_descriptor(
 			const MultiwayPackedPublicNode* packed,
@@ -365,7 +370,22 @@ namespace texas::solver::multiway
 		enum class StorageBackend : std::uint8_t
 		{
 			Float64Reference,
-			CompactInt32
+			CompactInt32,
+			ExternalCompactInt32
+		};
+		struct ExternalStorage
+		{
+			std::filesystem::path directory;
+			// Optional logical path used for checkpoint/model identity while I/O uses directory.
+			std::filesystem::path identity_directory;
+			std::uint64_t public_catalog_cache_bytes = 0U;
+			std::uint64_t row_page_cache_bytes = 0U;
+			std::uint64_t maximum_wal_bytes = 0U;
+			std::uint64_t segment_target_bytes = 0U;
+			std::uint32_t compaction_fan_in = 0U;
+			std::uint64_t compaction_scratch_bytes = 0U;
+			std::uint64_t disk_reserve_bytes = 0U;
+			bool synchronous_durability = true;
 		};
 		std::uint64_t seed = 1;
 		std::uint32_t worker_count = 1;
@@ -377,6 +397,7 @@ namespace texas::solver::multiway
 		std::uint32_t max_batches = 64;
 		StorageBackend storage_backend = StorageBackend::Float64Reference;
 		std::uint32_t compact_page_width = 16U;
+		ExternalStorage external_storage{};
 		// Per-worker bounded discovery entries. Zero preserves callers that do
 		// not enable immutable discovery epochs.
 		std::size_t max_discovery_entries = 0;
@@ -927,11 +948,11 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept;
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
-		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const noexcept;
-		// Epoch queries are lock-free and valid only while the coordinator's
-		// immutable batch epoch is not being mutated.
-		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept;
-		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const;
+		// Reference-backend checks are lock-free during a sealed epoch. External
+		// row checks resolve one bounded index record per decision node.
+		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const;
+		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const;
 		void regret_matched_strategy_into(
 			MultiwayInfosetId infoset,
 			std::uint32_t bucket,
@@ -953,7 +974,7 @@ namespace texas::solver::multiway
 			const std::vector<double>& baseline_strategy_sums) const;
 		void scale_regrets(double factor);
 		[[nodiscard]] std::size_t scale_and_prune_regrets(
-			double factor, double threshold, double regret_floor) noexcept;
+			double factor, double threshold, double regret_floor);
 		void record_terminal_visit() noexcept;
 		void record_leaf_visit() noexcept;
 		void record_missing_lookup() noexcept;
@@ -968,12 +989,18 @@ namespace texas::solver::multiway
 			std::size_t output_size) const;
 		[[nodiscard]] bool action_below_regret_epoch(
 			MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
-			double threshold) const noexcept;
+			double threshold) const;
+		void actions_below_regret_epoch(
+			MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+			bool* output, std::size_t output_size) const;
+		void actions_below_regret(
+			MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+			bool* output, std::size_t output_size) const;
 		[[nodiscard]] bool action_below_regret(
 			MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
-			double threshold) const noexcept;
+			double threshold) const;
 		[[nodiscard]] std::size_t prune_negative_regrets(
-			double threshold = 0.0, double regret_floor = 0.0) noexcept;
+			double threshold = 0.0, double regret_floor = 0.0);
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
 		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return public_catalog_; }
@@ -988,12 +1015,13 @@ namespace texas::solver::multiway
 		{
 			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().regret_delta_capacity();
 		}
+		[[nodiscard]] static std::size_t pending_merge_cell_size() noexcept;
 		[[nodiscard]] std::size_t merge_tournament_scratch_capacity() const noexcept
 		{
 			return merge_tournament_.capacity();
 		}
 		[[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
-		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const;
 		[[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
 			MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
@@ -1015,10 +1043,14 @@ namespace texas::solver::multiway
 		void merge_worker_streams_locked(
 			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
 			MultiwayDeltaMergePath path);
+		void actions_below_regret_locked(
+			MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+			bool* output, std::size_t output_size) const;
 
 		MultiwaySolveRequest request_;
 		MultiwaySparseRowStorage storage_;
 		std::unique_ptr<MultiwayCompactStorage> compact_storage_;
+		std::unique_ptr<MultiwayExternalTrainingStorage> external_storage_;
 		MultiwayPublicCatalog public_catalog_;
 		std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
 		std::vector<std::size_t> merge_stream_cursors_;
@@ -1052,6 +1084,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return coordinator_->storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return coordinator_->compact_storage_.get(); }
+		[[nodiscard]] const MultiwayExternalTrainingStorage* external_storage() const noexcept { return coordinator_->external_storage_.get(); }
 		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return coordinator_->public_catalog_; }
 		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return coordinator_->diagnostics_; }
 

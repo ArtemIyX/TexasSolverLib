@@ -8,6 +8,10 @@
 
 namespace texas::solver::multiway
 {
+	std::size_t MultiwayCompactStorage::page_metadata_size() noexcept
+	{
+		return sizeof(PageMetadata);
+	}
 
 	namespace
 	{
@@ -253,18 +257,31 @@ namespace texas::solver::multiway
 			admit_page(row.shape.infoset, bucket / page_width_);
 		const auto* active_page = page_for_bucket(row, bucket);
 		const auto index = page_cell(*active_page, bucket, action, page_width_);
-		const auto regret_delta = saturating_scaled(regret, 1024.0, std::numeric_limits<long long>::min(), std::numeric_limits<long long>::max());
-		const auto old_value = static_cast<long long>(regrets_[index]);
+		auto& regret_cell = regrets_[index];
+		auto& strategy_mass_cell = strategy_mass_[active_page->strategy_sum_offset + index - active_page->regret_offset];
+		apply_delta_to_cells(regret_cell, strategy_mass_cell, regret, strategy_sum);
+	}
+
+	void MultiwayCompactStorage::apply_delta_to_cells(std::int32_t& regret_cell,
+		std::uint64_t& strategy_mass_cell, double regret, double strategy_sum)
+	{
+		if (!std::isfinite(regret) || !std::isfinite(strategy_sum) || strategy_sum < 0.0)
+			throw std::invalid_argument("invalid compact cell delta");
+		const auto regret_delta = saturating_scaled(regret, 1024.0,
+			std::numeric_limits<long long>::min(), std::numeric_limits<long long>::max());
+		const auto old_value = static_cast<long long>(regret_cell);
 		const auto summed_regret = regret_delta > 0 && old_value > std::numeric_limits<long long>::max() - regret_delta
 			? std::numeric_limits<long long>::max()
 			: regret_delta < 0 && old_value < std::numeric_limits<long long>::min() - regret_delta
 			? std::numeric_limits<long long>::min()
 			: old_value + regret_delta;
-		regrets_[index] = static_cast<std::int32_t>(std::clamp<long long>(summed_regret, kRegretMin, kRegretMax));
-		const auto mass_delta = saturating_scaled(strategy_sum, static_cast<double>(kMassScale), 0, std::numeric_limits<long long>::max());
-		auto& stored_mass = strategy_mass_[active_page->strategy_sum_offset + index - active_page->regret_offset];
+		regret_cell = static_cast<std::int32_t>(std::clamp<long long>(summed_regret, kRegretMin, kRegretMax));
+		const auto mass_delta = saturating_scaled(strategy_sum, static_cast<double>(kMassScale),
+			0, std::numeric_limits<long long>::max());
 		const auto positive_delta = static_cast<std::uint64_t>(std::max(0LL, mass_delta));
-		stored_mass = positive_delta > std::numeric_limits<std::uint64_t>::max() - stored_mass ? std::numeric_limits<std::uint64_t>::max() : stored_mass + positive_delta;
+		strategy_mass_cell = positive_delta > std::numeric_limits<std::uint64_t>::max() - strategy_mass_cell
+			? std::numeric_limits<std::uint64_t>::max()
+			: strategy_mass_cell + positive_delta;
 	}
 
 	void MultiwayCompactStorage::scale_regrets(double factor)

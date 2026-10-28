@@ -288,7 +288,7 @@ namespace texas::solver::multiway
 	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(
 		const MultiwayPublicStateDescriptor& state,
 		std::uint32_t menu_handle,
-		MultiwayAdmissionDiagnostics* diagnostics) const noexcept
+		MultiwayAdmissionDiagnostics* diagnostics) noexcept
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.pack_node");
 		record_descriptor_copy(state, diagnostics);

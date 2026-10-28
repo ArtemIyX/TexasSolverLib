@@ -148,7 +148,8 @@ namespace texas::solver::multiway
 			input.read(magic.data(), 4);
 			if (!input || magic != std::array<char, 4U>{ 'M', 'W', 'B', 'K' })
 				throw std::invalid_argument("invalid bucket artifact header");
-			if (get_u32(input) != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
+			const auto schema = get_u32(input);
+			if (schema != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION && schema != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_V4)
 				throw std::invalid_argument("unsupported bucket artifact schema");
 			Header header;
 			visit_multiway_model_identity_fields(header.identity, [&](std::uint64_t& field) { field = get_u64(input); });
@@ -312,7 +313,8 @@ namespace texas::solver::multiway
 		input.read(magic.data(), 4);
 		if (!input || magic != std::array<char, 4U>{ 'M', 'W', 'B', 'K' })
 			throw std::invalid_argument("invalid bucket artifact header");
-		if (get_u32(input) != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
+		const auto schema = get_u32(input);
+		if (schema != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION && schema != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_V4)
 			throw std::invalid_argument("unsupported bucket artifact schema");
 		MultiwayModelIdentity identity;
 		visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) { field = get_u64(input); });
@@ -379,6 +381,55 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path, const MultiwayModelIdentity& expected,
 		MultiwayBucketInspectionProgressCallback callback, std::uint64_t interval)
 	{
+		std::ifstream input(path, std::ios::binary);
+		if (!input)
+			throw std::runtime_error("multiway bucket artifact cannot be opened");
+		std::array<unsigned char, 8U> header{};
+		input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+		if (!input || header[0] != 'M' || header[1] != 'W' || header[2] != 'B' || header[3] != 'K')
+			throw std::invalid_argument("invalid bucket artifact header");
+		const auto schema = static_cast<std::uint32_t>(header[4]) | (static_cast<std::uint32_t>(header[5]) << 8U) | (static_cast<std::uint32_t>(header[6]) << 16U) | (static_cast<std::uint32_t>(header[7]) << 24U);
+		if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
+		{
+			if (callback && interval == 0U)
+				throw std::invalid_argument("bucket inspection progress interval is zero");
+			const auto registry = load_multiway_bucket_registry(path);
+			if (registry.identity() != expected)
+				throw std::invalid_argument("bucket artifact identity mismatch");
+			MultiwayBucketArtifactInspection result;
+			result.identity = registry.identity();
+			result.payload_hash = core::fingerprint::FNV1A_OFFSET;
+			const auto& tables = registry.tables();
+			for (std::size_t table_index = 0U; table_index < tables.size(); ++table_index)
+			{
+				const auto& table = tables[table_index];
+				if (table.street() == core::Street::Flop)
+					++result.flop_tables;
+				else if (table.street() == core::Street::Turn)
+					++result.turn_tables;
+				else if (table.street() == core::Street::River)
+					++result.river_tables;
+				else
+					throw std::invalid_argument("bucket artifact contains a non-postflop table");
+				core::fingerprint::append_u8(result.payload_hash, static_cast<std::uint8_t>(table.street()));
+				core::fingerprint::append_u8(result.payload_hash, static_cast<std::uint8_t>(table.canonical_board().size()));
+				for (const auto card : table.canonical_board())
+					core::fingerprint::append_u8(result.payload_hash, card);
+				compatibility_hash_u32(result.payload_hash, table.bucket_count());
+				for (std::size_t id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id)
+				{
+					const auto value = table.assignment_at(id);
+					if (value != MULTIWAY_INVALID_BUCKET)
+						++result.live_assignments;
+					compatibility_hash_u32(result.payload_hash, value);
+				}
+				if (callback && (((table_index + 1U) % interval) == 0U || table_index + 1U == tables.size()))
+					callback(table_index + 1U, tables.size());
+			}
+			result.payload_hash = core::fingerprint::finish(result.payload_hash);
+			result.parallel_payload_hash = result.payload_hash;
+			return result;
+		}
 		return legacy(path, expected, std::move(callback), interval);
 	}
 
@@ -387,6 +438,26 @@ namespace texas::solver::multiway
 		const MultiwayBucketInspectionOptions& options,
 		MultiwayBucketInspectionProgressCallback callback, std::uint64_t interval)
 	{
+		{
+			std::ifstream input(path, std::ios::binary);
+			std::array<unsigned char, 8U> header{};
+			input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+			const auto schema = input ? static_cast<std::uint32_t>(header[4]) | (static_cast<std::uint32_t>(header[5]) << 8U) | (static_cast<std::uint32_t>(header[6]) << 16U) | (static_cast<std::uint32_t>(header[7]) << 24U) : 0U;
+			if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
+			{
+				if (callback && interval == 0U)
+					throw std::invalid_argument("bucket inspection progress interval is zero");
+				if (callback)
+				{
+					input.seekg(112, std::ios::beg);
+					const auto total = get_u32(input);
+					callback(0U, total);
+				}
+				auto result = inspect_multiway_bucket_artifact(path, expected, std::move(callback), interval);
+				result.hash_mode = options.hash_mode;
+				return result;
+			}
+		}
 		if (options.hash_mode == MultiwayBucketInspectionHashMode::Legacy || options.requested_threads == 1U)
 			return legacy(path, expected, std::move(callback), interval);
 		const auto header = read_header(path, expected);

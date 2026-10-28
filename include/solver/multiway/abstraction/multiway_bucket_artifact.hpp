@@ -13,7 +13,8 @@ namespace texas::solver::multiway
 {
 	struct MultiwayProcessMemorySnapshotCollection;
 
-	inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 4U;
+	inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 5U;
+	inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_V4 = 4U;
 
 	// Versioned deterministic baseline used until trained clustering artifacts are
 	// introduced. The counts are part of the model identity through blueprint config.
@@ -54,6 +55,9 @@ namespace texas::solver::multiway
 	[[nodiscard]] bool is_multiway_canonical_board(
 		core::Street street,
 		const std::vector<std::uint8_t>& board) noexcept;
+	[[nodiscard]] bool is_multiway_canonical_board(
+		core::Street street,
+		MultiwayBoardView board) noexcept;
 	[[nodiscard]] MultiwayBucketFeatures make_multiway_bucket_features(
 		core::Street street,
 		const std::vector<std::uint8_t>& canonical_board,

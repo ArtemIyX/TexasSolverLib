@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 
 namespace texas::solver::multiway
 {
@@ -35,7 +36,7 @@ namespace texas::solver::multiway
 	inline constexpr std::size_t MULTIWAY_MEMORY_PHASE_COUNT = 13U;
 	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION = 1U;
-	inline constexpr std::uint32_t MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION = 2U;
+	inline constexpr std::uint32_t MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION = 3U;
 	inline constexpr std::uint32_t MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION = 1U;
 	inline constexpr std::size_t MULTIWAY_MEMORY_MAX_WORKERS = 16U;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES =
@@ -258,6 +259,7 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t order_index_bytes = 0U;
 		bool compact_direct_order = false;
+		std::uint64_t sharding_metadata_bytes = 0U;
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
@@ -266,6 +268,7 @@ namespace texas::solver::multiway
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
 		std::uint64_t order_index_bytes = 0U;
+		std::uint64_t sharding_metadata_bytes = 0U;
 		std::uint64_t strategy_scratch_bytes = 0U;
 		std::uint64_t action_scratch_bytes = 0U;
 		std::uint64_t encoder_buffer_bytes = 0U;
@@ -278,12 +281,14 @@ namespace texas::solver::multiway
 
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORTER_HEADROOM_BYTES = 64ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORT_ENCODER_BUFFER_BYTES = 1ULL * 1024ULL * 1024ULL;
+	inline constexpr std::uint64_t MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES = 64ULL * 1024ULL;
 
 	struct MultiwayExportProcessEstimate
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
 		std::uint64_t current_working_set_bytes = 0U;
 		std::uint64_t order_index_bytes = 0U;
+		std::uint64_t sharding_metadata_bytes = 0U;
 		std::uint64_t strategy_scratch_bytes = 0U;
 		std::uint64_t action_scratch_bytes = 0U;
 		std::uint64_t encoder_buffer_bytes = 0U;
@@ -417,6 +422,46 @@ namespace texas::solver::multiway
 		}
 	};
 
+	enum class MultiwayExportDiskGateStatus : std::uint8_t
+	{
+		NotChecked = 0U,
+		Admitted = 1U,
+		Rejected = 2U,
+		Unavailable = 3U,
+	};
+
+	enum class MultiwayExportDiskRejectionReason : std::uint8_t
+	{
+		None = 0U,
+		FreeSpaceUnavailable = 1U,
+		RequiredSpaceOverflow = 2U,
+		InsufficientFreeSpace = 3U,
+	};
+
+	struct MultiwayExportDiskGateResult
+	{
+		MultiwayExportDiskGateStatus status = MultiwayExportDiskGateStatus::NotChecked;
+		MultiwayExportDiskRejectionReason rejection_reason = MultiwayExportDiskRejectionReason::None;
+		std::uint64_t serialized_output_bytes = 0U;
+		std::uint64_t temporary_overlap_bytes = 0U;
+		std::uint64_t reserve_bytes = 0U;
+		std::uint64_t required_free_bytes = 0U;
+		std::uint64_t available_free_bytes = 0U;
+
+		[[nodiscard]] bool blocked() const noexcept
+		{
+			return status == MultiwayExportDiskGateStatus::Rejected || status == MultiwayExportDiskGateStatus::Unavailable;
+		}
+	};
+
+	[[nodiscard]] MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
+		std::uint64_t serialized_output_bytes, std::uint64_t reserve_bytes,
+		bool available_free_bytes_available, std::uint64_t available_free_bytes) noexcept;
+	[[nodiscard]] MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
+		std::uint64_t serialized_output_bytes, std::uint64_t temporary_overlap_bytes,
+		std::uint64_t reserve_bytes, bool available_free_bytes_available,
+		std::uint64_t available_free_bytes) noexcept;
+
 	struct MultiwayExportObservedMemoryDelta
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -472,11 +517,80 @@ namespace texas::solver::multiway
 	[[nodiscard]] const char* multiway_export_system_rejection_reason_name(
 		MultiwayExportSystemRejectionReason reason) noexcept;
 
+	struct MultiwayExportStorageCounters
+	{
+		std::uint64_t lookups = 0U;
+		std::uint64_t cache_hits = 0U;
+		std::uint64_t cache_misses = 0U;
+		std::uint64_t run_probes = 0U;
+		std::uint64_t read_nanoseconds = 0U;
+		std::uint64_t page_hits = 0U;
+		std::uint64_t page_misses = 0U;
+	};
+
+	// Fixed-size, opt-in diagnostics. Times are inclusive unless named otherwise.
+	struct MultiwayExternalExportProfile
+	{
+		bool enabled = false;
+		std::uint64_t shapes = 0U;
+		std::uint64_t pages = 0U;
+		std::uint64_t rows = 0U;
+		std::uint64_t actions = 0U;
+		std::uint64_t encoded_bytes = 0U;
+		std::uint64_t stream_write_bytes = 0U;
+		std::uint64_t ordered_visit_nanoseconds = 0U;
+		std::uint64_t visitor_nanoseconds = 0U;
+		std::uint64_t menu_nanoseconds = 0U;
+		std::uint64_t pin_nanoseconds = 0U;
+		std::uint64_t unpin_nanoseconds = 0U;
+		std::uint64_t page_locate_nanoseconds = 0U;
+		std::uint64_t page_cache_find_nanoseconds = 0U;
+		std::uint64_t page_victim_nanoseconds = 0U;
+		std::uint64_t page_store_lookup_nanoseconds = 0U;
+		std::uint64_t page_decode_nanoseconds = 0U;
+		std::uint64_t page_zero_nanoseconds = 0U;
+		std::uint64_t page_decoded_count = 0U;
+		std::uint64_t page_zero_count = 0U;
+		std::uint64_t page_index_opens = 0U;
+		std::uint64_t page_index_reads = 0U;
+		std::uint64_t page_run_range_skips = 0U;
+		std::uint64_t page_membership_misses = 0U;
+		std::uint64_t page_data_opens = 0U;
+		std::uint64_t page_data_reads = 0U;
+		std::uint64_t page_requested_read_bytes = 0U;
+		std::uint64_t page_index_open_nanoseconds = 0U;
+		std::uint64_t page_index_search_nanoseconds = 0U;
+		std::uint64_t page_data_open_nanoseconds = 0U;
+		std::uint64_t page_data_read_nanoseconds = 0U;
+		std::uint64_t finish_nanoseconds = 0U;
+		std::uint64_t sampled_rows = 0U;
+		std::uint64_t sampled_average_nanoseconds = 0U;
+		std::uint64_t sampled_quantize_nanoseconds = 0U;
+		std::uint64_t sampled_writer_nanoseconds = 0U;
+		std::uint64_t writer_sampled_rows = 0U;
+		std::uint64_t writer_sampled_validation_nanoseconds = 0U;
+		std::uint64_t writer_sampled_payload_hash_nanoseconds = 0U;
+		std::uint64_t writer_sampled_policy_hash_nanoseconds = 0U;
+		std::uint64_t writer_sampled_encoding_nanoseconds = 0U;
+		std::uint64_t writer_flushes = 0U;
+		MultiwayExportStorageCounters catalog{};
+		MultiwayExportStorageCounters row_index{};
+		MultiwayExportStorageCounters page_store{};
+	};
+
+	// Invoked after a page is unpinned. The view is transient; do not re-enter storage.
+	using MultiwayExternalExportProgressObserver = void (*)(
+		const MultiwayExternalExportProfile&, std::uint64_t elapsed_nanoseconds,
+		void* context) noexcept;
+
 	struct MultiwayExportTelemetry
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
 		bool attempted = false;
 		bool succeeded = false;
+		bool sharded_output = false;
+		std::uint64_t shard_count = 0U;
+		std::uint64_t manifest_bytes = 0U;
 		MultiwayExportPlanMemoryValues plan{};
 		MultiwayExportScratchEstimate scratch{};
 		MultiwayExportProcessEstimate process_estimate{};
@@ -484,11 +598,13 @@ namespace texas::solver::multiway
 		MultiwaySystemMemorySnapshot system_before{};
 		MultiwaySystemMemorySnapshot system_after{};
 		MultiwayExportSystemGateResult system_gate{};
+		MultiwayExportDiskGateResult disk_gate{};
 		MultiwayExportObservedMemoryDelta observed_delta{};
 		std::uint64_t result_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t duration_nanoseconds = 0U;
+		MultiwayExternalExportProfile external_profile{};
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 
 		void validate() const;
@@ -512,6 +628,17 @@ namespace texas::solver::multiway
 
 	struct MultiwayMemoryInputs
 	{
+		// Capacity bounds for the packed public catalog. Zero menu/action bounds
+		// select the conservative per-state defaults used by preflight.
+		std::uint64_t public_catalog_menu_capacity = 0U;
+		std::uint64_t public_catalog_action_capacity = 0U;
+		std::uint64_t public_catalog_admission_scratch_bytes = 0U;
+		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
+		std::uint64_t file_cache_allowance_bytes = 0U;
+		std::uint64_t disk_output_bytes = 0U;
 		// Task A snapshots taken after immutable artifacts are loaded. These
 		// baselines already include resident pages of the loaded mapping.
 		std::uint64_t existing_working_set_bytes = 0U;
@@ -539,10 +666,27 @@ namespace texas::solver::multiway
 		std::uint64_t continuation_scratch_bytes_per_worker = 0U;
 		std::uint64_t continuation_cache_bytes = 0U;
 		std::uint64_t export_action_capacity = 0U;
+		// Scratch only. Serialized output bytes belong to disk_output_bytes.
 		std::uint64_t checkpoint_peak_bytes = 0U;
 		std::uint64_t export_peak_bytes = 0U;
 		std::uint64_t allocator_overhead_bytes = 0U;
 	};
+
+	struct MultiwayCatalogCapacityEstimate
+	{
+		std::uint64_t node_bytes = 0U;
+		std::uint64_t index_bytes = 0U;
+		std::uint64_t menu_header_bytes = 0U;
+		std::uint64_t menu_action_bytes = 0U;
+		std::uint64_t admission_scratch_bytes = 0U;
+		std::uint64_t reallocation_peak_bytes = 0U;
+		std::uint64_t total_bytes = 0U;
+	};
+
+	[[nodiscard]] MultiwayCatalogCapacityEstimate estimate_multiway_catalog_capacity(
+		std::uint64_t state_capacity,
+		std::uint64_t menu_capacity,
+		std::uint64_t action_capacity) noexcept;
 
 	struct MultiwayMemoryLedger
 	{
@@ -550,6 +694,13 @@ namespace texas::solver::multiway
 		std::uint64_t existing_working_set_bytes = 0U;
 		std::uint64_t existing_private_committed_bytes = 0U;
 		std::uint64_t additional_private_capacity_bytes = 0U;
+		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
+		std::uint64_t public_catalog_reallocation_peak_bytes = 0U;
+		std::uint64_t file_cache_allowance_bytes = 0U;
+		std::uint64_t disk_output_bytes = 0U;
 		std::uint64_t mapped_virtual_bytes = 0U;
 		std::uint64_t mapped_resident_allowance_bytes = 0U;
 		std::uint64_t checkpoint_transient_bytes = 0U;
@@ -571,6 +722,7 @@ namespace texas::solver::multiway
 		std::uint64_t mapped_bucket_artifact_bytes = 0U;
 		std::uint64_t public_catalog_bytes = 0U;
 		std::uint64_t row_metadata_bytes = 0U;
+		std::uint64_t page_metadata_bytes = 0U;
 		std::uint64_t regret_page_bytes = 0U;
 		std::uint64_t worker_stream_bytes = 0U;
 		std::uint64_t discovery_stream_bytes = 0U;
@@ -593,6 +745,13 @@ namespace texas::solver::multiway
 		std::uint64_t existing_working_set_bytes = 0U;
 		std::uint64_t existing_private_committed_bytes = 0U;
 		std::uint64_t additional_private_capacity_bytes = 0U;
+		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
+		std::uint64_t public_catalog_reallocation_peak_bytes = 0U;
+		std::uint64_t file_cache_allowance_bytes = 0U;
+		std::uint64_t disk_output_bytes = 0U;
 		std::uint64_t mapped_virtual_bytes = 0U;
 		std::uint64_t mapped_resident_allowance_bytes = 0U;
 		std::uint64_t checkpoint_transient_bytes = 0U;
@@ -604,6 +763,7 @@ namespace texas::solver::multiway
 		std::uint64_t actual_retained_capacity_bytes = 0U;
 		std::uint64_t public_state_bytes = 0;
 		std::uint64_t sparse_row_bytes = 0;
+		std::uint64_t compact_page_bytes = 0U;
 		std::uint64_t sparse_value_bytes = 0;
 		std::uint64_t blueprint_index_bytes = 0U;
 		std::uint64_t range_row_bytes = 0U;
@@ -668,6 +828,7 @@ namespace texas::solver::multiway
 	{
 		std::uint64_t hard_limit_bytes = MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES;
 		std::uint64_t resident_allowance_bytes = 0U;
+		std::uint64_t private_commit_limit_bytes = 0U;
 
 		void validate() const;
 	};
@@ -682,6 +843,7 @@ namespace texas::solver::multiway
 		std::uint64_t estimated_working_set_bytes = 0U;
 		std::uint64_t compared_working_set_bytes = 0U;
 		std::uint64_t observed_working_set_bytes = 0U;
+		std::uint64_t observed_private_commit_bytes = 0U;
 		const char* rejected_category = "none";
 		const char* message = "disabled";
 
@@ -698,19 +860,29 @@ namespace texas::solver::multiway
 
 	using MultiwayProcessMemoryObserver = MultiwayProcessMemorySnapshot (*)(const void*) noexcept;
 	using MultiwaySystemMemoryObserver = MultiwaySystemMemorySnapshot (*)(const void*) noexcept;
+	using MultiwayExportDiskSpaceObserver = bool (*)(const void*,
+		const std::filesystem::path&, std::uint64_t&) noexcept;
 
 	struct MultiwayWorkingSetMonitor
 	{
+		std::uint64_t single_file_blueprint_limit_bytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
+		std::uint64_t shard_max_serialized_bytes = 1024ULL * 1024ULL * 1024ULL;
 		MultiwayWorkingSetGateConfig gate{};
 		MultiwayProcessMemoryObserver observer = nullptr;
 		const void* observer_context = nullptr;
 		MultiwayExportMemoryGateConfig export_gate{};
 		MultiwayProcessMemoryObserver export_process_observer = nullptr;
 		MultiwaySystemMemoryObserver export_system_observer = nullptr;
+		MultiwayExportDiskSpaceObserver export_disk_space_observer = nullptr;
 		MultiwaySystemMemoryGuardConfig system_memory_guard{};
 		MultiwaySystemMemoryObserver system_memory_observer = nullptr;
 		const void* export_observer_context = nullptr;
 		const void* system_memory_observer_context = nullptr;
+		bool profile_external_export = false;
+		bool external_export_membership_filter = true;
+		MultiwayExternalExportProgressObserver export_progress_observer = nullptr;
+		void* export_progress_context = nullptr;
+		std::uint64_t export_progress_page_interval = 4096U;
 
 		void validate() const;
 	};

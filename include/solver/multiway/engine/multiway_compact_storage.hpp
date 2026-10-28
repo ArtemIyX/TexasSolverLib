@@ -47,6 +47,9 @@ namespace texas::solver::multiway
 			std::uint8_t action, double regret, double strategy_sum);
 		void apply_delta(const MultiwaySparseRowMetadata& row, std::uint32_t bucket,
 			std::uint8_t action, double regret, double strategy_sum);
+		// Shared scalar kernel for both in-memory and external compact pages.
+		static void apply_delta_to_cells(std::int32_t& regret_cell,
+			std::uint64_t& strategy_mass_cell, double regret, double strategy_sum);
 		void scale_regrets(double factor);
 		[[nodiscard]] std::size_t scale_and_prune_regrets(
 			double factor, double threshold, double regret_floor) noexcept;
@@ -87,6 +90,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::size_t active_cell_count() const noexcept { return regrets_.size(); }
 		[[nodiscard]] std::size_t configured_cell_capacity() const noexcept { return max_values_; }
+		[[nodiscard]] static std::size_t page_metadata_size() noexcept;
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayCompactStorageMemorySnapshot memory_snapshot() const noexcept;
 

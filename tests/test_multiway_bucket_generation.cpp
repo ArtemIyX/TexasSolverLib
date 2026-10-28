@@ -201,6 +201,7 @@ TEST_CASE(multiway_bucket_generation_serial_and_parallel_artifacts_match)
 	const auto serial = generate_artifact(1U, serial_path);
 	const auto parallel = generate_artifact(4U, parallel_path);
 	const auto repeated_parallel = generate_artifact(4U, repeat_path);
+	EXPECT_EQ(static_cast<unsigned char>(serial[4]), 5U);
 	EXPECT_EQ(serial, parallel);
 	EXPECT_EQ(parallel, repeated_parallel);
 	const auto serial_report = inspect_multiway_bucket_artifact(

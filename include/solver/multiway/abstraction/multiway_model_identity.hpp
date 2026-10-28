@@ -94,4 +94,9 @@ namespace texas::solver::multiway
 	[[nodiscard]] MultiwayModelIdentity make_multiway_model_identity(
 		const MultiwayBlueprintConfig& config);
 
+	// Policy lookup depends on model semantics, not the training runtime profile.
+	[[nodiscard]] bool multiway_policy_identity_compatible(
+		const MultiwayModelIdentity& actual,
+		const MultiwayModelIdentity& expected) noexcept;
+
 } // namespace texas::solver::multiway

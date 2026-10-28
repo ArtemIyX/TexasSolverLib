@@ -73,10 +73,14 @@ namespace texas::solver::multiway
 	void MultiwayWorkflowConfig::validate(const MultiwayWorkflowResourceLimits& resource_limits) const
 	{
 		resource_limits.validate();
-		if ((schema_version != 1U && schema_version != 2U) || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" || (profile_kind != MultiwayWorkflowProfileKind::Sizing && profile_kind != MultiwayWorkflowProfileKind::Acceptance) || max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U || training_worker_count == 0U || training_worker_count > 16U || !multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || (schema_version == 1U && training_worker_count != 1U) || target_trajectories == 0U || (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) || (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U))
+		if ((schema_version != 1U && schema_version != 2U) || profile_id.empty() || preflop_classes != 169U || (storage_backend != "CompactInt32" && storage_backend != "ExternalCompactInt32") || (profile_kind != MultiwayWorkflowProfileKind::Sizing && profile_kind != MultiwayWorkflowProfileKind::Acceptance) || max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U || training_worker_count == 0U || training_worker_count > 16U || !multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || (schema_version == 1U && training_worker_count != 1U) || target_trajectories == 0U || (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) || (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U))
 		{
 			throw std::invalid_argument("invalid F1 workflow configuration");
 		}
+		if (storage_backend == "ExternalCompactInt32" && (storage_directory.empty() || public_catalog_cache_bytes == 0U || row_page_cache_bytes == 0U || maximum_wal_bytes == 0U || segment_target_bytes == 0U || compaction_fan_in < 2U || compaction_scratch_bytes == 0U || disk_reserve_bytes == 0U))
+			throw std::invalid_argument("external compact storage requires a directory and positive bounded resources");
+		if (storage_backend == "CompactInt32" && (!storage_directory.empty() || public_catalog_cache_bytes != 0U || row_page_cache_bytes != 0U || maximum_wal_bytes != 0U || segment_target_bytes != 0U || compaction_fan_in != 0U || compaction_scratch_bytes != 0U || disk_reserve_bytes != 0U || !synchronous_durability))
+			throw std::invalid_argument("external storage settings require ExternalCompactInt32");
 		model.validate();
 		MultiwayWorkerPlacementConfig{ placement_policy, 0U }.validate();
 		if (model.player_count != 6U || model.initial_stack_chips != 10000 || model.small_blind_chips != 50 || model.big_blind_chips != 100 || model.ante_chips != 0)
@@ -106,6 +110,18 @@ namespace texas::solver::multiway
 		reject_above(trajectories_per_batch, resource_limits.max_trajectories_per_batch, "trajectories_per_batch");
 		reject_above(checkpoint_interval, resource_limits.max_checkpoint_interval, "checkpoint_interval");
 		reject_above(disk_space_requirement_bytes, resource_limits.max_disk_space_requirement_bytes, "disk_space_requirement_bytes");
+		reject_above(disk_reserve_bytes, resource_limits.max_disk_space_requirement_bytes, "disk_reserve_bytes");
+		if (storage_backend == "ExternalCompactInt32" && ([&]() {
+				auto required = disk_space_requirement_bytes;
+				const auto add = [&required](std::uint64_t value) {
+					if (value > std::numeric_limits<std::uint64_t>::max() - required)
+						return false;
+					required += value;
+					return true;
+				};
+				return !add(maximum_wal_bytes) || !add(segment_target_bytes) || compaction_scratch_bytes > std::numeric_limits<std::uint64_t>::max() / 2U || !add(compaction_scratch_bytes * 2U) || !add(disk_reserve_bytes) || required > resource_limits.max_disk_space_requirement_bytes;
+			})())
+			throw std::invalid_argument("external storage live, WAL, compaction, and reserve bytes exceed disk resource limit");
 		reject_above(process_memory_limit_bytes, resource_limits.max_process_memory_limit_bytes, "process_memory_limit_bytes");
 		reject_above(process_working_set_limit_bytes, resource_limits.max_process_working_set_limit_bytes, "process_working_set_limit_bytes");
 		reject_above(process_working_set_resident_allowance_bytes, resource_limits.max_process_working_set_resident_allowance_bytes, "process_working_set_resident_allowance_bytes");
@@ -199,9 +215,35 @@ namespace texas::solver::multiway
 		solver_limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(config.resolved_continuation_delta_capacity());
 		solver_limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(config.resolved_discovery_public_state_capacity());
 		solver_limits.max_discovery_rows_per_worker = static_cast<std::size_t>(config.resolved_discovery_row_capacity());
-		solver_limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
+		solver_limits.storage_backend = config.storage_backend == "ExternalCompactInt32"
+			? MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
+			: MultiwaySolverLimits::StorageBackend::CompactInt32;
+		if (solver_limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			solver_limits.external_storage.directory = config.storage_directory;
+			solver_limits.external_storage.public_catalog_cache_bytes = config.public_catalog_cache_bytes;
+			solver_limits.external_storage.row_page_cache_bytes = config.row_page_cache_bytes;
+			solver_limits.external_storage.maximum_wal_bytes = config.maximum_wal_bytes;
+			solver_limits.external_storage.segment_target_bytes = config.segment_target_bytes;
+			solver_limits.external_storage.compaction_fan_in = config.compaction_fan_in;
+			solver_limits.external_storage.compaction_scratch_bytes = config.compaction_scratch_bytes;
+			solver_limits.external_storage.disk_reserve_bytes = config.disk_reserve_bytes;
+			solver_limits.external_storage.synchronous_durability = config.synchronous_durability;
+		}
+		MultiwayMemoryInputs memory_inputs;
+		memory_inputs.disk_output_bytes = config.disk_space_requirement_bytes;
+		if (solver_limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			if (config.public_catalog_cache_bytes > std::numeric_limits<std::uint64_t>::max() - config.row_page_cache_bytes)
+				throw std::length_error("external cache byte count overflows");
+			memory_inputs.external_storage_cache_bytes = config.public_catalog_cache_bytes + config.row_page_cache_bytes;
+			if (config.compaction_scratch_bytes > std::numeric_limits<std::uint64_t>::max() - config.maximum_wal_bytes)
+				throw std::length_error("external storage scratch byte count overflows");
+			memory_inputs.external_storage_scratch_bytes = config.compaction_scratch_bytes + config.maximum_wal_bytes;
+			memory_inputs.external_storage_disk_reserve_bytes = config.disk_reserve_bytes;
+		}
 		result.memory = preflight_multiway_memory(
-			solver_limits, { warning_bytes, config.process_memory_limit_bytes, operating_bytes });
+			solver_limits, { warning_bytes, config.process_memory_limit_bytes, operating_bytes }, memory_inputs);
 		result.accepted = result.memory.status != MultiwayMemoryStatus::Rejected;
 		result.rejected_category = result.accepted ? "none" : result.memory.rejected_category;
 		result.message = result.accepted ? "workflow resource preflight admitted" : result.memory.message;
@@ -225,6 +267,24 @@ namespace texas::solver::multiway
 		append(preflop_classes);
 		for (const auto character : storage_backend)
 			core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
+		if (storage_backend == "ExternalCompactInt32")
+		{
+			const auto& identity_directory = identity_storage_directory.empty()
+				? storage_directory
+				: identity_storage_directory;
+			const auto directory = identity_directory.lexically_normal().generic_u8string();
+			append(directory.size());
+			for (const auto character : directory)
+				core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
+			append(public_catalog_cache_bytes);
+			append(row_page_cache_bytes);
+			append(maximum_wal_bytes);
+			append(segment_target_bytes);
+			append(compaction_fan_in);
+			append(compaction_scratch_bytes);
+			append(disk_reserve_bytes);
+			append(synchronous_durability ? 1U : 0U);
+		}
 		append(model.flop_bucket_count);
 		append(model.turn_bucket_count);
 		append(model.river_bucket_count);
@@ -258,6 +318,29 @@ namespace texas::solver::multiway
 		append(process_memory_limit_bytes);
 		append(process_working_set_limit_bytes);
 		append(process_working_set_resident_allowance_bytes);
+		return core::fingerprint::finish(hash);
+	}
+
+	std::uint64_t MultiwayWorkflowConfig::external_storage_fingerprint() const
+	{
+		if (storage_backend != "ExternalCompactInt32")
+			throw std::invalid_argument("external storage identity requires ExternalCompactInt32");
+		auto hash = core::fingerprint::FNV1A_OFFSET;
+		const auto append = [&hash](std::uint64_t value) noexcept { core::fingerprint::append_u64(hash, value); };
+		const auto& identity_directory = identity_storage_directory.empty()
+			? storage_directory
+			: identity_storage_directory;
+		const auto directory = identity_directory.lexically_normal().generic_u8string();
+		for (const auto character : directory)
+			core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
+		append(public_catalog_cache_bytes);
+		append(row_page_cache_bytes);
+		append(maximum_wal_bytes);
+		append(segment_target_bytes);
+		append(compaction_fan_in);
+		append(compaction_scratch_bytes);
+		append(disk_reserve_bytes);
+		append(synchronous_durability ? 1U : 0U);
 		return core::fingerprint::finish(hash);
 	}
 
@@ -315,6 +398,36 @@ namespace texas::solver::multiway
 				result.model.river_bucket_count = static_cast<std::uint32_t>(n());
 			else if (key == "storage_backend")
 				result.storage_backend = value;
+			else if (key == "storage_directory")
+				result.storage_directory = value;
+			else if (key == "public_catalog_cache_bytes")
+				result.public_catalog_cache_bytes = n();
+			else if (key == "row_page_cache_bytes")
+				result.row_page_cache_bytes = n();
+			else if (key == "maximum_wal_bytes")
+				result.maximum_wal_bytes = n();
+			else if (key == "segment_target_bytes")
+				result.segment_target_bytes = n();
+			else if (key == "compaction_fan_in")
+			{
+				const auto fan_in = n();
+				if (fan_in > std::numeric_limits<std::uint32_t>::max())
+					throw std::invalid_argument("compaction_fan_in exceeds uint32 range");
+				result.compaction_fan_in = static_cast<std::uint32_t>(fan_in);
+			}
+			else if (key == "compaction_scratch_bytes")
+				result.compaction_scratch_bytes = n();
+			else if (key == "disk_reserve_bytes")
+				result.disk_reserve_bytes = n();
+			else if (key == "synchronous_durability")
+			{
+				if (value == "true")
+					result.synchronous_durability = true;
+				else if (value == "false")
+					result.synchronous_durability = false;
+				else
+					throw std::invalid_argument("invalid synchronous_durability");
+			}
 			else if (key == "max_decision_depth")
 				result.max_decision_depth = static_cast<std::uint32_t>(n());
 			else if (key == "max_public_chance_depth")
@@ -448,6 +561,18 @@ namespace texas::solver::multiway
 		line("turn_buckets", config.model.turn_bucket_count);
 		line("river_buckets", config.model.river_bucket_count);
 		line("storage_backend", config.storage_backend);
+		if (config.storage_backend == "ExternalCompactInt32")
+		{
+			line("storage_directory", config.storage_directory.generic_string());
+			line("public_catalog_cache_bytes", config.public_catalog_cache_bytes);
+			line("row_page_cache_bytes", config.row_page_cache_bytes);
+			line("maximum_wal_bytes", config.maximum_wal_bytes);
+			line("segment_target_bytes", config.segment_target_bytes);
+			line("compaction_fan_in", config.compaction_fan_in);
+			line("compaction_scratch_bytes", config.compaction_scratch_bytes);
+			line("disk_reserve_bytes", config.disk_reserve_bytes);
+			line("synchronous_durability", config.synchronous_durability ? "true" : "false");
+		}
 		line("max_decision_depth", config.max_decision_depth);
 		line("max_public_chance_depth", config.max_public_chance_depth);
 		line("deterministic_seed", config.deterministic_seed);

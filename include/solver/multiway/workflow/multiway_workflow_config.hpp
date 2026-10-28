@@ -12,7 +12,8 @@
 namespace texas::solver::multiway
 {
 
-	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_PUBLIC_STATES = 8'000'000U;
+	// Configuration ceiling; runtime memory and working-set gates remain authoritative.
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_PUBLIC_STATES = 34'000'000U;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_SPARSE_ROWS = 8'000'000U;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_SPARSE_VALUES = 200'000'000U;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_STREAM_ENTRIES_PER_WORKER = 1'000'000U;
@@ -51,6 +52,17 @@ namespace texas::solver::multiway
 		MultiwayBlueprintConfig model;
 		std::uint32_t preflop_classes = 0U;
 		std::string storage_backend;
+		std::filesystem::path storage_directory;
+		// Runtime-only identity path when storage_directory points at an isolated copy.
+		std::filesystem::path identity_storage_directory;
+		std::uint64_t public_catalog_cache_bytes = 0U;
+		std::uint64_t row_page_cache_bytes = 0U;
+		std::uint64_t maximum_wal_bytes = 0U;
+		std::uint64_t segment_target_bytes = 0U;
+		std::uint32_t compaction_fan_in = 0U;
+		std::uint64_t compaction_scratch_bytes = 0U;
+		std::uint64_t disk_reserve_bytes = 0U;
+		bool synchronous_durability = true;
 		std::uint32_t max_decision_depth = 0U;
 		std::uint32_t max_public_chance_depth = 0U;
 		std::uint64_t deterministic_seed = 0U;
@@ -87,6 +99,7 @@ namespace texas::solver::multiway
 		void validate(const MultiwayWorkflowResourceLimits& resource_limits) const;
 		[[nodiscard]] bool capacities_resolved() const noexcept;
 		[[nodiscard]] std::uint64_t fingerprint() const noexcept;
+		[[nodiscard]] std::uint64_t external_storage_fingerprint() const;
 		[[nodiscard]] std::uint64_t resolved_regret_delta_capacity() const noexcept;
 		[[nodiscard]] std::uint64_t resolved_continuation_delta_capacity() const noexcept;
 		[[nodiscard]] std::uint64_t resolved_discovery_public_state_capacity() const noexcept;

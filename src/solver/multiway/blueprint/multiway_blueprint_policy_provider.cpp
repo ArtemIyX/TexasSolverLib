@@ -46,6 +46,8 @@ namespace texas::solver::multiway
 		std::size_t action_count,
 		Probability* output) const noexcept
 	{
+		if (mapped_store_ != nullptr)
+			return mapped_store_->strategy_into(infoset, bucket, legal_actions, action_count, output);
 		if (store_ == nullptr || legal_actions == nullptr || output == nullptr || action_count == 0U)
 		{
 			return MultiwayBlueprintLookupStatus::Missing;

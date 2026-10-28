@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace texas::solver::multiway
@@ -49,6 +50,7 @@ namespace texas::solver::multiway
 
 	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_POLICY_CONTENT_HASH_VERSION = 1U;
+	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW = 64U;
 
 	// Full runtime lookup payload. It is independent of the compact root
 	// snapshot so hosts can retain the latter as a compatible fallback.
@@ -91,11 +93,67 @@ namespace texas::solver::multiway
 		void validate() const;
 	};
 
+	struct MultiwayFullBlueprintShardRange
+	{
+		std::uint64_t first_row = 0U;
+		std::uint64_t row_count = 0U;
+	};
+
+	struct MultiwayFullBlueprintShardLayout
+	{
+		std::uint64_t maximum_serialized_bytes = 0U;
+		std::uint64_t maximum_rows_per_shard = 0U;
+		std::vector<MultiwayFullBlueprintShardRange> ranges;
+
+		void validate(const MultiwayFullBlueprintStreamPlan& plan) const;
+	};
+
+	struct MultiwayFullBlueprintShardedSizeEstimate
+	{
+		std::uint64_t shard_bytes = 0U;
+		std::uint64_t manifest_bytes = 0U;
+		std::uint64_t total_bytes = 0U;
+	};
+
+	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION = 1U;
+	inline constexpr std::uint64_t MULTIWAY_FULL_BLUEPRINT_MAX_SHARDS = 65'536U;
+
+	struct MultiwayFullBlueprintShardReference
+	{
+		std::string relative_path;
+		MultiwayFullBlueprintShardRange range{};
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t payload_hash = 0U;
+	};
+
+	struct MultiwayFullBlueprintShardManifest
+	{
+		std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION;
+		MultiwayModelIdentity identity{};
+		MultiwayBlueprintTrainingMetadata training{};
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t maximum_serialized_bytes = 0U;
+		std::uint64_t policy_content_hash = 0U;
+		std::vector<MultiwayFullBlueprintShardReference> shards;
+
+		void validate() const;
+	};
+
 	[[nodiscard]] MultiwayFullBlueprintStreamPlan make_multiway_full_blueprint_stream_plan(
 		const MultiwayModelIdentity& identity,
 		const MultiwayBlueprintTrainingMetadata& training,
 		std::uint64_t row_count,
 		std::uint64_t action_count);
+
+	[[nodiscard]] MultiwayFullBlueprintShardLayout make_multiway_full_blueprint_shard_layout(
+		const MultiwayFullBlueprintStreamPlan& plan,
+		std::uint64_t maximum_serialized_bytes);
+	[[nodiscard]] MultiwayFullBlueprintShardedSizeEstimate estimate_multiway_full_blueprint_sharded_size(
+		const MultiwayFullBlueprintStreamPlan& plan,
+		const MultiwayFullBlueprintShardLayout& layout,
+		const std::filesystem::path& manifest_path);
 
 	class MultiwayFullBlueprintPayloadHasher
 	{
@@ -128,7 +186,18 @@ namespace texas::solver::multiway
 		None = 0U,
 		Write,
 		Close,
-		Publication
+		Publication,
+		ManifestPublication
+	};
+
+	struct MultiwayFullBlueprintWriterProfile
+	{
+		std::uint64_t sampled_rows = 0U;
+		std::uint64_t sampled_validation_nanoseconds = 0U;
+		std::uint64_t sampled_payload_hash_nanoseconds = 0U;
+		std::uint64_t sampled_policy_hash_nanoseconds = 0U;
+		std::uint64_t sampled_encoding_nanoseconds = 0U;
+		std::uint64_t flushes = 0U;
 	};
 
 	struct MultiwayFullBlueprintStreamOptions
@@ -136,6 +205,8 @@ namespace texas::solver::multiway
 		bool require_strict_row_order = true;
 		MultiwayFullBlueprintStreamFailurePoint failure_point =
 			MultiwayFullBlueprintStreamFailurePoint::None;
+		// Optional caller-owned aggregate, shared across shards.
+		MultiwayFullBlueprintWriterProfile* profile = nullptr;
 	};
 
 	struct MultiwayFullBlueprintStreamResult
@@ -145,6 +216,24 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t policy_content_hash = 0U;
+		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
+	};
+
+	struct MultiwayFullBlueprintStreamProgress
+	{
+		std::uint64_t encoded_bytes = 0U;
+		// Bytes handed to the output stream, not necessarily durable on disk.
+		std::uint64_t stream_write_bytes = 0U;
+	};
+
+	struct MultiwayFullBlueprintShardedStreamResult
+	{
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t policy_content_hash = 0U;
+		std::uint64_t shard_count = 0U;
+		std::uint64_t manifest_bytes = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
 
@@ -161,7 +250,30 @@ namespace texas::solver::multiway
 		MultiwayFullBlueprintStreamWriter& operator=(const MultiwayFullBlueprintStreamWriter&) = delete;
 
 		void write_row(const MultiwayFullBlueprintRowView& row);
+		[[nodiscard]] MultiwayFullBlueprintStreamProgress progress() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintStreamResult finish();
+
+	private:
+		struct Impl;
+		std::unique_ptr<Impl> impl_;
+	};
+
+	class MultiwayFullBlueprintShardedStreamWriter
+	{
+	public:
+		MultiwayFullBlueprintShardedStreamWriter(
+			const std::filesystem::path& manifest_path,
+			const MultiwayFullBlueprintStreamPlan& plan,
+			MultiwayFullBlueprintShardLayout layout,
+			std::vector<std::uint64_t> shard_action_counts,
+			MultiwayFullBlueprintStreamOptions options = {});
+		~MultiwayFullBlueprintShardedStreamWriter();
+		MultiwayFullBlueprintShardedStreamWriter(const MultiwayFullBlueprintShardedStreamWriter&) = delete;
+		MultiwayFullBlueprintShardedStreamWriter& operator=(const MultiwayFullBlueprintShardedStreamWriter&) = delete;
+
+		void write_row(const MultiwayFullBlueprintRowView& row);
+		[[nodiscard]] MultiwayFullBlueprintStreamProgress progress() const noexcept;
+		[[nodiscard]] MultiwayFullBlueprintShardedStreamResult finish();
 
 	private:
 		struct Impl;
@@ -180,9 +292,38 @@ namespace texas::solver::multiway
 				MultiwayFullBlueprintRowView& row,
 				void* context),
 			void* context = nullptr);
+		[[nodiscard]] static MultiwayFullBlueprintShardedStreamResult save_atomic_sharded_streaming(
+			const std::filesystem::path& manifest_path,
+			const MultiwayFullBlueprintStreamPlan& plan,
+			std::uint64_t maximum_shard_bytes,
+			bool (*produce_row)(std::uint64_t index, MultiwayFullBlueprintRowView& row, void* context),
+			void* context = nullptr,
+			MultiwayFullBlueprintStreamOptions options = {});
+		[[nodiscard]] static MultiwayFullBlueprintShardManifest load_sharded_manifest(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static MultiwayFullBlueprintShardManifest load_sharded_manifest_for_policy_lookup(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static MultiwayFullBlueprintShardManifest load_sharded_manifest(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity,
+			bool allow_runtime_identity_difference);
+		[[nodiscard]] static bool is_sharded_manifest(
+			const std::filesystem::path& path);
+		static void verify_sharded_artifact(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity);
 		[[nodiscard]] static MultiwayFullBlueprintArtifact load_verified(
 			const std::filesystem::path& path,
 			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static MultiwayFullBlueprintArtifact load_verified_for_policy_lookup(
+			const std::filesystem::path& path,
+			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static MultiwayFullBlueprintArtifact load_verified(
+			const std::filesystem::path& path,
+			const MultiwayModelIdentity& expected_identity,
+			bool allow_runtime_identity_difference);
 		[[nodiscard]] static std::uint64_t payload_hash(const MultiwayFullBlueprintArtifact& artifact) noexcept;
 		[[nodiscard]] static std::uint64_t policy_content_hash(const MultiwayFullBlueprintArtifact& artifact);
 	};

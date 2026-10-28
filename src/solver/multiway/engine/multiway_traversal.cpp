@@ -1402,15 +1402,20 @@ namespace texas::solver::multiway
 		if (pruning_.enabled && context.batch_number > pruning_.warmup_batches && !pruning_recovery && actor != context.traverser && state.betting.street != Street::River && action_count > 0U)
 		{
 			const auto explore = pruning_.exploration_probability;
+			std::array<bool, MULTIWAY_MAX_TRAVERSAL_ACTIONS> below_regret_by_action{};
+			if (context.discovery_stream != nullptr)
+				coordinator_->actions_below_regret_epoch(
+					infoset, bucket, pruning_.regret_threshold,
+					below_regret_by_action.data(), action_count);
+			else
+				coordinator_->actions_below_regret(
+					infoset, bucket, pruning_.regret_threshold,
+					below_regret_by_action.data(), action_count);
 			for (std::size_t action = 0; action < action_count; ++action)
 			{
 				const auto& next = *successors[action];
 				const bool immediate_terminal = next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal || next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal;
-				const bool below_regret = context.discovery_stream != nullptr
-					? coordinator_->action_below_regret_epoch(
-						  infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold)
-					: coordinator_->action_below_regret(
-						  infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
+				const bool below_regret = below_regret_by_action[action];
 				const bool random_recovery = !immediate_terminal && !below_regret && (static_cast<double>(next_random(context.random_state) % 1000000U) / 1000000.0) < explore;
 				if (pruning_.should_explore_action(context.batch_number,
 						below_regret || strategy[action] <= pruning_.action_probability_threshold || random_recovery,

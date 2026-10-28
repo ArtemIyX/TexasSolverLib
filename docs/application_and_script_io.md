@@ -73,6 +73,12 @@ Source: `examples/solve_kuhn.cpp`
 
 The following targets use `examples/multiway_workflow_main.cpp` and select their workflow from the executable name:
 
+## Application logging
+
+The multiway workflows support `--log-config <path>`, `--log-level <level>`, `--log-file <path>`, `--log-color auto|always|never`, `--no-console-log`, `--no-file-log`, `--no-log`, and `--quiet`. Environment overrides are `TEXASSOLVER_LOG_CONFIG`, `TEXASSOLVER_LOG_LEVEL`, `TEXASSOLVER_LOG_FILE`, and `TEXASSOLVER_LOG_COLOR`. `NO_COLOR` disables automatic color.
+
+Operational lifecycle messages remain on stdout by default. JSON provenance, help, reports, benchmark/CSV output, profiler reports, and test output remain normal streams. Logging configuration is never loaded implicitly. General file logs are optional rotating files. Training retains its configured `training_log_path`, or `<report>.log`, as an append-only plain-message audit file with per-line flush. `--no-log` creates neither general nor audit logs; `--quiet` suppresses console/progress while retaining enabled file output. Redirected output and files do not contain ANSI escapes. See [TexasLogging](texas_logging.md).
+
 - `texas_multiway_train`
 - `texas_multiway_buckets`
 - `texas_multiway_inspect`

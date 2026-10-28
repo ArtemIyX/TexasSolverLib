@@ -18,6 +18,8 @@
 namespace texas::solver::multiway
 {
 	struct MultiwayTrainingCheckpointWriteResult;
+	struct MultiwayExternalCheckpointManifest;
+	struct MultiwayExternalStorageTelemetry;
 
 	enum class MultiwayTrainingCapacityStage : std::uint8_t
 	{
@@ -244,6 +246,10 @@ namespace texas::solver::multiway
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t peak_scratch_bytes = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t shard_count = 0U;
+		std::uint64_t manifest_bytes = 0U;
+		bool sharded = false;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
 
@@ -316,11 +322,20 @@ namespace texas::solver::multiway
 			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayTrainingCheckpointWriteResult save_checkpoint_atomic(
 			const std::filesystem::path& path) const;
+		[[nodiscard]] MultiwayExternalCheckpointManifest save_external_checkpoint_atomic(
+			const std::filesystem::path& path,
+			std::uint64_t workflow_identity_hash,
+			std::uint64_t storage_identity_hash) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry() const;
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+		void resume_from_external_checkpoint(
+			const MultiwayExternalCheckpointManifest& checkpoint,
+			std::uint64_t workflow_identity_hash,
+			std::uint64_t storage_identity_hash);
 		void record_process_memory_snapshot(
 			MultiwayMemoryPhase phase,
 			MultiwayMemoryComponent checkpoint_buffers = {},
@@ -363,6 +378,10 @@ namespace texas::solver::multiway
 			void* progress_context = nullptr);
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+		void resume_from_external_checkpoint(
+			const MultiwayExternalCheckpointManifest& checkpoint,
+			std::uint64_t workflow_identity_hash,
+			std::uint64_t storage_identity_hash);
 		[[nodiscard]] MultiwayBlueprintSnapshot export_policy(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		[[nodiscard]] const MultiwayBlueprintTrainingConfig& config() const noexcept { return config_; }
@@ -373,7 +392,12 @@ namespace texas::solver::multiway
 			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayTrainingCheckpointWriteResult save_checkpoint_atomic(
 			const std::filesystem::path& path) const;
+		[[nodiscard]] MultiwayExternalCheckpointManifest save_external_checkpoint_atomic(
+			const std::filesystem::path& path,
+			std::uint64_t workflow_identity_hash,
+			std::uint64_t storage_identity_hash) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry() const;
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:

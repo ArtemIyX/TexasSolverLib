@@ -2,6 +2,7 @@
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "games/multiway_state.hpp"
 #include "core/fingerprint.hpp"
@@ -44,6 +45,75 @@ namespace texas::solver::multiway
 			std::uint64_t& target_;
 			std::chrono::steady_clock::time_point started_at_;
 		};
+
+		class OptionalExportTimer final
+		{
+		public:
+			OptionalExportTimer(bool enabled, std::uint64_t& target) noexcept
+				: enabled_(enabled), target_(target), started_(enabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}) {}
+			~OptionalExportTimer() noexcept
+			{
+				if (!enabled_)
+					return;
+				const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started_)
+						.count());
+				target_ = elapsed > std::numeric_limits<std::uint64_t>::max() - target_
+					? std::numeric_limits<std::uint64_t>::max()
+					: target_ + elapsed;
+			}
+
+		private:
+			bool enabled_;
+			std::uint64_t& target_;
+			std::chrono::steady_clock::time_point started_;
+		};
+
+		MultiwayExportStorageCounters export_counter_delta(
+			const MultiwayExternalStorageStats& before,
+			const MultiwayExternalStorageStats& after) noexcept
+		{
+			return { after.lookups - before.lookups, after.cache_hits - before.cache_hits,
+				after.cache_misses - before.cache_misses, after.disk_reads - before.disk_reads,
+				after.read_nanoseconds - before.read_nanoseconds,
+				after.page_cache_hits - before.page_cache_hits,
+				after.page_cache_misses - before.page_cache_misses };
+		}
+
+		void copy_page_profile(MultiwayExternalExportProfile& target,
+			const MultiwayExternalPageProfile& source) noexcept
+		{
+			target.page_locate_nanoseconds = source.locate_nanoseconds;
+			target.page_cache_find_nanoseconds = source.cache_find_nanoseconds;
+			target.page_victim_nanoseconds = source.victim_nanoseconds;
+			target.page_store_lookup_nanoseconds = source.store_lookup_nanoseconds;
+			target.page_decode_nanoseconds = source.decode_nanoseconds;
+			target.page_zero_nanoseconds = source.zero_nanoseconds;
+			target.page_decoded_count = source.decoded_pages;
+			target.page_zero_count = source.zero_pages;
+			target.page_index_opens = source.record_lookup.index_opens;
+			target.page_index_reads = source.record_lookup.index_reads;
+			target.page_run_range_skips = source.record_lookup.run_range_skips;
+			target.page_membership_misses = source.record_lookup.membership_misses;
+			target.page_data_opens = source.record_lookup.data_opens;
+			target.page_data_reads = source.record_lookup.data_reads;
+			target.page_requested_read_bytes = source.record_lookup.requested_bytes;
+			target.page_index_open_nanoseconds = source.record_lookup.index_open_nanoseconds;
+			target.page_index_search_nanoseconds = source.record_lookup.index_search_nanoseconds;
+			target.page_data_open_nanoseconds = source.record_lookup.data_open_nanoseconds;
+			target.page_data_read_nanoseconds = source.record_lookup.data_read_nanoseconds;
+		}
+
+		void copy_writer_profile(MultiwayExternalExportProfile& target,
+			const MultiwayFullBlueprintWriterProfile& source) noexcept
+		{
+			target.writer_sampled_rows = source.sampled_rows;
+			target.writer_sampled_validation_nanoseconds = source.sampled_validation_nanoseconds;
+			target.writer_sampled_payload_hash_nanoseconds = source.sampled_payload_hash_nanoseconds;
+			target.writer_sampled_policy_hash_nanoseconds = source.sampled_policy_hash_nanoseconds;
+			target.writer_sampled_encoding_nanoseconds = source.sampled_encoding_nanoseconds;
+			target.writer_flushes = source.flushes;
+		}
 
 		bool export_shape_less(
 			const MultiwaySparseRowShape& left,
@@ -95,6 +165,48 @@ namespace texas::solver::multiway
 			std::vector<std::uint32_t>& order)
 		{
 			const auto* compact = lease.compact_storage();
+			const auto* external = lease.external_storage();
+			if (external != nullptr)
+			{
+				MultiwayFullBlueprintExportPlan plan;
+				plan.identity = identity;
+				plan.training = training;
+				plan.compact_direct_order = true;
+				struct Context
+				{
+					MultiwayFullBlueprintExportPlan* plan;
+					const MultiwayExternalTrainingStorage* storage;
+				};
+				Context context{ &plan, external };
+				const auto visit_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
+					auto& current = *static_cast<Context*>(opaque);
+					MultiwaySparseRowShape shape{};
+					shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
+					shape.bucket_count = binding.bucket_count();
+					shape.action_count = binding.action_count();
+					std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+					std::size_t action_count = 0U;
+					if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, actions.data(), actions.size(), action_count))
+						throw std::invalid_argument("external blueprint row has no published action menu");
+					const MultiwayPackedMenuView menu{ actions.data(),
+						static_cast<std::uint8_t>(action_count), actions[0].action_menu_id };
+					validate_export_menu(shape, menu);
+					current.plan->shape_count = checked_export_add(current.plan->shape_count, 1U);
+					current.plan->row_count = checked_export_add(
+						current.plan->row_count, shape.bucket_count);
+					current.plan->action_count = checked_export_add(current.plan->action_count,
+						checked_export_multiply(shape.bucket_count, shape.action_count));
+					return true;
+				};
+				if (!external->compact_storage().visit_ordered_rows(visit_row, &context) || plan.shape_count != external->current_manifest().row_count || plan.action_count != external->current_manifest().logical_value_count)
+					throw std::invalid_argument("external blueprint counts disagree with the committed generation");
+				const auto stream = make_multiway_full_blueprint_stream_plan(
+					plan.identity, plan.training, plan.row_count, plan.action_count);
+				plan.serialized_bytes = stream.serialized_bytes;
+				plan.validate();
+				order.clear();
+				return plan;
+			}
 			const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
 			if (rows.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::overflow_error("multiway full blueprint export shape index overflows");
@@ -461,6 +573,24 @@ namespace texas::solver::multiway
 		// it permits a checkpoint to resume with a different remaining batch count.
 		append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
 		append_u64(runtime_hash, limits.compact_page_width);
+		if (limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			const auto& identity_directory = limits.external_storage.identity_directory.empty()
+				? limits.external_storage.directory
+				: limits.external_storage.identity_directory;
+			const auto storage_directory = identity_directory.lexically_normal().generic_u8string();
+			append_u64(runtime_hash, storage_directory.size());
+			for (const auto character : storage_directory)
+				texas::core::fingerprint::append_u8(runtime_hash, static_cast<std::uint8_t>(character));
+			append_u64(runtime_hash, limits.external_storage.public_catalog_cache_bytes);
+			append_u64(runtime_hash, limits.external_storage.row_page_cache_bytes);
+			append_u64(runtime_hash, limits.external_storage.maximum_wal_bytes);
+			append_u64(runtime_hash, limits.external_storage.segment_target_bytes);
+			append_u64(runtime_hash, limits.external_storage.compaction_fan_in);
+			append_u64(runtime_hash, limits.external_storage.compaction_scratch_bytes);
+			append_u64(runtime_hash, limits.external_storage.disk_reserve_bytes);
+			append_u64(runtime_hash, limits.external_storage.synchronous_durability ? 1U : 0U);
+		}
 		append_u64(runtime_hash, limits.discovery_public_state_capacity());
 		append_u64(runtime_hash, limits.discovery_row_capacity());
 		append_u64(runtime_hash, immutable_batch_epochs ? 1U : 0U);
@@ -1057,12 +1187,99 @@ namespace texas::solver::multiway
 		const auto plan = make_export_plan(lease, identity_, training, order);
 		const auto stream_plan = make_multiway_full_blueprint_stream_plan(
 			plan.identity, plan.training, plan.row_count, plan.action_count);
+		const bool sharded_output = plan.row_count != 0U && plan.serialized_bytes > working_set_monitor_.single_file_blueprint_limit_bytes;
+		MultiwayFullBlueprintShardLayout shard_layout;
+		std::vector<std::uint64_t> shard_action_counts;
+		MultiwayFullBlueprintShardedSizeEstimate sharded_size{};
+		std::uint64_t shard_temporary_peak_bytes = 0U;
+		if (sharded_output)
+		{
+			shard_layout = make_multiway_full_blueprint_shard_layout(
+				stream_plan, working_set_monitor_.shard_max_serialized_bytes);
+			shard_action_counts.resize(shard_layout.ranges.size(), 0U);
+			std::uint64_t next_row = 0U;
+			const auto add_shape = [&](const MultiwaySparseRowShape& shape) {
+				for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
+				{
+					const auto shard_index = static_cast<std::size_t>(
+						next_row / shard_layout.maximum_rows_per_shard);
+					shard_action_counts[shard_index] = checked_export_add(
+						shard_action_counts[shard_index], shape.action_count);
+					++next_row;
+				}
+			};
+			const auto* compact_for_plan = lease.compact_storage();
+			const auto* external_for_plan = lease.external_storage();
+			if (external_for_plan != nullptr)
+			{
+				struct Context
+				{
+					const decltype(add_shape)* add_shape_callback;
+				};
+				Context context{ &add_shape };
+				const auto count_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
+					auto& current = *static_cast<Context*>(opaque);
+					MultiwaySparseRowShape shape{};
+					shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
+					shape.bucket_count = binding.bucket_count();
+					shape.action_count = binding.action_count();
+					(*current.add_shape_callback)(shape);
+					return true;
+				};
+				if (!external_for_plan->compact_storage().visit_ordered_rows(count_external_row, &context))
+					throw std::runtime_error("external blueprint shard planning stopped unexpectedly");
+			}
+			else
+			{
+				const auto& export_rows = compact_for_plan != nullptr
+					? compact_for_plan->rows()
+					: lease.storage().rows();
+				if (compact_for_plan != nullptr)
+				{
+					for (const auto& metadata : export_rows)
+						add_shape(metadata.shape);
+				}
+				else
+				{
+					for (const auto index : order)
+						add_shape(export_rows[index].shape);
+				}
+			}
+			if (next_row != plan.row_count)
+				throw std::invalid_argument("multiway blueprint shard planning row count changed");
+			sharded_size = estimate_multiway_full_blueprint_sharded_size(
+				stream_plan, shard_layout, path);
+			for (std::size_t index = 0U; index < shard_layout.ranges.size(); ++index)
+			{
+				const auto range = shard_layout.ranges[index];
+				const auto shard_plan = make_multiway_full_blueprint_stream_plan(
+					plan.identity, plan.training, range.row_count, shard_action_counts[index]);
+				shard_temporary_peak_bytes = std::max(shard_temporary_peak_bytes,
+					shard_plan.serialized_bytes);
+			}
+		}
 		std::array<Probability, MULTIWAY_MAX_ABSTRACTED_ACTIONS> strategy{};
 		std::array<MultiwayQuantizedRootAction, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
-		const auto peak_scratch_bytes = checked_export_add(
-			checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions));
+		const auto sharding_metadata_bytes = sharded_output
+			? checked_export_add(
+				  checked_export_multiply(static_cast<std::uint64_t>(shard_layout.ranges.capacity()),
+					  sizeof(MultiwayFullBlueprintShardRange)),
+				  checked_export_multiply(static_cast<std::uint64_t>(shard_action_counts.capacity()),
+					  sizeof(std::uint64_t)))
+			: 0U;
+		const bool profile_enabled = working_set_monitor_.profile_external_export && lease.external_storage() != nullptr;
+		// Includes the fixed aggregate, callback context, and nested timer frames.
+		const bool use_export_filter = lease.external_storage() != nullptr && working_set_monitor_.external_export_membership_filter;
+		const std::uint64_t filter_bytes = use_export_filter
+			? MultiwayExternalRecordStore::export_filter_bytes + 131072U
+			: 0U;
+		const std::uint64_t profile_bytes = sizeof(MultiwayExternalExportProfile) + 4096U + filter_bytes;
+		const auto peak_scratch_bytes = checked_export_add(profile_bytes, checked_export_add(checked_export_add(checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions)), sharding_metadata_bytes));
 		MultiwayExportTelemetry telemetry;
+		telemetry.external_profile.enabled = profile_enabled;
 		telemetry.attempted = true;
+		telemetry.sharded_output = sharded_output;
+		telemetry.shard_count = sharded_output ? shard_layout.ranges.size() : 0U;
 		telemetry.plan = {
 			MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION,
 			plan.shape_count,
@@ -1072,7 +1289,55 @@ namespace texas::solver::multiway
 			plan.order_index_bytes,
 			plan.compact_direct_order
 		};
+		telemetry.plan.sharding_metadata_bytes = sharding_metadata_bytes;
+		std::uint64_t available_disk_bytes = 0U;
+		bool disk_space_available = false;
+		std::error_code directory_error;
+		const auto output_directory = path.parent_path().empty()
+			? std::filesystem::current_path(directory_error)
+			: path.parent_path();
+		if (!directory_error)
+		{
+			if (working_set_monitor_.export_disk_space_observer != nullptr)
+			{
+				disk_space_available = working_set_monitor_.export_disk_space_observer(
+					working_set_monitor_.export_observer_context,
+					output_directory,
+					available_disk_bytes);
+			}
+			else
+			{
+				std::error_code disk_error;
+				if (std::filesystem::is_directory(output_directory, disk_error) && !disk_error)
+				{
+					const auto space = std::filesystem::space(output_directory, disk_error);
+					if (!disk_error)
+					{
+						available_disk_bytes = space.available;
+						disk_space_available = true;
+					}
+				}
+			}
+		}
+		const auto external_disk_reserve = coordinator_->limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
+			? coordinator_->limits().external_storage.disk_reserve_bytes
+			: 0U;
+		const auto disk_output_bytes = sharded_output
+			? sharded_size.total_bytes
+			: plan.serialized_bytes;
+		telemetry.manifest_bytes = sharded_output ? sharded_size.manifest_bytes : 0U;
+		telemetry.disk_gate = evaluate_multiway_export_disk_gate(
+			disk_output_bytes, sharded_output ? shard_temporary_peak_bytes : disk_output_bytes,
+			external_disk_reserve, disk_space_available, available_disk_bytes);
+		if (telemetry.disk_gate.blocked())
+		{
+			status_.failed = true;
+			status_.export_telemetry = telemetry;
+			throw std::runtime_error("multiway blueprint export disk preflight rejected");
+		}
 		auto export_gate = working_set_monitor_.export_gate;
+		export_gate.process.exporter_headroom_bytes = checked_export_add(
+			export_gate.process.exporter_headroom_bytes, profile_bytes);
 		if (export_gate.process.mapped_residency_allowance_bytes == 0U)
 			export_gate.process.mapped_residency_allowance_bytes = status_.memory_ledger.mapped_resident_allowance_bytes;
 		telemetry.scratch = make_multiway_export_scratch_estimate(telemetry.plan, export_gate.process);
@@ -1099,14 +1364,16 @@ namespace texas::solver::multiway
 		telemetry.process_estimate = make_multiway_export_process_estimate(
 			telemetry.plan, before_export, export_gate.process);
 		status_.memory_ledger.export_scratch_bytes = telemetry.scratch.total_bytes;
-		status_.memory_ledger.export_output_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_output_bytes = disk_output_bytes;
 		status_.memory_ledger.export_process_peak_bytes = telemetry.process_estimate.estimated_process_export_peak_bytes;
 		record_export_memory_snapshot(MultiwayMemoryPhase::BeforeExport, before_export, export_component());
 		telemetry.process_gate = evaluate_multiway_export_process_gate(
 			telemetry.plan, before_export, export_gate.process);
+		auto system_cache_plan = telemetry.plan;
+		system_cache_plan.serialized_bytes = disk_output_bytes;
 		telemetry.system_gate = evaluate_multiway_export_system_gate(
-			telemetry.plan, telemetry.scratch, telemetry.system_before, export_gate.system);
-		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+			system_cache_plan, telemetry.scratch, telemetry.system_before, export_gate.system);
+		status_.memory_ledger.export_system_cache_allowance_bytes = disk_output_bytes;
 		if (telemetry.process_gate.blocked() || telemetry.system_gate.blocked())
 		{
 			status_.failed = true;
@@ -1116,8 +1383,40 @@ namespace texas::solver::multiway
 				: multiway_export_system_rejection_reason_name(telemetry.system_gate.rejection_reason);
 			throw std::runtime_error(std::string("multiway blueprint export memory gate rejected: ") + reason);
 		}
-		MultiwayFullBlueprintStreamWriter writer(path, stream_plan);
+		struct ExportFilterGuard
+		{
+			const MultiwayExternalCompactStorage* storage = nullptr;
+			~ExportFilterGuard()
+			{
+				if (storage != nullptr)
+					storage->end_export_filter();
+			}
+		};
+		ExportFilterGuard filter_guard;
+		if (use_export_filter)
+		{
+			const auto& storage = lease.external_storage()->compact_storage();
+			storage.begin_export_filter();
+			filter_guard.storage = &storage;
+		}
+		MultiwayFullBlueprintWriterProfile writer_profile;
+		MultiwayFullBlueprintStreamOptions stream_options;
+		stream_options.profile = profile_enabled ? &writer_profile : nullptr;
+		std::unique_ptr<MultiwayFullBlueprintStreamWriter> writer;
+		std::unique_ptr<MultiwayFullBlueprintShardedStreamWriter> sharded_writer;
+		if (sharded_output)
+			sharded_writer = std::make_unique<MultiwayFullBlueprintShardedStreamWriter>(
+				path, stream_plan, std::move(shard_layout), std::move(shard_action_counts), stream_options);
+		else
+			writer = std::make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan, stream_options);
+		const auto write_row = [&](const MultiwayFullBlueprintRowView& row) {
+			if (sharded_output)
+				sharded_writer->write_row(row);
+			else
+				writer->write_row(row);
+		};
 		const auto* compact = lease.compact_storage();
+		const auto* external = lease.external_storage();
 		const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
 		const auto emit_shape = [&](const MultiwaySparseRowShape& shape) {
 			const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
@@ -1137,10 +1436,177 @@ namespace texas::solver::multiway
 				row.action_menu_id = menu.action_menu_id;
 				row.actions = actions.data();
 				row.action_count = shape.action_count;
-				writer.write_row(row);
+				write_row(row);
 			}
 		};
-		if (compact != nullptr)
+		if (external != nullptr)
+		{
+			MultiwayExternalPageProfile page_profile;
+			MultiwayExternalStorageStats catalog_before{}, rows_before{}, pages_before{};
+			if (profile_enabled)
+			{
+				catalog_before = external->catalog().stats();
+				rows_before = external->compact_storage().row_index_stats();
+				pages_before = external->compact_storage().page_store_stats();
+			}
+			struct Context
+			{
+				const MultiwayExternalTrainingStorage* storage;
+				MultiwayFullBlueprintStreamWriter* writer;
+				MultiwayFullBlueprintShardedStreamWriter* sharded_writer;
+				Probability* strategy;
+				MultiwayQuantizedRootAction* actions;
+				MultiwayExternalExportProfile* profile;
+				MultiwayExternalPageProfile* page_profile;
+				MultiwayFullBlueprintWriterProfile* writer_profile;
+				MultiwayExternalExportProgressObserver progress;
+				void* progress_context;
+				std::uint64_t progress_interval;
+				std::chrono::steady_clock::time_point stream_started;
+				std::uint64_t row_sequence = 0U;
+			};
+			Context context{ external, writer.get(), sharded_writer.get(), strategy.data(), actions.data(),
+				&telemetry.external_profile, profile_enabled ? &page_profile : nullptr,
+				profile_enabled ? &writer_profile : nullptr,
+				working_set_monitor_.export_progress_observer,
+				working_set_monitor_.export_progress_context, working_set_monitor_.export_progress_page_interval,
+				profile_enabled && working_set_monitor_.export_progress_observer != nullptr && working_set_monitor_.export_progress_page_interval != 0U
+					? std::chrono::steady_clock::now()
+					: std::chrono::steady_clock::time_point{} };
+			const auto write_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
+				auto& current = *static_cast<Context*>(opaque);
+				auto& profile = *current.profile;
+				OptionalExportTimer visitor_timer(profile.enabled, profile.visitor_nanoseconds);
+				MultiwaySparseRowShape shape{};
+				shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
+				shape.bucket_count = binding.bucket_count();
+				shape.action_count = binding.action_count();
+				std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> menu_actions{};
+				std::size_t action_count = 0U;
+				{
+					OptionalExportTimer menu_timer(profile.enabled, profile.menu_nanoseconds);
+					if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, menu_actions.data(),
+							menu_actions.size(), action_count))
+						throw std::invalid_argument("external blueprint row has no published action menu");
+				}
+				const MultiwayPackedMenuView menu{ menu_actions.data(),
+					static_cast<std::uint8_t>(action_count), menu_actions[0].action_menu_id };
+				validate_export_menu(shape, menu);
+				std::uint32_t first_bucket = 0U;
+				while (first_bucket < shape.bucket_count)
+				{
+					auto pinned = [&]() {
+						OptionalExportTimer pin_timer(profile.enabled, profile.pin_nanoseconds);
+						return current.storage->compact_storage().pin_bucket_profiled(
+							binding, first_bucket, false, current.page_profile);
+					}();
+					try
+					{
+						const auto page_bucket_count = pinned.page.bucket_count;
+						if (pinned.local_bucket != 0U || page_bucket_count == 0U || page_bucket_count > shape.bucket_count - first_bucket)
+							throw std::runtime_error("external blueprint page bucket range is invalid");
+						for (std::uint32_t local_bucket = 0U; local_bucket < page_bucket_count; ++local_bucket)
+						{
+							const auto bucket = first_bucket + local_bucket;
+							pinned.local_bucket = local_bucket;
+							const bool sample = profile.enabled && ((current.row_sequence++ & 255U) == 0U);
+							if (sample)
+								++profile.sampled_rows;
+							if (sample)
+							{
+								OptionalExportTimer timer(sample, profile.sampled_average_nanoseconds);
+								current.storage->compact_storage().average_strategy_into(
+									pinned, current.strategy, shape.action_count);
+							}
+							else
+								current.storage->compact_storage().average_strategy_into(
+									pinned, current.strategy, shape.action_count);
+							if (sample)
+							{
+								OptionalExportTimer timer(sample, profile.sampled_quantize_nanoseconds);
+								quantize_compact_strategy(current.strategy, shape.action_count, menu,
+									current.actions);
+							}
+							else
+								quantize_compact_strategy(current.strategy, shape.action_count, menu,
+									current.actions);
+							MultiwayFullBlueprintRowView row;
+							row.infoset = shape.infoset;
+							row.bucket = bucket;
+							row.action_menu_id = menu.action_menu_id;
+							row.actions = current.actions;
+							row.action_count = shape.action_count;
+							const auto write = [&]() {
+								if (current.sharded_writer != nullptr)
+									current.sharded_writer->write_row(row);
+								else
+									current.writer->write_row(row);
+							};
+							if (sample)
+							{
+								OptionalExportTimer timer(sample, profile.sampled_writer_nanoseconds);
+								write();
+							}
+							else
+								write();
+						}
+						first_bucket += page_bucket_count;
+						if (profile.enabled)
+						{
+							++profile.pages;
+							profile.rows += page_bucket_count;
+							profile.actions += static_cast<std::uint64_t>(page_bucket_count) * shape.action_count;
+						}
+					}
+					catch (...)
+					{
+						current.storage->compact_storage().unpin_bucket(pinned);
+						throw;
+					}
+					{
+						OptionalExportTimer unpin_timer(profile.enabled, profile.unpin_nanoseconds);
+						current.storage->compact_storage().unpin_bucket(pinned);
+					}
+					if (profile.enabled && current.progress != nullptr && current.progress_interval != 0U && profile.pages % current.progress_interval == 0U)
+					{
+						copy_page_profile(profile, *current.page_profile);
+						copy_writer_profile(profile, *current.writer_profile);
+						const auto bytes = current.sharded_writer != nullptr
+							? current.sharded_writer->progress()
+							: current.writer->progress();
+						profile.encoded_bytes = bytes.encoded_bytes;
+						profile.stream_write_bytes = bytes.stream_write_bytes;
+						const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - current.stream_started)
+								.count());
+						current.progress(profile, elapsed, current.progress_context);
+					}
+				}
+				if (profile.enabled)
+					++profile.shapes;
+				return true;
+			};
+			{
+				OptionalExportTimer visit_timer(telemetry.external_profile.enabled,
+					telemetry.external_profile.ordered_visit_nanoseconds);
+				if (!external->compact_storage().visit_ordered_rows(write_external_row, &context))
+					throw std::runtime_error("external blueprint ordered export stopped unexpectedly");
+			}
+			if (profile_enabled)
+			{
+				copy_page_profile(telemetry.external_profile, page_profile);
+				const auto bytes = sharded_writer != nullptr ? sharded_writer->progress() : writer->progress();
+				telemetry.external_profile.encoded_bytes = bytes.encoded_bytes;
+				telemetry.external_profile.stream_write_bytes = bytes.stream_write_bytes;
+				telemetry.external_profile.catalog = export_counter_delta(
+					catalog_before, external->catalog().stats());
+				telemetry.external_profile.row_index = export_counter_delta(
+					rows_before, external->compact_storage().row_index_stats());
+				telemetry.external_profile.page_store = export_counter_delta(
+					pages_before, external->compact_storage().page_store_stats());
+			}
+		}
+		else if (compact != nullptr)
 		{
 			for (const auto& metadata : rows)
 				emit_shape(metadata.shape);
@@ -1150,7 +1616,35 @@ namespace texas::solver::multiway
 			for (const auto index : order)
 				emit_shape(rows[index].shape);
 		}
-		const auto stream_result = writer.finish();
+		MultiwayFullBlueprintStreamResult stream_result{};
+		std::uint64_t result_bytes = 0U;
+		std::uint64_t result_manifest_bytes = 0U;
+		std::uint64_t result_shard_count = 0U;
+		{
+			OptionalExportTimer finish_timer(telemetry.external_profile.enabled,
+				telemetry.external_profile.finish_nanoseconds);
+			if (sharded_output)
+			{
+				const auto result = sharded_writer->finish();
+				stream_result.row_count = result.row_count;
+				stream_result.action_count = result.action_count;
+				stream_result.serialized_bytes = result.serialized_bytes;
+				stream_result.policy_content_hash = result.policy_content_hash;
+				stream_result.publication_mode = result.publication_mode;
+				result_bytes = result.serialized_bytes;
+				result_manifest_bytes = result.manifest_bytes;
+				result_shard_count = result.shard_count;
+			}
+			else
+			{
+				stream_result = writer->finish();
+				result_bytes = stream_result.serialized_bytes;
+			}
+		}
+		if (profile_enabled)
+		{
+			copy_writer_profile(telemetry.external_profile, writer_profile);
+		}
 		const auto after_export = working_set_monitor_.export_process_observer == nullptr
 			? capture_multiway_process_memory_snapshot()
 			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
@@ -1158,10 +1652,10 @@ namespace texas::solver::multiway
 			? capture_multiway_system_memory_snapshot()
 			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
 		telemetry.observed_delta = observe_multiway_export_memory_delta(before_export, after_export);
-		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_system_cache_allowance_bytes = disk_output_bytes;
 		status_.memory_ledger.export_observed_before_working_set_bytes = telemetry.observed_delta.before_working_set_bytes;
 		status_.memory_ledger.export_observed_after_working_set_bytes = telemetry.observed_delta.after_working_set_bytes;
-		telemetry.result_bytes = stream_result.serialized_bytes;
+		telemetry.result_bytes = result_bytes;
 		telemetry.payload_hash = stream_result.payload_hash;
 		telemetry.policy_content_hash = stream_result.policy_content_hash;
 		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
@@ -1169,6 +1663,9 @@ namespace texas::solver::multiway
 				std::chrono::steady_clock::now() - export_started)
 				.count());
 		telemetry.publication_mode = stream_result.publication_mode;
+		telemetry.sharded_output = sharded_output;
+		telemetry.shard_count = result_shard_count;
+		telemetry.manifest_bytes = result_manifest_bytes;
 		telemetry.succeeded = true;
 		status_.export_telemetry = telemetry;
 		record_export_memory_snapshot(MultiwayMemoryPhase::AfterExport, after_export, export_component());
@@ -1177,6 +1674,10 @@ namespace texas::solver::multiway
 		result.payload_hash = stream_result.payload_hash;
 		result.policy_content_hash = stream_result.policy_content_hash;
 		result.peak_scratch_bytes = peak_scratch_bytes;
+		result.serialized_bytes = result_bytes;
+		result.shard_count = result_shard_count;
+		result.manifest_bytes = result_manifest_bytes;
+		result.sharded = sharded_output;
 		result.publication_mode = stream_result.publication_mode;
 		return result;
 	}
@@ -1185,6 +1686,21 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path) const
 	{
 		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
+		const auto process_memory = working_set_monitor_.observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.observer(working_set_monitor_.observer_context);
+		status_.working_set_gate = evaluate_multiway_working_set_runtime(
+			process_memory, working_set_monitor_.gate);
+		if (status_.working_set_gate.blocked())
+			throw std::runtime_error(std::string("training checkpoint process gate rejected: ") + status_.working_set_gate.rejected_category);
+		const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.system_memory_observer(
+				  working_set_monitor_.system_memory_observer_context);
+		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
+			system_memory, working_set_monitor_.system_memory_guard);
+		if (status_.system_memory_guard.blocked())
+			throw std::runtime_error(std::string("training checkpoint system memory gate rejected: ") + status_.system_memory_guard.rejected_category);
 		auto lease = coordinator_->acquire_checkpoint_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		const auto coverage = coverage_manifest();
@@ -1209,6 +1725,57 @@ namespace texas::solver::multiway
 		return result;
 	}
 
+	MultiwayExternalCheckpointManifest MultiwayBlueprintTrainer::save_external_checkpoint_atomic(
+		const std::filesystem::path& path,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash) const
+	{
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 || workflow_identity_hash == 0U || storage_identity_hash == 0U)
+			throw std::invalid_argument("external checkpoint requires the external backend and verified identities");
+		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
+		const auto process_memory = working_set_monitor_.observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.observer(working_set_monitor_.observer_context);
+		status_.working_set_gate = evaluate_multiway_working_set_runtime(
+			process_memory, working_set_monitor_.gate);
+		if (status_.working_set_gate.blocked())
+			throw std::runtime_error(std::string("external checkpoint process gate rejected: ") + status_.working_set_gate.rejected_category);
+		const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.system_memory_observer(
+				  working_set_monitor_.system_memory_observer_context);
+		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
+			system_memory, working_set_monitor_.system_memory_guard);
+		if (status_.system_memory_guard.blocked())
+			throw std::runtime_error(std::string("external checkpoint system memory gate rejected: ") + status_.system_memory_guard.rejected_category);
+		auto lease = coordinator_->acquire_checkpoint_lease();
+		if (lease.external_storage() == nullptr)
+			throw std::logic_error("external checkpoint lease has no external storage");
+		const auto& external = coordinator_->limits().external_storage;
+		auto manifest = make_multiway_external_checkpoint_manifest(
+			external.directory, identity_.combined_hash, workflow_identity_hash,
+			storage_identity_hash, schedule_.identity(), status_.trajectories);
+		manifest.completed_batches = status_.batches;
+		manifest.pruned_negative_regrets = status_.pruned_negative_regrets;
+		manifest.late_window_start_batch = status_.late_window_start_batch;
+		manifest.terminal_visits = status_.terminal_visits;
+		manifest.leaf_visits = status_.leaf_visits;
+		manifest.missing_lookup_requests = status_.missing_lookup_requests;
+		manifest.preflop_rows = status_.preflop_rows;
+		manifest.flop_rows = status_.flop_rows;
+		manifest.turn_rows = status_.turn_rows;
+		manifest.river_rows = status_.river_rows;
+		manifest.street_visits = status_.street_visits;
+		manifest.linear_iteration_weighting = schedule_.linear_iteration_weighting ? 1U : 0U;
+		manifest.discounting_enabled = schedule_.discount_regrets ? 1U : 0U;
+		manifest.negative_regret_pruning_enabled = schedule_.prune_negative_regrets ? 1U : 0U;
+		manifest.late_window_baseline = late_window_baseline_;
+		save_multiway_external_checkpoint_manifest(
+			path, external.directory, manifest, external.synchronous_durability, {},
+			external.disk_reserve_bytes);
+		return manifest;
+	}
+
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
 	{
 		MultiwayBlueprintTrainingCheckpoint result;
@@ -1228,6 +1795,17 @@ namespace texas::solver::multiway
 					.count());
 		}
 		return result;
+	}
+
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainer::external_storage_telemetry() const
+	{
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+			throw std::logic_error("external storage telemetry requires ExternalCompactInt32");
+		const auto lease = coordinator_->acquire_export_lease();
+		const auto* external = lease.external_storage();
+		if (external == nullptr)
+			throw std::logic_error("external storage telemetry has no external storage");
+		return external->telemetry();
 	}
 
 	MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPolicyKind policy_kind) const
@@ -1315,6 +1893,33 @@ namespace texas::solver::multiway
 		status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
 		status_.admitted_action_cells = coordinator_->storage().value_count();
 		status_.street_visits = diagnostics.street_visits;
+	}
+
+	void MultiwayBlueprintTrainer::resume_from_external_checkpoint(
+		const MultiwayExternalCheckpointManifest& checkpoint,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash)
+	{
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 || checkpoint.model_identity_hash != identity_.combined_hash || checkpoint.workflow_identity_hash != workflow_identity_hash || checkpoint.storage_identity_hash != storage_identity_hash || checkpoint.schedule_hash != schedule_.identity() || checkpoint.completed_trajectories < checkpoint.completed_batches || checkpoint.linear_iteration_weighting != (schedule_.linear_iteration_weighting ? 1U : 0U) || checkpoint.discounting_enabled != (schedule_.discount_regrets ? 1U : 0U) || checkpoint.negative_regret_pruning_enabled != (schedule_.prune_negative_regrets ? 1U : 0U))
+			throw std::invalid_argument("external checkpoint identity or schedule does not match the trainer");
+		status_.batches = checkpoint.completed_batches;
+		status_.trajectories = checkpoint.completed_trajectories;
+		status_.pruned_negative_regrets = checkpoint.pruned_negative_regrets;
+		status_.late_window_start_batch = checkpoint.late_window_start_batch;
+		status_.late_window_active = !checkpoint.late_window_baseline.empty();
+		status_.terminal_visits = checkpoint.terminal_visits;
+		status_.leaf_visits = checkpoint.leaf_visits;
+		status_.missing_lookup_requests = checkpoint.missing_lookup_requests;
+		status_.preflop_rows = checkpoint.preflop_rows;
+		status_.flop_rows = checkpoint.flop_rows;
+		status_.turn_rows = checkpoint.turn_rows;
+		status_.river_rows = checkpoint.river_rows;
+		status_.street_visits = checkpoint.street_visits;
+		status_.visited_public_descriptors = checkpoint.generation.public_state_count;
+		status_.admitted_rows = checkpoint.generation.row_count;
+		status_.admitted_action_cells = checkpoint.generation.logical_value_count;
+		status_.merged_stream_fingerprint = checkpoint.generation.merge_fingerprint;
+		late_window_baseline_ = checkpoint.late_window_baseline;
 	}
 
 	MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
@@ -1407,6 +2012,15 @@ namespace texas::solver::multiway
 		trainer_->resume_from_checkpoint(checkpoint);
 	}
 
+	void MultiwayBlueprintTrainingSession::resume_from_external_checkpoint(
+		const MultiwayExternalCheckpointManifest& checkpoint,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash)
+	{
+		trainer_->resume_from_external_checkpoint(checkpoint, workflow_identity_hash,
+			storage_identity_hash);
+	}
+
 	MultiwayBlueprintSnapshot MultiwayBlueprintTrainingSession::export_policy(
 		MultiwayBlueprintPolicyKind policy_kind) const
 	{
@@ -1442,11 +2056,25 @@ namespace texas::solver::multiway
 		return trainer_->save_checkpoint_atomic(path);
 	}
 
+	MultiwayExternalCheckpointManifest MultiwayBlueprintTrainingSession::save_external_checkpoint_atomic(
+		const std::filesystem::path& path,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash) const
+	{
+		return trainer_->save_external_checkpoint_atomic(path, workflow_identity_hash,
+			storage_identity_hash);
+	}
+
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const
 	{
 		auto result = trainer_->checkpoint();
 		checkpoint_buffers_ = result.coordinator.memory_snapshot();
 		return result;
+	}
+
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainingSession::external_storage_telemetry() const
+	{
+		return trainer_->external_storage_telemetry();
 	}
 
 	void MultiwayBlueprintTrainingSession::record_process_memory_snapshot(MultiwayMemoryPhase phase)

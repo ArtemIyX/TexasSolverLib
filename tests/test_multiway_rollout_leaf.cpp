@@ -13,6 +13,7 @@ namespace
 		texas::MultiwayFixedState state{};
 		std::array<std::array<std::uint8_t, 2>, texas::kMultiwayFixedMaxSeats> holes{};
 		std::array<std::uint8_t, 5> board = { 0U, 5U, 10U, 0U, 0U };
+		std::uint8_t board_count = 3U;
 		texas::MultiwayRolloutScratch scratch{};
 		std::array<std::uint64_t, 3> seeds = { 17U, 29U, 41U };
 		mutable std::size_t input_calls = 0U;
@@ -49,7 +50,7 @@ namespace
 		output->state = &fixture.state;
 		output->holes = &fixture.holes;
 		output->board = fixture.board.data();
-		output->board_count = 3U;
+		output->board_count = fixture.board_count;
 		output->next_street_first_player = 0;
 		output->odd_chip_first_seat = 0;
 		return true;
@@ -139,6 +140,16 @@ TEST_CASE(multiway_rollout_leaf_rejects_invalid_caller_contexts)
 	EXPECT_TRUE(!texas::evaluate_multiway_rollout_profiles({ nullptr, nullptr, 0 }, context, &result));
 
 	EXPECT_TRUE(!texas::make_multiway_rollout_leaf_evaluator(nullptr).valid());
+}
+
+TEST_CASE(multiway_rollout_leaf_rejects_board_count_larger_than_scratch_capacity)
+{
+	RolloutFixture fixture;
+	fixture.board_count = static_cast<std::uint8_t>(texas::MULTIWAY_ROLLOUT_MAX_BOARD_CARDS + 1U);
+	const auto context = make_context(fixture);
+	texas::MultiwayRolloutProfileResult result;
+
+	EXPECT_TRUE(!texas::evaluate_multiway_rollout_profiles({ nullptr, nullptr, 0 }, context, &result));
 }
 
 TEST_CASE(multiway_rollout_leaf_adapter_retains_leaf_callback_compatibility)

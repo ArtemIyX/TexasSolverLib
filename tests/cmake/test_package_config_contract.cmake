@@ -91,6 +91,9 @@ require_before(
 
 require_absent("find_package(Threads" "must preserve REQUIRED propagation")
 require_absent("Threads::Threads" "config must not synthesize dependency targets")
+require_absent("spdlog" "installed package must not require application logging")
+require_absent("tomlplusplus" "installed package must not require application TOML")
+require_absent("logging" "installed package must not export application logging")
 require_absent("CMAKE_SOURCE_DIR" "no consumer source-root coupling")
 require_absent("PROJECT_SOURCE_DIR" "no producer source-root coupling")
 require_absent("CMAKE_BINARY_DIR" "no consumer binary-root coupling")

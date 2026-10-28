@@ -9,6 +9,7 @@
 
 namespace texas::solver::multiway
 {
+	class MultiwayMappedShardedBlueprintProvider;
 
 	struct MultiwayLookupQualificationReport
 	{
@@ -40,6 +41,13 @@ namespace texas::solver::multiway
 		const MultiwayRootSnapshot& root,
 		const MultiwayBucketRegistry& buckets,
 		const MultiwayFullBlueprintArtifact& blueprint,
+		std::uint64_t trajectory_count,
+		MultiwayEvidenceHeader evidence);
+	[[nodiscard]] MultiwayLookupQualificationReport qualify_multiway_required_lookups(
+		const MultiwayBlueprintTrainingConfig& config,
+		const MultiwayRootSnapshot& root,
+		const MultiwayBucketRegistry& buckets,
+		const MultiwayMappedShardedBlueprintProvider& blueprint,
 		std::uint64_t trajectory_count,
 		MultiwayEvidenceHeader evidence);
 

@@ -1,5 +1,2263 @@
 # Pluribus Roadmap Progress Log
 
+## Fix Linux page-fault telemetry parsing
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Skip the process state character in `/proc/self/stat` before parsing numeric page-fault fields.
+- Extend the Linux snapshot test to check that total faults equal the minor and major counts.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `tests/test_multiway_memory.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the parser field order and focused diff; `git diff --check` passed. No build or tests were run because the project skills require an explicit request.
+
+### Limitations
+
+- The Ubuntu CI test has not been rerun.
+
+## Fix GCC blueprint export compilation
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Renamed the shard-planning callback context member to avoid GCC's name lookup error and removed the unused `same_board` helper.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the focused C++ diff and checked for the conflicting declaration and removed helper. No builds or tests were run because the project skills require an explicit request.
+
+### Limitations
+
+- Ubuntu Debug and Release CI builds remain unverified.
+
+## Bound rollout board copies before scratch writes
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added an explicit scratch-capacity check before copying provider board cards into the fixed five-card rollout buffer. The copy loop now uses the validated bounded count, avoiding GCC's `-Wstringop-overflow` diagnostic and preserving rejection of oversized boards.
+- Added a regression case for a provider returning a board count above the scratch capacity.
+
+### Files
+
+- `src/solver/multiway/continuation/multiway_rollout_leaf.cpp`
+- `tests/test_multiway_rollout_leaf.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the input validation and fixed-capacity copy path. No build or tests were run because the repository C++ and Git skills prohibit them unless explicitly requested.
+
+### Limitations
+
+- The reported Linux/GCC build was not rerun in this environment.
+
+## Make application logging dependencies optional by default
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Made the core build independent of `spdlog` and `tomlplusplus` by default. Logging remains opt-in and is built when enabled with the vcpkg toolchain and manifest dependencies available.
+- Updated the build requirements and CMake option table to document the optional dependency path.
+
+### Files
+
+- `CMakeLists.txt`
+- `README.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the CMake option guard and existing disabled-logging stub target. No configure, build, or tests were run because the repository C++ and Git skills prohibit them unless explicitly requested.
+
+### Limitations
+
+- Existing build directories with `TEXASSOLVER_ENABLE_LOGGING=ON` retain that cached value and still require the vcpkg toolchain or installed packages.
+
+## PB-12 External policy lookup coverage diagnosis
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Compared the deterministic 1,000-trajectory replay with the exported policy. The provider reported 25,149 absent infosets, with zero missing-bucket and action-menu mismatches. The policy hash validated and both replay fingerprints matched.
+- The export contains 31,070 admitted public rows across streets from 1,000 accepted training trajectories. The misses are consistent with replay reaching branches absent from this sampled policy, rather than an artifact or bucket/menu mismatch.
+
+### Files
+
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Evaluator replay: 14,601 hits, 25,149 missing infosets, zero missing buckets, zero action-menu mismatches; qualification failed its zero-miss gate.
+- Prepared plan, policy artifact, and protected bucket SHA-256 hashes matched their recorded values.
+
+### Limitations
+
+- The report stores aggregate miss categories, not individual missing keys, so a subset-specific state-key mismatch cannot be fully excluded.
+- Any new production export requires separate authorization.
+
+## PB-12 External policy lookup identity compatibility
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added an explicit policy-lookup verification path that validates artifact contents and model-semantic identity while allowing training runtime identity to differ.
+- Lookup qualification accepts the base model identity used by bucket artifacts. Exact artifact verification remains strict.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_model_identity.hpp`
+- `src/solver/multiway/abstraction/multiway_model_identity.cpp`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- `git diff --check` passed.
+- `scripts/python/compact_build.py --parallel 4`: Debug build passed.
+- Evaluator replay ran 1,000 trajectories against the preserved policy. The policy hash matched; replay fingerprints matched. Qualification reported 14,601 hits and 25,149 missing infosets, so it failed the required zero-miss gate.
+- The preserved policy and bucket SHA-256 hashes matched their recorded values.
+- CTest was not run.
+
+### Limitations
+
+- The existing export does not cover every lookup requested by the 1,000-trajectory replay. A new production export requires separate authorization.
+
+## PB-12 External checkpoint export report telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Allowed checkpoint-only external resumes to omit per-worker trajectory counts that are not stored in the checkpoint. Present vectors still require the effective worker count; added regression coverage.
+- Completed the prepared export. The artifact report matched the expected policy hash, trajectory counts, row/action counts, and serialized bytes. The artifact loader validated payload and policy hashes.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/python/full_build.py`: Debug build and full CTest passed.
+- Prepared export: exit 0, no watchdog guard, all six output targets matched.
+- Protected plan hashes and Git status matched after export.
+
+### Limitations
+
+- The standalone evaluator replay did not complete because its model-only expected identity differs from the artifact's training identity. The loader validated the artifact payload and policy hashes before rejecting that identity comparison.
+
+## PB-12 External orphan-check lookup optimization
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Replaced the linear active-run scan for each orphan candidate with binary search over the existing sorted generations. Exact path checks, pinned generations and temporary-file cleanup remain unchanged.
+- On the bounded 8,321-run synthetic fixture, reopening fell from 86.321 seconds to 0.911 seconds. This is not a production throughput measurement.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/md/PB12_ORPHAN_LOOKUP_OPTIMIZATION.md`
+
+### Validation
+
+- Focused Debug CTest passed 3/3; the serial full Debug build passed. Full CTest initially passed 118/119 because an artifact test could not open a temporary shard manifest under a long temporary path. That test and a full retry with a shorter temporary path passed, the latter 119/119; the initial cause was not established.
+- The identical 8,321-run synthetic workload completed before the 120-second watchdog before and after the change. Active files, unreferenced files, temporary files, numeric aliases and checkpoint pins are covered by tests. Static C++ review found no actionable findings.
+
+### Limitations
+
+- Synthetic files were recently created and may be cached. Actual production reopen and export throughput, snapshot integrity and policy equivalence remain unverified. No production run was launched.
+
+## PB-12 Singleton-run filter construction measurement
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Measured synthetic storage with 8,321 singleton page runs and 7,016 distinct keys, matching the checkpoint's run and key counts. Filter construction took 0.778 seconds; reopening the store took 86.321 seconds.
+- The reopen phase includes checksum validation and orphan cleanup. Existing cleanup scans the run list per directory entry; the measurement does not isolate that cost from other reopen work.
+
+### Files
+
+- `scripts/benchmark/pb12_filter_construction/main.cpp`
+- `scripts/run/measure_pb12_filter_construction.ps1`
+- `docs/md/PB12_SINGLETON_CONSTRUCTION_MEASUREMENT.md`
+
+### Validation
+
+- Built the standalone Debug harness. Synthetic 1,000-, 3,000- and two 8,321-run measurements completed under their 120-second process-tree watchdogs. No timeout occurred.
+- The full-size fixture was loaded through the actual record-store constructor, which validated the synthetic run checksums. Both present-key lookups passed.
+
+### Limitations
+
+- Inputs were synthetic and recently written, so cache effects and production reopen and export times remain unknown. No production export or solver run was launched.
+- The harness links the existing uncommitted export-filter implementation.
+
+## PB-12 Checkpoint page-store scale assessment
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Inspected checkpoint and page-store metadata read-only. The checkpoint lists 8,321 singleton runs and 162,370 allocated page IDs; the original indexes contain 7,016 distinct stored IDs.
+- Simulated the existing 1 MiB filter on those index keys. It returned zero false positives for the 155,354 absent allocated IDs. No production export was run.
+
+### Files
+
+- `scripts/analyze/read_pb12_page_metadata.py`
+- `docs/md/PB12_CHECKPOINT_PAGE_SCALE_ASSESSMENT.md`
+
+### Validation
+
+- Verified the checkpoint SHA-256 and both manifest checksums, compared original and snapshot page manifests to the checkpoint, and checked referenced page-file lengths. Read original index keys and simulated the filter without writing production inputs.
+- Independently checked the original page manifest header, generation, run count and batch using PowerShell.
+
+### Limitations
+
+- Segment contents and the old snapshot's complete integrity were not verified. Actual filter-construction time for 8,321 singleton files and production export throughput remain unknown.
+
+## PB-12 External filter construction measurement
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Measured bounded filter construction on reopened synthetic stores from 5,000 to 1,000,000 page-sized records, including checksum validation and absent-key false positives.
+- The one-million-record case took 3.957 seconds to construct the filter and yielded 494 positives among 10,000 absent queries. Inputs were recently written and may have been cached.
+
+### Files
+
+- `scripts/benchmark/pb12_filter_construction/CMakeLists.txt`
+- `scripts/benchmark/pb12_filter_construction/main.cpp`
+- `scripts/run/measure_pb12_filter_construction.ps1`
+- `docs/md/PB12_FILTER_CONSTRUCTION_MEASUREMENT.md`
+
+### Validation
+
+- Standalone Debug harness configured and built successfully against the current working-tree filter implementation.
+- Four synthetic measurements completed within their 120-second limits. Present-key checks passed; no timeout occurred. Each run preserved its data and diagnostics.
+
+### Limitations
+
+- Measurements use synthetic, recently written files and sampled whole-process memory. Production-scale construction cost, cold-cache behavior, full export throughput and policy equivalence remain unverified.
+- The harness depends on the pre-existing uncommitted filter implementation, which is not included in this measurement commit.
+
+## PB-12 External export membership filter
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added a bounded export-session page membership filter with checksum-verified construction, preflight accounting, mutation exclusion and scoped cleanup. Negative probes avoid run scans; positive probes retain newest-generation lookup and page validation.
+- Exposed range skips and filter negatives in export telemetry. Added reopened sparse page-store and end-to-end export fixtures with overlapping runs and nonmonotonic page requests.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `scripts/run/measure_pb12_sparse_pages.ps1`
+- `scripts/run/measure_pb12_end_to_end.ps1`
+- `docs/md/PB12_EXTERNAL_EXPORT_READINESS_ASSESSMENT.md`
+
+### Validation
+
+- Serial Debug full build passed and full CTest passed 119/119; focused CTest passed 3/3. Builds and tests had 900-second watchdogs. An eight-job full build failed in concurrent DLL deployment with Windows error 32; the serial retry passed.
+- Paired 120-second-bounded synthetic measurements retained identical end-to-end artifact bytes and reduced index opens from 65 to 13. The sparse page fixture reduced opens from 922,459 to 2,923. No timeout occurred. Static C++ review found no actionable findings.
+
+### Limitations
+
+- Production-sized filter saturation, checksum-construction cost, peak memory and completed throughput are unmeasured. The stopped production export remains incomplete; policy equivalence and completion time are not established. A production attempt requires separate authorization.
+
+## PB-12 External record-store range pruning
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added per-run minimum and maximum keys to External record lookup. Appends and compaction populate the bounds; manifest loading derives them from checksum-verified index endpoints. Lookups skip runs that cannot contain the requested key, preserving newest-generation precedence.
+- The isolated partial export profile identified page-store lookup as the hot path: at 40,960 pages it recorded 334,554,606 index opens and 627,401,739 index reads. This is an incomplete-run profile, not a complete throughput result.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/md/PB12_EXTERNAL_EXPORT_PERFORMANCE_HANDOFF.md`
+
+### Validation
+
+- Focused Debug build passed for the four requested targets; focused CTest passed 4/4.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- The bounded fixture runner passed with exit code 0 in 614,747,800 ns. Its profiled export had one row, one page and zero page-store index opens, so it did not exercise the production lookup bottleneck.
+- C++ review found no actionable findings in the range-pruning change.
+
+### Limitations
+
+- The production export was stopped before completion. The expected policy hash, trajectory totals, row/action totals, serialized size and production throughput remain unverified. The range-pruning change has not yet been measured on a complete production export.
+
+## PB-12 Isolated External checkpoint resume preparation
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added `--external-storage-snapshot-dir` for checkpoint-only External resume. Runtime store I/O targets the separate copy while model, workflow and storage identities retain the configured source path.
+- The guard requires `--batches 0 --resume`, rejects source/runtime overlap and known root/component transaction, rollback and temporary pin markers, and leaves existing admission and provenance gates active.
+- Created and SHA-256-verified an isolated 16,669-file, 47,203,419-byte copy. Source pointer hashes were unchanged across the copy. At completion of this preparation entry, no production checkpoint restore or export had been run.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `scripts/run/measure_pb12_export_fixture.ps1`
+- `docs/md/PB12_EXPORT_STATIC_PREPARATION.md`
+
+### Validation
+
+- Focused Debug build passed for the four requested targets; focused CTest passed 4/4.
+- `texas_multiway_train` Debug build passed; `test_multiway_workflow_boundary` passed 1/1.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- `cmake -S . -B build -DVCPKG_MANIFEST_INSTALL=OFF` configured the existing tree without installing dependencies. `cmake --build build --config Debug --target texas_multiway_train` passed, and `--provenance` matches `HEAD` (`4f0874ee77384ab7c02e1ecb55adb85a05e79537`, dirty, Debug).
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run/measure_pb12_export_fixture.ps1 -Executable build/Debug/test_multiway_blueprint_training.exe -BuildConfiguration Debug -MaximumSeconds 120` passed with exit code 0 after correcting its selector to the three-session, four-trajectory fixture. Process time was 666,469,100 ns including setup and training; the profiled export reported 1 row, 3 actions, 1 page, 261 encoded bytes and policy hash `4103060085492157644`.
+- The isolated store copy was compared file-by-file with source by length and SHA-256; source pointer hashes matched before and after.
+- `git diff --check` passed with only line-ending warnings.
+
+### Limitations
+
+- At completion of this preparation entry, the production checkpoint export had not run. The later isolated attempt and its incomplete profile are recorded in the newer range-pruning entry; target policy/count/size equivalence remains unverified.
+
+## PB-12 External export profiling and regression coverage
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Added opt-in External export profiling for restore/resume, ordered visits, page and record lookups, writer stages, and periodic progress reporting. Added deterministic regressions for profiled output equivalence, storage reopen/corruption, and writer failures.
+- Updated the workflow boundary assertion for the writer options argument while retaining the gate-before-writer ordering check.
+- Added a synthetic External export fixture with no training or checkpoint restore. It checks ordered rows, cache hits and misses, decoded and zero-filled pages, multiple run probes, and byte-identical repeated output.
+- Reworked the bounded fixture runner to collect child stdout, stderr, and exit status directly from its process handle; kept resource reserve and fail-closed checks.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/test_multiway_artifact.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `scripts/analyze/summarize_pb12_export.ps1`
+- `scripts/run/measure_pb12_export_fixture.ps1`
+- `docs/md/PB12_EXTERNAL_EXPORT_FIX_PLAN.md`
+- `docs/md/PB12_EXPORT_STATIC_PREPARATION.md`
+
+### Validation
+
+- Focused Debug build passed for the four requested targets.
+- Focused CTest passed 4/4; `test_multiway_workflow_boundary` passed 1/1 after its assertion update.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run/measure_pb12_export_fixture.ps1 -Executable build/Debug/test_multiway_blueprint_training.exe -BuildConfiguration Debug -MaximumSeconds 120` passed with exit code 0. The synthetic fixture reported 100 rows, 300 actions, 8 pages, 1 cache hit, 7 misses, 4 decoded pages, 3 zero-filled pages, and 14 page-run probes.
+
+### Limitations
+
+- At completion of this profiling entry, the production bottleneck was unmeasured and no production checkpoint export had run because restore and checkpoint capture mutate the original store. A later isolated attempt measured repeated page-store index lookups but did not complete; policy equivalence and speed improvement remain unverified.
+- The synthetic process timing includes fixture setup and storage writes; it is not production export throughput or evidence of a speed improvement. The runner only checks that the executable hash stayed constant during the run; it does not verify source-to-binary correspondence.
+
+## PB-12 External page-pinned policy export validation
+
+**Status:** Incomplete; export stopped at the user's request after sustained low throughput
+**Recorded:** 2026-10-27
+
+- Reused one pinned External row page while exporting its buckets in ascending order, with exception-safe unpinning.
+- Added a focused comparison of External pinned-page averages and bucket order against Compact across a full and partial page.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+- `tmp/pb12_external_export_pagepin_d3b266eb3a03424d874123196f78ff11/export_status_report.md`
+
+### Validation
+
+- Focused `test_multiway_external_storage` build and CTest passed.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed; all 119 CTest tests passed.
+- The zero-batch External checkpoint export wrote 28,180,480 bytes in 4,439 seconds before it was stopped. Its observed rate was about 6,348 bytes/second, similar to the prior attempt.
+
+### Limitations
+
+- No final External report or policy hash was produced. The Compact hash and counts therefore remain unverified against External.
+- Page reuse passed the focused equivalence test but did not improve the observed end-to-end export rate. The remaining bottleneck is unresolved.
+- No additional trajectories or larger pilot were run; no 50M feasibility claim is made.
+
+## PB-12 External checkpoint-only export follow-up
+
+**Status:** Complete
+**Completed:** 2026-10-26
+**Implementation commits:** `3e6895e7 PB-12 Multiway: Allow checkpoint-only export` through `ab4d0392 PB-12 Multiway: Skip incomplete export-only snapshots`
+
+- Added an explicit `--batches 0 --resume` path that preflights conservatively, writes a distinct checkpoint, and proceeds to export without running trajectories.
+- Disabled cold/steady batch phase snapshot collections for this path because no batches run; live working-set, private-commit, system-memory, disk, and export gates remain active.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed after commit `ab4d0392`.
+- Authorized external 1K training log records 1,000 trajectories and zero discarded.
+- Zero-batch checkpoint resume was stopped after about 62 minutes in checkpoint segment verification. It processed zero trajectories, produced no report or blueprint, and did not change the original `TRAINING_CURRENT` (112 bytes, timestamp unchanged).
+
+### Limitations
+
+- Export and differential equivalence remain unverified. Checkpoint restore rehashes thousands of small retained segment files and did not finish within the bounded validation attempt.
+- No larger pilot or 50M feasibility claim was made.
+
+## PB-12 External catalog bounded admission
+
+**Status:** Complete
+**Completed:** 2026-10-26
+**Implementation commit:** `2ec880bf PB-12 Multiway: Chunk external catalog writes`
+
+- Split sorted public-catalog admissions into deterministic chunks bounded by the configured WAL and segment limits.
+- Kept all descriptor validation ahead of writes and retained the aggregate training manifest as the transaction boundary.
+- Added chunked catalog restart, training commit, and rollback coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external storage, solver, blueprint training, and checkpoint equivalence CTest: passed (4/4).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed.
+- Compact 1K run: 1,000 accepted, zero discarded; peak RSS 23,495,393,280 bytes.
+- External run: training log records 1,000 trajectories and zero discarded. The run was interrupted during blueprint publication, so no final report or export hash was produced.
+
+### Limitations
+
+- The external export and deterministic differential comparison remain unverified; see the checkpoint-only export follow-up above.
+- No larger pilot or 50M feasibility claim was made.
+
+## PB-12 Phase 8 - Report external storage runtime metrics
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added report-boundary snapshots for record and page cache hits, misses, and evictions.
+- Counted logical compaction read/write bytes and reported their ratios against current live segment bytes. Counters are explicitly scoped to the current process.
+- Reported live run/index segment bytes separately from checkpoint-pinned retired segment bytes. Missing or unreadable pinned segments fail the snapshot.
+- Added deterministic counter, compaction-byte, retained-segment, report JSON, and invalid-amplification tests.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug CTest: external storage, blueprint training, and qualification reports passed (3/3).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Compaction counters cover logical `.dat` and `.idx` bytes and reset on process start; they exclude manifest, WAL, temporary-file, and filesystem read-ahead traffic.
+- Disk metrics report run/index segment files only. They exclude WAL, manifests, temporary files, and unrelated files in the storage directory.
+- No training workflow or pilot was run.
+
+## PB-12 Phases 6–8 - Integrate external training checkpoints and workflow
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added schema-6 external checkpoint save/resume with model, workflow, storage, and schedule identity checks. Existing schema-5 load/save remains on the compact backend.
+- Enabled the external backend in training, added storage-path alias checks, disk preflight, disk planning, and external storage provenance.
+- Kept external export ordered and bounded; callbacks now use the visited row binding without a redundant index lookup.
+- Added backend/checkpoint/disk/cache configuration fields to training reports.
+- Added deterministic external checkpoint/resume/export equivalence and disk/preflight/report coverage.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused CTest: `test_multiway_blueprint_training`, `test_multiway_external_storage`, `test_multiway_qualification_reports`, and `test_multiway_workflow_config` passed (4/4).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- No training workflow or large pilot was run. No 50M feasibility claim is made.
+- Report output includes configured external resource budgets and checkpoint generation/segment count; cache hit/miss and compaction amplification telemetry remain unreported.
+- External checkpoint files reference local immutable segments; a portable archive command is not included.
+
+## PB-12 Phase 8.4 - Report private-commit guard state
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added the configured private-commit limit and observed peak private-commit bytes to training JSON reports.
+- Added report serialization assertions for the new fields.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build and focused CTest for `test_multiway_qualification_reports`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External storage backend, disk, and checkpoint telemetry are not yet integrated into workflow reports.
+
+## PB-12 Phase 8.3 - Fail closed on private-commit telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added an independent runtime private-commit ceiling to the working-set monitor. Training workflow samples must provide current or peak private-commit telemetry; missing telemetry blocks execution.
+- Configured the workflow with the existing 64 GiB process ceiling. The existing 48 GiB working-set gate remains active.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build for `test_multiway_memory` and `texas_multiway_train`: passed.
+- Focused CTest for `test_multiway_memory`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This gate does not enable `ExternalCompactInt32` workflow training; external checkpoint/resume and full disk preflight integration remain incomplete.
+
+## PB-12 Phase 7.2 - Add incremental sharded writer
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a sequential sharded writer that accepts ordered row views directly, opens one shard writer at a time, and publishes the manifest only after all shards finish.
+- Per-shard action counts are validated up front; each shard enforces its exact row/action counts and worst-case byte bound.
+- Refactored the repeatable-producer sharded helper to use the same writer and manifest publication path.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_artifact`: passed.
+- Focused CTest for `test_multiway_artifact`: passed (1/1).
+- Tests cover sequential multi-shard writing, exact aggregate policy hash, and manifest verification.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Trainer selection, exact sharded disk preflight, and workflow report integration remain outstanding.
+
+## PB-12 Phase 7.2 - Add mapped sharded policy lookup
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a read-only mapped provider that validates each shard's schema, metadata, row order, action values, payload hash, and aggregate policy hash before serving lookups.
+- Built a sparse row-offset index capped at 262,144 entries. Lookup decodes mapped rows into fixed action scratch and matches the existing `MultiwayBlueprintPolicyProvider` statuses and probabilities without per-row materialization.
+- Exposed mapped virtual bytes and sparse-index bytes for resource reporting.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp`
+- `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
+- `CMakeLists.txt`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_artifact` and `test_multiway_blueprint_store`: passed.
+- Focused CTest for those targets: passed (2/2).
+- Lookup tests compare hits, probabilities, missing infosets, missing buckets, and incompatible menus with the in-memory provider. Missing and corrupt shard loading fails closed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- The provider maps all shard views at construction and verifies them then; OS file pages remain demand-paged, but per-shard view creation is not yet lazy.
+- Workflow evaluator selection and mapped provider memory accounting are wired. The resolver records the mapped view and sparse-index bounds in search preflight.
+
+## PB-12 Phase 7.2 - Write and verify bounded blueprint shards
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added deterministic contiguous row ranges with a worst-case serialized-size bound based on the schema maximum of 64 actions per row, and bounded the manifest to 65,536 shards.
+- Added a two-pass streaming shard writer. It records per-shard payload hashes and counts, computes the overall policy-content hash, writes each standard schema-2 shard into a unique generation directory, then atomically publishes the manifest last.
+- Added a streaming verifier for manifest identity/hash, safe relative paths, shard identity/schema, row ordering, per-shard payload hashes/counts, and aggregate policy hash. It reads one shard at a time.
+- A manifest-publication failure test confirms the prior manifest remains byte-for-byte intact; missing and corrupt shard tests reject the generation.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_artifact`: passed.
+- Focused CTest for `test_multiway_artifact`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Lazy mapped lookup is not implemented. The writer performs two producer passes, so producers must be deterministic and repeatable; the implementation checks policy-content hashes across passes.
+- Sharded writing is exposed as an artifact API but is not yet wired into the trainer's export selection or disk preflight.
+
+## PB-12 Phase 7.3 - Add blueprint export disk preflight
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a fail-closed export disk gate that checks free space for temporary plus final publication and the configured external-store reserve before creating the stream writer temporary file.
+- Missing disk telemetry and arithmetic overflow reject export. A test observer makes disk-boundary behavior deterministic.
+- Added disk gate status, required/available bytes, and reserve bytes to export telemetry reports.
+- Added boundary and output-preservation tests for disk gate rejection.
+- Added a deterministic sharded-output size estimator. Generation-directory names now have fixed-width components so preflight can account exactly for shard headers, manifest entries, paths, and the manifest trailer before publication.
+- Generalized disk-gate accounting to accept a bounded temporary overlap, while keeping the existing single-file two-copy gate behavior unchanged.
+- Trainer export now selects sharding above the configured 56 GiB single-file bound, calculates deterministic per-shard action totals before opening output, and uses exact total output plus maximum temporary shard bytes for disk admission.
+- Shard planning metadata is included in private scratch estimates and reports. Export reports now distinguish total output bytes, temporary overlap, manifest bytes, and shard count.
+- Compact and float64 training fixtures exercise sharded trainer publication and confirm the aggregate policy-content hash matches materialized export.
+- The workflow evaluator dispatches shard manifests to the verified mapped provider. Repeated qualification matched materialized lookup counts, policy hash, and replay fingerprint.
+- Runtime resolver configuration accepts one mapped sharded provider and rejects representation ambiguity. Request identity mismatch still takes the resolver's verified fallback path.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `tests/test_multiway_memory.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `include/solver/multiway/resolver/multiway_resolver.hpp`
+- `src/solver/multiway/resolver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `examples/multiway_workflow_main.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_memory`, `test_multiway_blueprint_training`, and `test_multiway_qualification_reports`: passed.
+- Focused CTest covering those targets and `test_multiway_workflow_boundary`: passed (4/4).
+- Focused Debug build and CTest for `test_multiway_artifact`: passed (1/1); estimator bytes matched the generated two-shard output.
+- Focused Debug build and CTest for `test_multiway_memory`: passed (1/1), including bounded temporary-overlap admission/rejection boundaries.
+- Focused Debug builds for `test_multiway_blueprint_training`, `test_multiway_memory`, and `test_multiway_qualification_reports`: passed.
+- Focused CTest for those targets: passed (3/3), including sharded trainer policy-hash equivalence and report serialization.
+- Focused Debug build for `test_multiway_artifact`, `test_multiway_blueprint_training`, and `texas_multiway_train`: passed.
+- Focused CTest for `test_multiway_artifact`, `test_multiway_blueprint_training`, `test_multiway_qualification_reports`, and `test_multiway_workflow_boundary`: passed (4/4).
+- `texas_multiway_train` Debug build: passed.
+- Mapped-shard qualification fixture passed with identical hits, misses, action-menu mismatches, policy hash, and replay fingerprint.
+- Focused Debug build and CTest for `test_multiway_resolver`: passed (1/1), including runtime search with a verified mapped shard provider.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Old generation directories are retained after manifest replacement. The mapped provider verifies and maps all shard views at construction rather than creating each view lazily.
+
+## PB-12 Phase 7.1 - Add bounded ordered external record iteration
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added an ordered-record callback API that k-way merges the configured bounded number of immutable runs, emits ascending unique keys, and selects the newest value for duplicate keys.
+- The iterator rejects run counts above configured compaction fan-in and borrows payload bytes only during the callback. It does not materialize the full record set.
+- Added row-index iteration that validates row metadata and emits state/seat rows in canonical order while preserving the same run and payload bounds.
+- Connected the ordered iterator to trainer export planning and the existing atomic stream writer. Planning verifies external sparse-row and logical-cell counts against the committed generation; output visits one row and one bucket at a time with fixed action scratch.
+- Added deterministic tests before and after compaction, newest-run precedence, ascending order, and callback early-stop behavior.
+- Verified iteration rejects run counts above the configured fan-in before reading records.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build of `test_multiway_external_storage`: passed.
+- Focused CTest `^test_multiway_external_storage$`: passed (1/1).
+- Debug build and focused CTest for `test_multiway_blueprint_training`: passed (1/1) after external ordered-export wiring.
+- `git diff --check`: passed.
+
+### Limitations
+
+- The session still rejects `ExternalCompactInt32`, so the connected export branch is compile-validated but not exercised end to end. Disk-space preflight and deterministic sharding remain outstanding.
+
+## PB-12 Phase 6.1 - Add external checkpoint manifest codec
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a separate schema-6 external checkpoint manifest containing backend schema, model/workflow/storage identity hashes, schedule identity, completed trajectories, WAL generation/offset, the complete committed external generation, and per-component immutable run identities and hashes.
+- Added atomic manifest publication, checksums, injected pre-publication failure, verification against expected identities and component run lists, and retention pins installed before manifest publication.
+- Compaction and orphan cleanup preserve pinned runs. A schema-6 manifest can verify its prior runs after the current component manifests advance. Releasing pins requires removing the checkpoint first; obsolete runs are reclaimed at the next store open/cleanup boundary.
+- Added rollback-journaled restore of an older pinned generation. Component `CURRENT` manifests publish first; the aggregate generation publishes last. Startup recovery completes a published restore or reinstates the previous component and aggregate manifests.
+- Added a metadata-only capture helper that reads the aggregate and component manifests to produce a complete checkpoint descriptor without loading record payloads.
+- Extended schema-6 manifests with trainer batch/visit/pruning counters, schedule flags, street coverage, and the late-window strategy-sum baseline. The reader defaults these fields when loading earlier schema-6 manifests.
+- Kept the existing schema-5 monolithic checkpoint artifact reader and writer unchanged.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_external_storage`: passed.
+- Focused CTest covers manifest corruption/publication failure, run pin retention/release, restore to an older generation, immediate partial-publication rollback, and startup recovery from an interrupted restore journal: passed (1/1).
+- Focused Debug build and CTest after adding metadata-only checkpoint capture: passed (1/1).
+- Focused Debug build and CTest after adding resumable training metadata and legacy schema-6 extension coverage: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Schema-6 manifest restore is a storage API only; workflow checkpoint scheduling/resume integration and real process-kill testing remain outstanding.
+- No training workflow was run.
+
+## PB-12 Phases 3-5 - Validate external compact storage integration
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Validated the explicit `ExternalCompactInt32` backend and its external catalog, row index, compact page cache, batch WAL, aggregate generation manifest, and bounded deterministic compaction against the `CompactInt32` reference fixtures.
+- Kept external workflow execution fail-closed. This work does not raise workflow capacities or claim large-cardinality feasibility.
+- Strengthened rollback coverage from a prior committed nonempty page generation, then ran full repository validation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build and CTest for solver, external storage, and blueprint training: passed (3/3).
+- `scripts/python/full_build.py` via `scripts/codex_powershell.ps1`: passed; full Debug build and CTest passed (119/119).
+- `git diff --check`: passed.
+
+### Limitations
+
+- No training workflow or large pilot was run.
+- Filesystem kill points at every transaction step and target-machine scale measurements remain outside this validation; later checkpoint/export integration is not included.
+
+## PB-12 Phase 5.28 - Verify rollback to committed page generation
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Strengthened the bounded external page merge rollback fixture to first commit nonzero root and child page values.
+- A later merge flushes an ordered page subbatch before rejecting an invalid action. The test verifies the failed merge restores the previously committed one-hot strategies.
+- Current page subbatch commits append records without compacting/deleting prior component runs, so this test covers rollback across published page subbatches without relying on cleanup behavior.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1; 72 cases).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This does not inject process termination or filesystem failures during aggregate manifest publication.
+- No training workflow was run.
+
+## PB-12 Phase 5.27 - Bound external page mutation batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added deterministic page-ID traversal for external regret scaling and zero-or-negative-threshold pruning, with page updates committed in cache-bounded component subbatches under the aggregate transaction manifest.
+- External coordinator merges now flush a page when the ordered delta stream moves to another page, preserving worker order while allowing a cache smaller than the dirty page set.
+- Relaxed component validation only for monotonic page subbatches and compaction generations. The outer transaction still restores the prior component manifests on failure.
+- Verified repeated page subbatches, fan-in compaction, scale/prune differential behavior, and rollback after a prior page subbatch was already published.
+- Positive pruning thresholds fail closed because implicit zero pages are not yet enumerable; sparse external pruning with threshold zero matches CompactInt32.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver`, `test_multiway_external_storage`, and `test_multiway_blueprint_training`: passed.
+- Focused CTest: passed (3/3).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External traversal/training remain fail-closed. Positive-threshold pruning and large-scale behavior remain unvalidated; no training job was run.
+
+## PB-12 Phase 4.10 - Reopen committed external coordinator generation
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a bounded external coordinator fixture that commits a parent-linked public state, root/child row metadata, and worker deltas, closes the coordinator, then reopens the same generation.
+- Verified restored public-state reconstruction, row presence, and root/child strategy values after reopening.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This validates clean close/reopen of one committed generation, not failure-point recovery or large catalog scaling.
+
+## PB-12 Phase 5.26 - Verify external multirow coordinator equivalence
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the compact coordinator fixture with an external catalog, root and child rows, parent-linked state reconstruction, and identical worker deltas across both backends.
+- Verified reconstructed child identity/history and exact root/child regret-matched strategy equality with CompactInt32 after the ordered merge.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The test covers one parent/child pair and a small merge batch. Restart, checkpoint/export, runtime execution, and scale feasibility remain unproven.
+
+## PB-12 Phase 5.25 - Compare external coordinator merge to CompactInt32
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the tiny coordinator integration fixture to apply identical ordered worker streams to `ExternalCompactInt32` and `CompactInt32` and compare resulting root strategy values exactly.
+- The first comparison correctly exposed that the fixture's default backend was Float64; selecting CompactInt32 made the intended fixed-point differential pass.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This compares one deterministic row and one merge batch. It does not validate external traversal, checkpoint/export, or 50M feasibility.
+
+## PB-12 Phase 5.24 - Exercise external coordinator integration
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Moved external-backend rejection from request construction to solver execution boundaries, allowing direct coordinator-level storage validation while traversal, search, blueprint training, and lookup qualification remain fail-closed.
+- Added a small coordinator fixture covering idempotent row admission, fixed-order worker merge, and rollback after a late invalid delta.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/session/multiway_search_session.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_search_session.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver`, `test_multiway_search_session`, `test_multiway_external_storage`, and `test_multiway_workflow_config`: passed.
+- Focused CTest: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External traversal/training execution, checkpointing, export, and runtime monitoring remain fail-closed or outstanding. No scaling job was run.
+
+## PB-12 Phase 4.9 - Fail closed after compaction errors
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Made external record stores unavailable after a compaction failure that occurs after disk-space preflight, preventing stale in-memory run metadata from serving further operations.
+- Added failure-injection coverage for a missing compaction input and verified subsequent lookup fails closed.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_external_storage` and `test_multiway_solver`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Recovery from this in-process failure requires reopening the component store; automatic repair is deferred.
+
+## PB-12 Phase 4.8 - Preflight external catalog and row batch bounds
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added WAL and segment-size checks before allocating catalog record buffers.
+- Added segment-size preflight to row admission, alongside its existing WAL bound.
+- Added a regression asserting oversized catalog admission rejects without publishing records.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_external_storage` and `test_multiway_solver`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Admission batches larger than the configured WAL or segment are rejected; deterministic multi-chunk admission is not implemented.
+
+## PB-12 Phase 4.7 - Route single-item admission through external batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Routed single public-state and sparse-row admission through prepared external admission, preserving validation and atomic manifest publication.
+- Avoided publishing a new generation for duplicate-only admission batches.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External request construction remains fail-closed; direct admission is compile-checked but not exercised through a live external coordinator. Checkpoint/export, scaling/pruning, and runtime monitoring remain outstanding.
+
+## PB-12 Phase 5.23 - Merge external compact pages in worker order
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added an external merge transaction that preserves the existing deterministic k-way worker stream order and fixed-point update arithmetic.
+- The merge resolves each row at its infoset boundary and keeps a writable page pinned across sorted bucket/action updates; it aborts the page and manifest batch on failure.
+- Removed graph-sized pending-cell reservation from compact backends; only Float64Reference uses that scratch buffer.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External request construction remains fail-closed, so coordinator external merge is compile-checked but cannot yet be exercised end to end. Runtime monitoring, checkpoint/export, and non-prepared row admission remain outstanding.
+
+## PB-12 Phase 5.22 - Read external row pages at decision boundaries
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Routed coordinator row existence and regret-matched strategy reads through external row bindings and pinned pages.
+- Batched pruning threshold checks so traversal resolves and pins a row page once per decision node, then scans its actions without index or filesystem work in the action loop.
+- Added fixed-size pinned-page equivalence checks against CompactInt32 arithmetic.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External training remains fail-closed. Coordinator merge writes and runtime external execution are not yet integrated.
+
+## PB-12 Phase 4.6 - Commit prepared admission batches externally
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added external catalog classification, row-shape preflight, append, deterministic component compaction, and atomic generation publication to prepared coordinator admission.
+- External row and logical-value totals are read from the committed manifest and advanced with checked coordinator capacity limits.
+- Added a catalog classification overload that uses one fixed packed-node scratch record rather than materializing one packed node per candidate.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The request-level external execution gate remains. This milestone does not validate traversal row/page access or external merge integration.
+
+## PB-12 Phase 3.5 - Route coordinator state reads through external catalog
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Coordinator state reconstruction and existence checks now select the external catalog when configured.
+- Removed `noexcept` from those checks because bounded external index operations can fail.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest `test_multiway_solver`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Prepared admission, row access, merge, and external workflow execution remain incomplete and fail closed.
+
+## PB-12 Phase 5.21 - Persist exact external logical value counts
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a 64-bit logical value count to schema 2 aggregate generation manifests and enforced row/value count consistency and monotonic commits.
+- Kept schema 1 manifest loading. Legacy manifests with rows receive an unknown-count sentinel and fail closed on the next commit instead of undercounting existing values.
+- Added schema 1 compatibility and schema 2 round-trip coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug builds for `test_multiway_external_storage` and `test_multiway_solver`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator does not yet supply or consume this persisted count for external row preflight.
+
+## PB-12 Phase 3.4 - Attach external storage to coordinator
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added optional external training storage ownership to `MultiwaySolverCoordinator` and deterministic component path/resource construction.
+- External mode no longer allocates reference sparse-row or public-catalog capacity, and seeds/verifies the root generation at coordinator construction.
+- Reserved 512 bytes of the configured row/page cache for the row-index cache; the remaining configured bytes bound the page cache.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug builds for `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator admission, traversal lookups, merge, checkpoint, and export do not yet use this owned storage; external solver requests remain fail-closed.
+
+## PB-12 Phase 3.3 - Seed external root generation
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added idempotent external root initialization as durable generation 1, reserving batch 1 for the root seed and exposing the next aggregate batch number.
+- Reopen validates catalog counts, row/page generations, page allocation, and root identity against the aggregate manifest.
+- Tested first initialization, repeat initialization, reopen, next-batch sequencing, and rejection of a conflicting root.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- `MultiwaySolverCoordinator` does not yet own or call the external training facade.
+
+## PB-12 Phase 5.20 - Invalidate missing external row bindings
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- A failed external row lookup now clears its output binding instead of leaving a previous row identity and page range available to callers.
+- Added regression coverage that performs a successful lookup followed by a missing-row lookup and checks the binding is invalidated.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External row bindings are not yet consumed by `MultiwaySolverCoordinator`.
+
+## PB-12 Phase 4.7 - Append classified external catalog batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added catalog and aggregate-facade APIs that append validated descriptor batches using admission flags, packing records directly without a separate packed-node vector.
+- Verifies sorted unique state IDs, flag values, duplicate new IDs, and that states marked existing are present in the durable catalog.
+- Preserved the existing packed-node overload without adding a batch-sized flags allocation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- `MultiwaySolverCoordinator` does not yet call the external catalog admission API; external execution remains fail-closed.
+
+## PB-12 Phase 5.19 - Expose external row binding metadata
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added read-only row identity, seat, shape, and page-range accessors to the opaque external row binding so coordinator preflight can compare admitted row shapes without loading or retaining row indexes.
+- Added focused checks for the binding returned by external row lookup.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator admission and merge do not yet consume the binding metadata.
+
+## PB-12 Phase 3.2 - Pack public nodes without catalog retention
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Exposed the existing packed-node conversion as a stateless catalog utility so external admission can persist validated records without retaining them in a `MultiwayPublicCatalog`.
+- Added an encoding comparison proving the stateless conversion matches the in-memory catalog's packed node for the same root descriptor.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator has not yet switched catalog ownership to the external backend.
+
+## PB-12 Phase 4.6 - Classify external catalog batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added reusable-buffer classification of sorted public-state candidate batches against the external catalog, returning existing packed records and new-state flags for coordinator preflight.
+- Rejects zero, duplicate, or unsorted IDs before classifying; tests cover existing and missing entries.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Catalog batch classification is not yet called by `MultiwaySolverCoordinator`; solver execution remains fail-closed for the external backend.
+
+## PB-12 Phase 5.18 - Freeze external execution gate
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a solver contract test proving valid-looking `ExternalCompactInt32` limits still fail closed until coordinator integration is complete.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External execution remains intentionally unavailable; no training workflow was run.
+
+## PB-12 Phase 5.17 - Verify deterministic generation hashes
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a two-directory fixture that repeats the same catalog, row, and cell batch and checks both external generations publish identical content hashes.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The external facade remains outside the solver coordinator; this verifies deterministic generation identity, not cross-backend policy equivalence.
+
+## PB-12 Phase 5.16 - Hash external component generations
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added deterministic aggregate content identity from the catalog, row, and page run checksums to each published training generation.
+- Verified identity survives reopen and remains unchanged after failed manifest publication and abort.
+- This is a durable component-run hash, not the canonical in-memory policy-content hash.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The external facade remains outside the solver coordinator; workflow execution remains fail-closed.
+
+## PB-12 Phase 5.15 - Inject aggregate publish failure through typed stores
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the typed external-storage transaction test to fail aggregate manifest publication after child page data has committed.
+- Verified explicit abort restores the prior manifest and removes both the new catalog record and row metadata.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The facade remains outside the solver coordinator; no large training job was run.
+
+## PB-12 Phase 5.14 - Coordinate typed external training components
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added `MultiwayExternalTrainingStorage`, which recovers the aggregate transaction before opening catalog, row, and page components.
+- Added a typed batch lifecycle for catalog append, row admission, page updates, bounded compaction, final fingerprint publication, manifest counts, and rollback/reopen after child publication.
+- Added commit/reopen and abort/recovery coverage across the typed components. Synchronization mode must match across the aggregate and all child stores.
+- The solver coordinator does not yet select this facade, and workflow execution remains fail-closed.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, and workflow config targets: passed.
+- Focused CTest: passed (3/3).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator admission and merge are not yet wired to the facade; no large training job was run.
+
+## PB-12 Phase 5.13 - Finalize merge identity before aggregate commit
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Allowed the aggregate transaction to begin with a pending merge fingerprint and atomically finalize the WAL identity once deterministic merge processing has produced the fingerprint.
+- Added commit coverage for delayed finalization and restart recovery coverage proving an unfinalized batch rolls back to the previous component generations.
+- The aggregate transaction is still not wired into the coordinator batch lifecycle.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator batch transaction integration remains outstanding; no large training job was run.
+
+## PB-12 Phase 4.9 - Add caller-buffer record lookups
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a fixed-buffer external record lookup API and used it for external row metadata, avoiding per-query temporary vector allocation at bucket resolution boundaries.
+- Kept the vector lookup overload for cold callers and verified both APIs return identical payloads.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage and solver targets: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator public-state and row lookup wiring remains outstanding.
+
+## PB-12 Phase 4.8 - Bound external record cache lookup work
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Replaced per-lookup linear scans across the record cache with deterministic direct-mapped slots, keeping cache memory within its configured capacity.
+- Added a one-record cache fixture verifying deterministic collision replacement and hit, miss, and eviction counters.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Cache storage remains a primitive not yet wired into coordinator public-state lookup.
+
+## PB-12 Phase 5.12 - Make pinned bucket handles move-only
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Made external pinned bucket handles move-only so copied handles cannot double-unpin a cache page.
+- Added a compile-time ownership contract assertion to the external storage test.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage and solver targets: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator integration remains outstanding; no large training job was run.
+
+## PB-12 Phase 5.11 - Verify external row and page compaction
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the deterministic accumulator differential fixture to compact both external row and cell stores before reopening.
+- Verified reopened regret and average policies retain exact reference values after compaction.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This verifies storage-level compaction only; coordinator integration and full phase acceptance remain outstanding.
+
+## PB-12 Phase 5.10 - Add read-only external bucket leases
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added explicit read-only and writable page leases. Read leases support regret policy, average strategy, and pruning checks without repeating row lookup or page loading across the action menu.
+- Writable leases mark a page dirty once and preserve ordered fixed-point delta application. Tests reject mutation through a read-only lease and compare pinned queries with the in-memory reference.
+- Coordinator selection and aggregate batch transaction integration remain outstanding; external solver execution remains disabled.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, workflow config, and memory targets: passed.
+- Focused CTest for those targets: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Leases are not yet used by the coordinator; no large training job was run.
+
+## PB-12 Phase 5.9 - Pin external pages at bucket boundaries
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a pinned writable bucket view so callers can resolve and load a page before processing its ordered action deltas.
+- Differential fixture now applies contiguous bucket groups through one pin while preserving the original delta order and matches the reference accumulator.
+- The coordinator does not yet select this adapter; external execution remains disabled pending integration with admission, merge transactions, checkpointing, and export.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, workflow config, and memory targets: passed.
+- Focused CTest for those targets: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- No coordinator or training workflow integration; no large training job was run.
+
+## PB-12 Phase 5.8 - Add external compact row adapter
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added deterministic sorted row admission and an owner-validated external fixed-point row/page adapter sharing the reference compact arithmetic kernel.
+- Added differential tests for regret matching, average strategy, saturation, large strategy masses, page boundaries, and reopen behavior.
+- `ExternalCompactInt32` remains unavailable to solver execution. Coordinator batching, page pinning outside delta loops, and aggregate generation integration remain required.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, workflow config, and memory targets: passed.
+- Focused CTest for those targets: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This adapter is a storage primitive and is not integrated with coordinator merge/checkpoint/export paths; no large training job was run.
+
+## PB-12 Phase 5.7 - Resolve external row buckets to pages
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a bounded row-index operation that resolves an infoset bucket to its stable page ID, page index, in-page bucket count, and action count.
+- Covered the final short page and out-of-range bucket behavior, providing a single cold-boundary lookup before callers pin a page.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This resolver is not yet called from coordinator traversal or merge paths.
+
+## PB-12 Phase 4.7 - Reconstruct external catalog descriptors
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added cold-boundary reconstruction of a full public-state descriptor from a bounded parent chain, including betting state, board and incoming edge, restored action menu, and chronological betting history.
+- Verified descriptor menu fields survive catalog reopen and reconstruction.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator still uses the in-memory public catalog. External descriptor reconstruction is not yet on the runtime path.
+
+## PB-12 Phase 4.6 - Persist external catalog action menus
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended external catalog records with a versioned, checksummed fixed-width legal-action menu payload, so packed nodes no longer depend on an in-memory menu handle after restart.
+- Added descriptor-based append and bounded caller-buffer lookup. Retained the standalone packed-node codec; the node-only catalog append path is explicitly menu-less.
+- External catalog records are now 381 bytes: the 225-byte node codec plus a 156-byte menu record.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Catalog action-menu persistence is a storage primitive only. Coordinator admission, descriptor reconstruction, and external backend runtime selection remain unintegrated and fail-closed.
+
+## PB-12 Phase 5.6 - Post-commit cleanup failure coverage
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added failure injection after the aggregate generation is published but before transaction backup cleanup completes.
+- Verified reopening selects the fully published generation and all three child stores expose the committed records.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator batch integration is still outstanding; this test covers transaction recovery in isolation.
+
+## PB-12 Phase 5.5 - External cell differential fixture
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a deterministic per-cell comparison between external compact pages and unchanged `MultiwayCompactStorage` for exact fixed-point regret and strategy-mass inputs.
+- The fixture checks action-major cell offsets, negative regrets, persisted values, and the full-width `uint64` strategy-mass representation.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This proves page encoding and persistence against the reference for a bounded fixture. Coordinator merge routing and batch-level worker-delta equivalence remain unimplemented.
+
+## PB-12 Phase 5.4 - External multi-store batch transaction
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a root-level batch journal and backup protocol that recovers catalog, row-index, and page-store `CURRENT` manifests as one generation before child stores reopen.
+- Added aggregate-manifest commit validation and rollback tests for partial child publication and failed global publication.
+- Added opt-in input-run retention during deterministic compaction so component generations can be compacted before the aggregate commit without breaking rollback.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator does not yet use this transaction or external stores. External solver execution remains fail-closed. Runtime crash injection and filesystem durability behavior remain platform dependent.
+
+## PB-12 Phase 3 foundation - External storage contracts
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added an explicitly selected `ExternalCompactInt32` configuration with bounded catalog/page caches, WAL, segments, compaction scratch, disk reserve, and durability settings. Included its resource identity in configuration fingerprints and reports.
+- Added a fixed-width sorted-run store with checksummed generation manifests, batch WAL recovery, atomic publication, deterministic compaction, disk-reserve checks, and a bounded pinned page cache. External solver execution and preflight remain fail-closed until catalog and row integration is complete.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Public-state catalog and sparse row/cell stores are not yet connected to the coordinator. External execution remains rejected; the current memory ledger is conservative and does not establish large-scale feasibility.
+- Crash injection currently covers partial WAL rollback and committed-WAL replay after segment failure, not every publication boundary.
+
+## PB-12 Phase 4.1 - Packed public-node record codec
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a versioned 225-byte little-endian codec for packed public nodes. The format is independent of compiler struct padding and rejects invalid counts, enums, and boolean fields.
+- Added deterministic round-trip and schema-corruption coverage. Catalog segment/index integration remains outstanding.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The codec is not yet used by a durable public catalog. External execution remains rejected.
+
+## PB-12 Phase 4.2 - Durable public catalog primitive
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a sorted append-only external catalog over fixed node records, duplicate-ID rejection, deterministic compaction at batch boundaries, and bounded iterative parent-chain reconstruction.
+- Verified lookup and parent-first reconstruction after reopening the generation manifest.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This catalog primitive is not wired into `MultiwaySolverCoordinator` or its hot lookup paths. Existing solver execution remains on in-memory storage; the explicit external mode remains rejected.
+
+## PB-12 Phase 5.1 - External row metadata index
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added fixed-width state records containing per-seat row shape and deterministic page ID ranges. The index retains all 64 bits of the public-state key and supports later seat-row additions by publishing a newer state record.
+- Row admission validates ordering and shape, bounds generated page identities, and advances the caller's page counter only after the metadata batch is committed.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Fixed accumulator cell pages are not implemented, and the row index is not connected to coordinator admission. External solver execution remains rejected.
+
+## PB-12 Phase 5.2 - Bounded external compact page cache
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added fixed-width checksummed compact page records with separate `int32` regret and `uint64` strategy-mass arrays, fixed action-major page stride, identity validation, and before-image rollback.
+- Added a preallocated bounded typed page cache. Dirty capacity is capped by cache, WAL, and segment limits; pages must be pinned before mutation and cannot be evicted while pinned or dirty.
+- Added page-cache hit, miss, and eviction counters and verified the one-page cache remains within its configured byte bound.
+- Persisted the row page-ID allocator in the same sorted row-index store generation, restoring it after restart to avoid page-ID reuse.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Row/page stores remain primitives and are not connected to coordinator row admission or worker merge. No in-memory differential solver fixture has been run; external execution remains rejected.
+
+## PB-12 Phase 5.3 - Aggregate generation manifest format
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a fixed-width checksummed top-level manifest record for committed batch identity and catalog, row, and page generation/count references. Publication uses an atomic replace and optional durable file/directory flush.
+- Added round-trip, checksum rejection, and failed-publication preservation tests.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The aggregate manifest is not yet the coordinator's commit point. Catalog, row, and page stores still publish independently; external execution remains rejected until a recovery-safe multi-store batch transaction is integrated.
+
+## PB-12 Phase 2.3 - Packed mapped table views
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Replaced schema-5 per-table board vectors with 40-byte non-owning views and made registry lookup binary-search the mapped, sorted directory. Kept schema-4 mapped record loading and stable `MultiwayBucketTable` references.
+- Accounted the mapped view vector and one shared model identity separately, and reject schema-5 mappings whose table metadata allocation would exceed 128 MiB. The deterministic full-catalog sizing test verifies `table_count * sizeof(MultiwayBucketTable) + sizeof(MultiwayModelIdentity)` remains below that limit.
+- Resolved sentinel collisions at full 256- and 65,536-bucket widths by deriving blocked assignments from the board and canonical combo index. Verified the highest valid bucket decodes correctly at each width transition.
+- Added exhaustive assignment and lookup comparisons across schema-4 owned/mapped and schema-5 owned/mapped fixtures, plus duplicate-directory, offset-overflow, hash, and identity rejection cases.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_model.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build and CTest for bucket artifact, generation, and model: passed (3/3).
+- Earlier related focused CTest for bucket catalog, future bucket, range belief, search session, solver, artifact, and artifact preflight: passed (7/7).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all 118 CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- The 128 MiB metadata result is a deterministic view-vector capacity formula, not a target-machine residency measurement. No large bucket catalog generation or target-machine benchmark was run.
+
+## PB-12 Phase 2.2 - Stream schema 5 bucket artifacts
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Kept resumable schema-4 staging records, then converted them at finish to schema 5 using an assignment scratch file and one bounded directory buffer. Newly published streaming artifacts now use the selected 1/2/4-byte assignment width.
+- Preserved ordered worker publication, progress hashes, resume behavior, and atomic final publication. Conversion validates canonical board order and assignment ranges.
+- Generation tests confirm identical schema-5 output for serial and parallel writers and equivalent mapped inspection hashes.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused artifact and generation targets built successfully.
+- CTest `multiway_bucket_artifact` and `multiway_bucket_generation`: passed after final edits.
+- `git diff --check`: passed.
+
+### Limitations
+
+- No target-machine residency measurement or large artifact qualification was run.
+
+## PB-12 Phase 2.1 - Schema 5 compact bucket encoding
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added schema-5 directory and assignment sections with width-selected little-endian assignments, reserved invalid sentinels, section hashes, and table identity checks.
+- Retained schema-4 deserialization and mapped loading. Schema-5 inspection validates through the mapped loader and reports content hashes.
+- Exhaustively compared all 1,326 hole assignments for the three canonical fixture tables across schema 4 and schema 5. Verified width transitions at 256/257 and 65,536/65,537 buckets, schema-5 mapping, and section hash rejection.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `compact_build.py --target test_multiway_bucket_artifact --target test_multiway_bucket_generation --parallel 6`: passed.
+- CTest `multiway_bucket_artifact` and `multiway_bucket_generation`: passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- No large artifact generation or target-machine residency measurement was run.
+
+## PB-12 Phase 0–1 - Repair memory accounting
+
+**Status:** Complete
+**Completed:** 2026-10-26
+**Implementation commit:** `f1db9b4 PB-12 (memory) Multiway: Correct training estimates`
+
+- Replaced the synthetic 1 KiB public-state charge with packed node, sorted index, menu, and admission-scratch capacity terms. Added catalog and compact-storage reallocation peaks, page metadata, and exact coordinator pending-merge cell sizing.
+- Replaced output-sized checkpoint/export private estimates with stream scratch bounds. Added distinct file-cache and disk-output ledger fields, and bumped the estimate schema to version 3.
+- Added deterministic 4M/34M sizing fixtures. The 34M fixture retains the 5M-row/100M-cell profile and rejects the unchanged 51,539,607,552-byte working-set gate after a 15.95 GB post-validation baseline. No training workflow ran.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_p7_memory_contracts.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_storage_sizing.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused memory, storage sizing, qualification report, and P7 memory contract tests passed.
+- `scripts/python/full_build.py`: build passed; all 118 CTest tests passed.
+- No training, benchmark, or pilot workload was run.
+
+### Limitations
+
+- 34M conservatism is supported by synthetic maximum-capacity accounting, not a measured 34M runtime peak or feasibility claim. External storage, disk admission integration, and runtime reconciliation remain in later phases.
+
+## PB-12 - 50M memory investigation and implementation plan
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Documented the 4M admission failure, 34M preflight rejection, measured mapping residency, checkpoint/export peaks, and current 50M architecture limits.
+- Defined a bounded out-of-core design, corrected memory-accounting requirements, compact bucket format, durable checkpoint/export strategy, focused tests, and staged validation gates.
+
+### Files
+
+- `docs/pb12_50m_memory_scaling_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Documentation diff reviewed. No build, test, benchmark, or training job was run because this task changed documentation only.
+
+### Limitations
+
+- Implementation has not started. No 500K, 1M, 5M, or 50M workload was run or authorized.
+
+## PB-12 - Guarded 500K qualification
+
+**Status:** Stopped by capacity and memory gates
+**Completed:** 2026-10-26
+**Implementation commits:** `0b9f683`, `1fc46d4`, `2565c6c`
+
+- Added versioned 500K sizing profiles and extended the guarded runner to 500 batches. The first profile retained the 4,000,000 public-state cap.
+- The first guarded 500K run stopped after 58,000 accepted trajectories with zero discards because public-state admission exceeded that cap. It recorded 3,971,363 states, 1,565,562 sparse rows, and 61,306,003 sparse values.
+- The v2 profile raised the public-state ceiling to 34,000,000. The config parser ceiling was raised to match, with a boundary test. The retry then stopped at memory preflight before any batch: estimated working set 69,933,107,152 bytes exceeded the unchanged 51,539,607,552-byte limit.
+- Both terminal manifests and the logs were preserved. Neither attempt produced a checkpoint or final blueprint.
+
+### Files
+
+- `configs/multiway/f1_qualification_500k_v1.cfg`
+- `configs/multiway/f1_qualification_500k_v2.cfg`
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- RelWithDebInfo training binary rebuilt with clean source provenance matching PB-12.
+- Bucket inspection matched the configured identity and payload hash.
+- Debug full build and compact CTest passed after the config ceiling change.
+- The v2 run passed provenance and disk preflight, then the training memory preflight rejected the configured workload before training.
+
+### Limitations
+
+- 500K remains unqualified. The configured 34M public-state profile exceeds the current memory gates; no 1M, 5M, or 50M run was started.
+- No checkpoint or blueprint exists to load or validate. Further work requires a larger-memory system or a memory-footprint reduction, with the existing guards retained.
+
+## Restore PB-9 worker-scaling findings
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Restored the final pre-deletion PB-9 multiway training scaling report from Git history.
+- Repaired the existing README documentation link without changing its target.
+
+### Files
+
+- `docs/pb9_multiway_training_scaling_findings.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Restored file blob matches commit `b1c4263` exactly.
+- `git diff --check`: passed.
+- Builds and tests were not run because this change restores Markdown documentation only.
+
+### Limitations
+
+- None identified.
+
+## PB-10 - Complete TexasLogging application logging
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added the non-installed `TexasSolver::logging` target with strict TOML configuration, category and sink filtering, rotation, append-only training audit output, terminal-safe progress rendering, and compile-time/runtime disable paths.
+- Integrated multiway workflow logging while preserving workflow files, reports, exit codes, progress options, machine-readable streams, and solver package boundaries.
+- Added focused logging, progress, disabled-mode, package-boundary, source-classification, and workflow-boundary coverage.
+
+### Files
+
+- `CMakeLists.txt`
+- `README.md`
+- `vcpkg.json`
+- `config/logging.example.toml`
+- `include/logging/config.hpp`
+- `include/logging/log.hpp`
+- `include/logging/progress.hpp`
+- `src/logging/config.cpp`
+- `src/logging/config_stub.cpp`
+- `src/logging/log.cpp`
+- `src/logging/log_stub.cpp`
+- `src/logging/progress.cpp`
+- `src/logging/progress_stub.cpp`
+- `src/logging/terminal.cpp`
+- `src/logging/terminal.hpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_logging.cpp`
+- `tests/test_logging_config.cpp`
+- `tests/test_logging_disabled.cpp`
+- `tests/test_logging_progress.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/cmake/test_package_config_contract.cmake`
+- `tests/cmake/test_source_classification.cmake`
+- `docs/application_and_script_io.md`
+- `docs/texas_logging.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Enabled focused CTest: 7/7 passed; concurrent progress test repeated 20/20.
+- Enabled workflow and logging targets built successfully.
+- Logging-off workflow and disabled logging targets built successfully; logging-off focused CTest: 4/4 passed, with only `test_logging_disabled` registered among logging tests.
+- `python scripts/python/full_build.py`: build passed and all 117 CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Progress remains a single synchronous line; Unicode width handling, structured JSON logs, network sinks, runtime category registration, and asynchronous logging remain deferred.
+
 ## Security remediation findings
 
 **Status:** Complete
