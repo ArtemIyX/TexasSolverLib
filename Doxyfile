@@ -1,0 +1,25 @@
+# TexasSolver C++ API documentation.
+PROJECT_NAME = "TexasSolver"
+PROJECT_BRIEF = "C++ API reference"
+OUTPUT_DIRECTORY = build/doxygen
+OUTPUT_LANGUAGE = English
+
+# Scan project-owned headers, including test support headers.
+INPUT = include src tests
+FILE_PATTERNS = *.h *.hpp
+RECURSIVE = YES
+EXCLUDE = external
+
+# Include declarations in the reference, while keeping private APIs hidden.
+EXTRACT_ALL = YES
+EXTRACT_PRIVATE = NO
+EXTRACT_STATIC = NO
+
+# Generate HTML only.
+GENERATE_HTML = YES
+HTML_OUTPUT = html
+GENERATE_LATEX = NO
+
+# Enable type and collaboration diagrams.
+HAVE_DOT = YES
+DOT_IMAGE_FORMAT = svg

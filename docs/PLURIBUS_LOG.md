@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## Doxygen GitHub Pages workflow
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added a Doxygen configuration for project-owned `.h` and `.hpp` files in `include/`, `src/`, and `tests/`, excluding `external/`.
+- Added a GitHub Actions workflow that regenerates HTML on pushes to `main` and deploys the generated Pages artifact.
+- Pinned GitHub Actions to full commit SHAs.
+
+### Files
+
+- `Doxyfile`
+- `.github/workflows/docs.yml`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the workflow and Doxygen configuration.
+- Doxygen generation and GitHub Pages deployment were not run because this task only added their configuration.
+
+### Limitations
+
+- GitHub Pages must be enabled with the repository's publishing source set to GitHub Actions before deployment can succeed.
+- The workflow and generated site have not been exercised on GitHub Actions.
+
 ## C++ header documentation coverage
 
 **Status:** Complete
