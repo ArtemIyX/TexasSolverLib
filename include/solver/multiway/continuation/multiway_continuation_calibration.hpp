@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Calibration cases, limits, and results for fixed continuation policies.
+ */
+
 #include "solver/multiway/continuation/multiway_continuation_policy.hpp"
 
 #include <array>
@@ -10,6 +14,7 @@
 namespace texas::solver::multiway
 {
 
+	/** One policy-value comparison against a reference, optionally held out. */
 	struct MultiwayContinuationCalibrationCase
 	{
 		std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> policy_values{};
@@ -17,6 +22,7 @@ namespace texas::solver::multiway
 		bool held_out = false;
 	};
 
+	/** Policy and sampling settings used during continuation calibration. */
 	struct MultiwayContinuationCalibrationConfig
 	{
 		MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
@@ -25,17 +31,21 @@ namespace texas::solver::multiway
 		std::uint32_t street_boundary = 0U;
 		double bias_factor = 5.0;
 		std::uint64_t identity_version = 1U;
+		/** Checks rollout, boundary, bias, and identity settings. */
 		void validate() const;
 	};
 
+	/** Maximum accepted calibration error, bias, and nested improvement. */
 	struct MultiwayContinuationCalibrationLimits
 	{
 		double maximum_held_out_error = 1.0;
 		double maximum_bias = 1.0;
 		double minimum_nested_improvement = 0.0;
+		/** Checks that all configured quality limits are valid. */
 		void validate() const;
 	};
 
+	/** Identity, measured metrics, and limit outcome from calibration. */
 	struct MultiwayContinuationCalibrationResult
 	{
 		std::uint64_t identity = 0U;
@@ -47,6 +57,7 @@ namespace texas::solver::multiway
 		bool within_limits = false;
 	};
 
+	/** Measures policy error, bias, variance, and nested improvement for cases. */
 	[[nodiscard]] MultiwayContinuationCalibrationResult calibrate_multiway_continuation(
 		const MultiwayContinuationCalibrationConfig& config,
 		const std::vector<MultiwayContinuationCalibrationCase>& cases,

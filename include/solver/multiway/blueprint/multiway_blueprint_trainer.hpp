@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Offline multiway blueprint training configuration, status, and session APIs.
+ */
+
 #include "solver/multiway/blueprint/multiway_export.hpp"
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
@@ -22,6 +26,7 @@ namespace texas::solver::multiway
 	struct MultiwayExternalCheckpointManifest;
 	struct MultiwayExternalStorageTelemetry;
 
+	/** Subsystem where configured capacity prevented another training batch. */
 	enum class MultiwayTrainingCapacityStage : std::uint8_t
 	{
 		None = 0U,
@@ -32,6 +37,7 @@ namespace texas::solver::multiway
 		Discovery = 5U,
 	};
 
+	/** Builds an initial root snapshot from game rules, ranges, and abstractions. */
 	[[nodiscard]] MultiwayRootSnapshot make_multiway_initial_blueprint_root(
 		const MultiwayGameRules& rules,
 		MultiwayPrivateConfig private_ranges,
@@ -40,6 +46,7 @@ namespace texas::solver::multiway
 		std::uint64_t leaf_model_version,
 		PlayerId first_player = 0);
 
+	/** Batch-level CFR weighting, discounting, pruning, and export-window policy. */
 	struct MultiwayBlueprintIterationSchedule
 	{
 		bool linear_iteration_weighting = true;
@@ -60,11 +67,15 @@ namespace texas::solver::multiway
 		// included batch in its separately accumulated weighted window.
 		std::uint64_t late_window_start_batch = 0;
 
+		/** Checks schedule parameters and their supported ranges. */
 		void validate() const;
+		/** Returns the strategy accumulation weight for a one-based batch index. */
 		[[nodiscard]] double strategy_weight(std::uint64_t one_based_batch) const;
+		/** Returns a stable identity hash for all schedule settings. */
 		[[nodiscard]] std::uint64_t identity() const noexcept;
 	};
 
+	/** Batch-boundary training counters, capacity, worker, memory, and timing telemetry. */
 	struct MultiwayBlueprintTrainingStatus
 	{
 		std::uint64_t batches = 0;
@@ -194,12 +205,14 @@ namespace texas::solver::multiway
 	};
 
 	// Called after each clean batch, outside the traversal and merge kernels.
+	/** Callback invoked after each completed batch, outside traversal and merge. */
 	using MultiwayBlueprintBatchProgressCallback =
 		void (*)(const MultiwayBlueprintTrainingStatus&, void*);
 
 	// Public-only coverage summary for a sparse full-blueprint export. Zero
 	// counts remain meaningful: they distinguish an empty sparse table from an
 	// unavailable report without retaining private cards or ranges.
+	/** Public-state coverage totals accumulated during blueprint training. */
 	struct MultiwayBlueprintCoverageManifest
 	{
 		std::uint64_t visited_public_descriptors = 0;
@@ -215,6 +228,7 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 4> street_visits{};
 	};
 
+	/** Complete validated state required to resume blueprint training. */
 	struct MultiwayBlueprintTrainingCheckpoint
 	{
 		MultiwayModelIdentity identity{};
@@ -224,9 +238,11 @@ namespace texas::solver::multiway
 		std::vector<double> late_window_baseline;
 		MultiwayCheckpointTelemetry telemetry{};
 
+		/** Checks identity, counters, coordinator state, and late-window values. */
 		void validate() const;
 	};
 
+	/** Precomputed counts and byte sizes for a full-blueprint export. */
 	struct MultiwayFullBlueprintExportPlan
 	{
 		MultiwayModelIdentity identity{};
@@ -238,9 +254,11 @@ namespace texas::solver::multiway
 		std::uint64_t order_index_bytes = 0U;
 		bool compact_direct_order = false;
 
+		/** Checks identity, row/action counts, and serialized-size fields. */
 		void validate() const;
 	};
 
+	/** Hashes, sizes, scratch use, and publication mode from a full export. */
 	struct MultiwayFullBlueprintExportResult
 	{
 		MultiwayFullBlueprintExportPlan plan{};
@@ -256,6 +274,7 @@ namespace texas::solver::multiway
 
 	// Production composition boundary. Artifact inputs are non-owning and must
 	// outlive a training session; their model identity is validated on creation.
+	/** Complete rules, model, scheduling, capacity, and memory configuration. */
 	struct MultiwayBlueprintTrainingConfig
 	{
 		MultiwayGameRules rules = MultiwayGameRules::standard_6max();
@@ -283,15 +302,19 @@ namespace texas::solver::multiway
 		MultiwayWorkingSetMonitor working_set_monitor{};
 		bool immutable_batch_epochs = true;
 
+		/** Validates the configuration and compatibility of its component settings. */
 		void validate() const;
+		/** Derives the model identity represented by this configuration. */
 		[[nodiscard]] MultiwayModelIdentity identity() const;
 	};
 
 	// Coordinator-owned offline session. Publishing creates an immutable compact
 	// root artifact and never exposes dense sparse-row storage to callers.
+	/** Runs offline training and exports policies or resumable checkpoints. */
 	class MultiwayBlueprintTrainer
 	{
 	public:
+		/** Binds a trainer to its batch runner, coordinator, schedule, and inputs. */
 		MultiwayBlueprintTrainer(
 			MultiwayModelIdentity identity,
 			MultiwayRootBatchRunner& batch_runner,
@@ -307,6 +330,7 @@ namespace texas::solver::multiway
 			const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
 			MultiwayWorkingSetMonitor working_set_monitor = {});
 
+		/** Runs the requested batches and invokes progress after each clean batch. */
 		void run_batches(
 			std::uint64_t batch_count,
 			std::uint64_t trajectories_per_batch,
@@ -314,30 +338,46 @@ namespace texas::solver::multiway
 			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
 			void* progress_context = nullptr);
 
+		/** Returns the number of completed trajectories. */
 		[[nodiscard]] std::uint64_t trajectories() const noexcept { return status_.trajectories; }
+		/** Returns the number of completed batches. */
 		[[nodiscard]] std::uint64_t batches() const noexcept { return status_.batches; }
+		/** Returns the current batch-boundary status and telemetry. */
 		[[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept { return status_; }
+		/** Returns the public-only coverage totals. */
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
+		/** Builds an owning full-policy artifact from accumulated rows. */
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+		/** Streams a full policy artifact to path and returns export telemetry. */
 		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
 			const std::filesystem::path& path) const;
+		/** Saves a process-resume checkpoint to path. */
 		[[nodiscard]] MultiwayTrainingCheckpointWriteResult save_checkpoint_atomic(
 			const std::filesystem::path& path) const;
+		/** Saves an externally managed checkpoint and returns its manifest. */
 		[[nodiscard]] MultiwayExternalCheckpointManifest save_external_checkpoint_atomic(
 			const std::filesystem::path& path,
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash) const;
+		/** Creates an in-memory checkpoint of the current trainer state. */
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		/** Returns telemetry for configured external checkpoint storage. */
 		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry(bool include_disk_usage = true) const;
+		/** Installs an observer for external artifact publication events. */
 		void set_external_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
+		/** Exports a compact root snapshot in the selected policy mode. */
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
+		/** Initializes resume state from a compatible root-policy snapshot. */
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
+		/** Restores all training accumulators from a compatible checkpoint. */
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+		/** Restores state from a checkpoint verified against workflow and storage IDs. */
 		void resume_from_external_checkpoint(
 			const MultiwayExternalCheckpointManifest& checkpoint,
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash);
+		/** Adds a process-memory sample and associated temporary buffer estimates. */
 		void record_process_memory_snapshot(
 			MultiwayMemoryPhase phase,
 			MultiwayMemoryComponent checkpoint_buffers = {},
@@ -365,44 +405,63 @@ namespace texas::solver::multiway
 
 	// Owns the production assembly while retaining only non-owning bucket/leaf
 	// inputs. It is intentionally a library surface, not a process or service.
+	/** Owns the production training composition and presents a session API. */
 	class MultiwayBlueprintTrainingSession
 	{
 	public:
+		/** Builds the trainer composition for the supplied config and root state. */
 		MultiwayBlueprintTrainingSession(
 			MultiwayBlueprintTrainingConfig config,
 			MultiwayRootSnapshot root,
 			const MultiwayBucketRegistry& buckets,
 			const MultiwayLeafEvaluator* leaf_evaluator = nullptr);
 
+		/** Runs the requested number of batches and reports completed-batch progress. */
 		void run_batches(
 			std::uint64_t batch_count,
 			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
 			void* progress_context = nullptr);
 		// Seeds the captured PB-12 public rows through coordinator admission.
+		/** Admits captured PB-12 public rows into the coordinator. */
 		[[nodiscard]] MultiwayPB12CoverageAdmission admit_pb12_targeted_coverage();
+		/** Resumes policy state from a compatible root snapshot. */
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
+		/** Resumes complete training state from a compatible checkpoint. */
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+		/** Resumes an external checkpoint after workflow/storage identity checks. */
 		void resume_from_external_checkpoint(
 			const MultiwayExternalCheckpointManifest& checkpoint,
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash);
+		/** Exports a compact root policy in the selected accumulation mode. */
 		[[nodiscard]] MultiwayBlueprintSnapshot export_policy(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
+		/** Returns the immutable configuration used to build this session. */
 		[[nodiscard]] const MultiwayBlueprintTrainingConfig& config() const noexcept { return config_; }
+		/** Returns current batch-boundary counters and telemetry. */
 		[[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept;
+		/** Returns public-only coverage totals. */
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
+		/** Builds an owning full-policy artifact from accumulated rows. */
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+		/** Saves a full policy artifact and returns export telemetry. */
 		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
 			const std::filesystem::path& path) const;
+		/** Saves a process-resume checkpoint to path. */
 		[[nodiscard]] MultiwayTrainingCheckpointWriteResult save_checkpoint_atomic(
 			const std::filesystem::path& path) const;
+		/** Saves an externally managed checkpoint and returns its manifest. */
 		[[nodiscard]] MultiwayExternalCheckpointManifest save_external_checkpoint_atomic(
 			const std::filesystem::path& path,
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash) const;
+		/** Creates an in-memory checkpoint of the current trainer state. */
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		/** Returns telemetry for configured external checkpoint storage. */
 		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry(bool include_disk_usage = true) const;
+		/** Installs an observer for external artifact publication events. */
 		void set_external_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
+		/** Records a process-memory sample at the specified training phase. */
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:

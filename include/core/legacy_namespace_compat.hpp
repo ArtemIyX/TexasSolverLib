@@ -1,5 +1,11 @@
 #pragma once
 
+/** @file
+ * @brief Imports subsystem namespaces into texas for transitional source compatibility.
+ *
+ * New code should include the owning domain headers and qualify their namespaces.
+ */
+
 #include "core/namespaces.hpp"
 
 // Transitional source-compatibility import. New subsystem headers must use

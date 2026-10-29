@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Public-only resolver and traversal baseline capture and comparison APIs.
+ */
+
 #include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway/resolver/multiway_resolver.hpp"
@@ -14,6 +18,7 @@ namespace texas::solver::multiway
 
 	// P0.1 fixture categories. They tag reports only; callers own the matching
 	// public request and must not persist its private inputs in the report.
+	/** Fixture category used to label baseline measurements. */
 	enum class MultiwayBaselineFixtureKind : std::uint8_t
 	{
 		Valid,
@@ -24,6 +29,7 @@ namespace texas::solver::multiway
 		MaxRows,
 	};
 
+	/** Fallback source selected by a resolver baseline invocation. */
 	enum class MultiwayResolverFallbackKind : std::uint8_t
 	{
 		None,
@@ -34,6 +40,7 @@ namespace texas::solver::multiway
 
 	// The recorder fills elapsed_nanoseconds and, when available, process resident
 	// memory. A supplied nonzero observed_memory_bytes takes precedence.
+	/** Elapsed time, CPU, resident-memory, and allocation observations. */
 	struct MultiwayBaselineMeasurements
 	{
 		std::uint64_t elapsed_nanoseconds = 0;
@@ -52,6 +59,7 @@ namespace texas::solver::multiway
 	// Fixture inputs may contain private request data while they are executing.
 	// MultiwayResolverBaselineFixtureHarness never retains them after run returns;
 	// its reports are safe for public baseline output.
+	/** Resolver request and measurement inputs for one isolated fixture run. */
 	struct MultiwayResolverBaselineFixture
 	{
 		MultiwayBaselineFixtureKind kind = MultiwayBaselineFixtureKind::Valid;
@@ -62,6 +70,7 @@ namespace texas::solver::multiway
 	// This report intentionally omits hero cards, opponent ranges, and seeds.
 	// It contains only the public action menu, normalized policy, and diagnostics
 	// needed to compare the current resolver implementation with a future path.
+	/** Public-only policy, fallback, counts, and measurement results. */
 	struct MultiwayResolverBaselineReport
 	{
 		MultiwayBaselineFixtureKind fixture = MultiwayBaselineFixtureKind::Valid;
@@ -85,6 +94,7 @@ namespace texas::solver::multiway
 		MultiwayBaselineMeasurements measurements{};
 	};
 
+	/** Batch-run counts, search profile, and timing measurements. */
 	struct MultiwayTraversalBaselineReport
 	{
 		MultiwayBaselineFixtureKind fixture = MultiwayBaselineFixtureKind::Valid;
@@ -102,11 +112,14 @@ namespace texas::solver::multiway
 
 	// Builds an isolated resolver for every fixture execution so the retained
 	// stable-root fallback from one fixture cannot affect another one.
+	/** Runs resolver fixtures with isolated fallback state. */
 	class MultiwayResolverBaselineFixtureHarness
 	{
 	public:
+		/** Creates a fixture runner with resolver defaults and limits. */
 		explicit MultiwayResolverBaselineFixtureHarness(MultiwayResolverConfig config = {});
 
+		/** Resolves one fixture and returns a public-only stable report. */
 		[[nodiscard]] MultiwayResolverBaselineReport run(
 			const MultiwayResolverBaselineFixture& fixture) const;
 
@@ -120,12 +133,14 @@ namespace texas::solver::multiway
 
 	// Captures existing public paths without changing resolver or traversal
 	// behavior. The request is borrowed for the call and is never retained.
+	/** Captures the current resolver path and its public policy result. */
 	[[nodiscard]] MultiwayResolverBaselineReport record_multiway_resolver_baseline(
 		MultiwayBaselineFixtureKind fixture,
 		const MultiwayResolver& resolver,
 		const MultiwayResolverRequest& request,
 		MultiwayBaselineMeasurements measurements = {});
 
+	/** Runs and records one root batch for deterministic baseline comparison. */
 	[[nodiscard]] MultiwayTraversalBaselineReport record_multiway_traversal_baseline(
 		MultiwayBaselineFixtureKind fixture,
 		MultiwayRootBatchRunner& runner,
@@ -139,19 +154,23 @@ namespace texas::solver::multiway
 	// Deterministic equality intentionally excludes elapsed time, CPU time, and
 	// observed memory because those are environmental measurements. Policy values
 	// compare using MULTIWAY_BASELINE_POLICY_ABSOLUTE_TOLERANCE.
+	/** Compares deterministic resolver outputs within probability tolerance. */
 	[[nodiscard]] bool equivalent_multiway_resolver_baseline(
 		const MultiwayResolverBaselineReport& lhs,
 		const MultiwayResolverBaselineReport& rhs,
 		double policy_absolute_tolerance = MULTIWAY_BASELINE_POLICY_ABSOLUTE_TOLERANCE) noexcept;
 
+	/** Compares deterministic traversal outputs, excluding environmental metrics. */
 	[[nodiscard]] bool equivalent_multiway_traversal_baseline(
 		const MultiwayTraversalBaselineReport& lhs,
 		const MultiwayTraversalBaselineReport& rhs) noexcept;
 
 	// Stable serialization excludes environment-dependent measurements. It is
 	// intended for fixture golden files and contains no private request data.
+	/** Serializes stable resolver results without environment-dependent measurements. */
 	[[nodiscard]] std::string serialize_multiway_resolver_baseline(
 		const MultiwayResolverBaselineReport& report);
+	/** Serializes stable traversal results without environment-dependent measurements. */
 	[[nodiscard]] std::string serialize_multiway_traversal_baseline(
 		const MultiwayTraversalBaselineReport& report);
 

@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Public generic DCFR entry points and strategy/value helpers.
+ */
+
 #include "core/types.hpp"
 #include "solver/generic/dcfr.hpp"
 #include "solver/generic/parallel_dcfr.hpp"
@@ -14,12 +18,18 @@
 namespace texas::solver
 {
 
-	/**
-	 * @brief Validate DCFR parameters before solving.
+	/** @brief Validates DCFR parameters before solving.
+	 * @throws std::invalid_argument If an exponent is outside the supported range.
 	 */
 	void validate_dcfr_parameters(double alpha, double beta, double gamma);
-	/**
-	 * @brief Solve Kuhn poker with DCFR.
+	/** @brief Solves Kuhn poker with DCFR.
+	 * @param iterations Number of solver iterations.
+	 * @param alpha Positive-regret discount exponent.
+	 * @param beta Negative-regret discount exponent.
+	 * @param gamma Strategy-sum discount exponent.
+	 * @param workers Maximum requested worker count.
+	 * @param frontier_multiplier Controls parallel traversal frontier sizing.
+	 * @return Average strategy, game value and solve profile.
 	 */
 	SolveOutput solve_kuhn(
 		std::uint32_t iterations,
@@ -28,8 +38,14 @@ namespace texas::solver
 		double gamma,
 		std::size_t workers = 1,
 		std::size_t frontier_multiplier = 8);
-	/**
-	 * @brief Solve Leduc poker with DCFR.
+	/** @brief Solves Leduc poker with DCFR.
+	 * @param iterations Number of solver iterations.
+	 * @param alpha Positive-regret discount exponent.
+	 * @param beta Negative-regret discount exponent.
+	 * @param gamma Strategy-sum discount exponent.
+	 * @param workers Maximum requested worker count.
+	 * @param frontier_multiplier Controls parallel traversal frontier sizing.
+	 * @return Average strategy, game value and solve profile.
 	 */
 	SolveOutput solve_leduc(
 		std::uint32_t iterations,

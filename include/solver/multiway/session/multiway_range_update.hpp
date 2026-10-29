@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Quantized bucket action policies used to condition range beliefs.
+ */
+
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 
@@ -10,6 +14,7 @@ namespace texas::solver::multiway
 {
 
 	// Quantized action-major policy for every bucket at one public state.
+	/** Model-bound action probabilities for every abstract bucket at a state. */
 	struct MultiwayBucketActionPolicy
 	{
 		MultiwayModelIdentity identity{};
@@ -22,7 +27,9 @@ namespace texas::solver::multiway
 		std::uint8_t action_count = 0;
 		std::vector<std::uint16_t> probabilities;
 
+		/** Checks identities, dimensions, and quantized probability rows. */
 		void validate() const;
+		/** Returns the probability assigned to an action in one bucket. */
 		[[nodiscard]] Probability likelihood(std::uint32_t bucket, std::uint8_t action) const;
 	};
 

@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Immutable multiway bucket-table and board-registry lookup interfaces.
+ */
+
 #include "core/poker.hpp"
 
 #include "core/canonical_combo.hpp"
@@ -16,13 +20,16 @@
 namespace texas::solver::multiway
 {
 
+	/** @brief Sentinel returned when a private hand is blocked or not assigned. */
 	inline constexpr std::uint32_t MULTIWAY_INVALID_BUCKET = 0xffffffffU;
+	/** @brief Number of unordered two-card combinations in a 52-card deck. */
 	inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = core::CANONICAL_HOLE_COMBINATION_COUNT;
 
 	class MultiwayBucketRegistry;
 	struct MultiwayProcessMemorySnapshotCollection;
 	struct MultiwayBucketRegistryMemorySnapshot;
 
+	/** @brief Non-owning board view supporting packed and byte-array storage. */
 	class MultiwayBoardView
 	{
 	public:
@@ -60,10 +67,15 @@ namespace texas::solver::multiway
 			friend class MultiwayBoardView;
 		};
 
+		/** @brief Returns the number of board cards. */
 		[[nodiscard]] std::size_t size() const noexcept { return size_; }
+		/** @brief Reports whether the board contains no cards. */
 		[[nodiscard]] bool empty() const noexcept { return size_ == 0U; }
+		/** @brief Returns the card at index without bounds checking. */
 		[[nodiscard]] std::uint8_t operator[](std::size_t index) const noexcept;
+		/** @brief Returns an iterator to the first card. */
 		[[nodiscard]] const_iterator begin() const noexcept { return { bytes_, packed_, size_, packed_view_, 0U }; }
+		/** @brief Returns an iterator past the final card. */
 		[[nodiscard]] const_iterator end() const noexcept { return { bytes_, packed_, size_, packed_view_, size_ }; }
 		friend bool operator==(MultiwayBoardView left, MultiwayBoardView right) noexcept;
 		friend bool operator<(MultiwayBoardView left, MultiwayBoardView right) noexcept;
@@ -83,9 +95,11 @@ namespace texas::solver::multiway
 
 	// Immutable bucket assignments for one canonical postflop board. Entries use
 	// the fixed unordered-card index; board-blocked hands retain INVALID_BUCKET.
+	/** @brief Immutable assignments from canonical private hands to buckets on one board. */
 	class MultiwayBucketTable
 	{
 	public:
+		/** @brief Creates an owned table from identity, board and assignments. */
 		MultiwayBucketTable(
 			MultiwayModelIdentity identity,
 			core::Street street,
@@ -98,13 +112,19 @@ namespace texas::solver::multiway
 		MultiwayBucketTable(MultiwayBucketTable&&) noexcept;
 		MultiwayBucketTable& operator=(MultiwayBucketTable&&) noexcept;
 
+		/** @brief Returns the model identity that produced this table. */
 		[[nodiscard]] const MultiwayModelIdentity& identity() const noexcept;
+		/** @brief Returns the table street. */
 		[[nodiscard]] core::Street street() const noexcept;
+		/** @brief Returns the canonical board as a non-owning view. */
 		[[nodiscard]] MultiwayBoardView canonical_board() const noexcept;
+		/** @brief Returns the number of valid buckets. */
 		[[nodiscard]] std::uint32_t bucket_count() const noexcept;
 		// Stable runtime-only identity of this table's model, board, and assignments.
 		[[nodiscard]] std::uint64_t table_identity() const noexcept;
+		/** @brief Returns owned assignment storage; mapped tables expose an empty vector. */
 		[[nodiscard]] const std::vector<std::uint32_t>& assignments() const noexcept;
+		/** @brief Returns one assignment by canonical hole-combination index. */
 		[[nodiscard]] std::uint32_t assignment_at(std::size_t index) const noexcept
 		{
 			if (mapped_directory_entry_ == nullptr)
@@ -127,17 +147,24 @@ namespace texas::solver::multiway
 			}
 			return value;
 		}
+		/** @brief Returns the number of hole combinations covered. */
 		[[nodiscard]] std::size_t assignment_count() const noexcept
 		{
 			return mapped_directory_entry_ != nullptr ? MULTIWAY_HOLE_COMBINATION_COUNT : owned_->assignments.size();
 		}
+		/** @brief Reports owned board-vector capacity. */
 		[[nodiscard]] std::size_t owned_board_capacity() const noexcept;
+		/** @brief Reports active owned board-vector size. */
 		[[nodiscard]] std::size_t owned_board_size() const noexcept;
+		/** @brief Reports owned assignment-vector capacity. */
 		[[nodiscard]] std::size_t owned_assignment_capacity() const noexcept;
+		/** @brief Reports bytes of owned table storage. */
 		[[nodiscard]] std::size_t owned_storage_bytes() const noexcept;
 
 		// Cards are always compact deck indices in [0, 51].
+		/** @brief Looks up a bucket for a compact-card hole pair. */
 		[[nodiscard]] std::uint32_t lookup(const std::array<std::uint8_t, 2>& hole) const;
+		/** @brief Returns the canonical index for an unordered compact-card pair. */
 		[[nodiscard]] static std::size_t hole_index(const std::array<std::uint8_t, 2>& hole);
 
 	private:
@@ -172,9 +199,11 @@ namespace texas::solver::multiway
 
 	// Sorted immutable board registry. Lookup uses binary search, not a hash map,
 	// so traversal can resolve a board/bucket pair without a hot-path allocation.
+	/** @brief Sorted board tables with binary-search lookup and optional mapped backing. */
 	class MultiwayBucketRegistry
 	{
 	public:
+		/** @brief Builds a registry from owned tables and validates sorting/identity. */
 		explicit MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables);
 		~MultiwayBucketRegistry();
 		MultiwayBucketRegistry(MultiwayBucketRegistry&&) noexcept;
@@ -182,24 +211,31 @@ namespace texas::solver::multiway
 		MultiwayBucketRegistry(const MultiwayBucketRegistry&) = delete;
 		MultiwayBucketRegistry& operator=(const MultiwayBucketRegistry&) = delete;
 
+		/** @brief Returns the model identity shared by registry tables. */
 		[[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
 		[[nodiscard]] const std::vector<MultiwayBucketTable>& tables() const noexcept
 		{
 			return tables_;
 		}
 		// Cards are always compact deck indices in [0, 51].
+		/** @brief Returns a table for street and canonical board. */
 		[[nodiscard]] const MultiwayBucketTable& table(
 			core::Street street,
 			const std::vector<std::uint8_t>& canonical_board) const;
+		/** @brief Looks up one private hand's bucket on a canonical board. */
 		[[nodiscard]] std::uint32_t lookup(
 			core::Street street,
 			const std::vector<std::uint8_t>& canonical_board,
 			const std::array<std::uint8_t, 2>& hole) const;
 		// Cold-boundary accounting only. Mapped bytes are virtual artifact bytes;
 		// owned bytes cover registry/table metadata and copied payloads.
+		/** @brief Returns bytes owned by registry metadata and copied tables. */
 		[[nodiscard]] std::size_t owned_memory_bytes() const noexcept;
+		/** @brief Returns mapped artifact bytes, or zero for owned-only registries. */
 		[[nodiscard]] std::size_t mapped_artifact_bytes() const noexcept;
+		/** @brief Returns owned and mapped memory accounting. */
 		[[nodiscard]] MultiwayBucketRegistryMemorySnapshot memory_snapshot() const noexcept;
+		/** @brief Reports whether registry storage is backed by a mapped artifact. */
 		[[nodiscard]] bool is_mapped() const noexcept { return mapped_artifact_ != nullptr; }
 
 	private:

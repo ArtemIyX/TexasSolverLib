@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Multiway sampled traversal, bounded worker streams, and batch execution APIs.
+ */
+
 #include "solver/multiway/engine/multiway_cfr.hpp"
 #include "solver/multiway/continuation/multiway_continuation_selector.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
@@ -37,12 +41,15 @@ namespace texas::solver::multiway
 	// insertion needs six. Two spare entries keep the boundary explicit.
 	inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
 
+	/** Bounded worker-local stream of newly discovered states and solver rows. */
 	class MultiwayDiscoveryStream
 	{
 	public:
+		/** Reserves matching public-state and row capacities. */
 		explicit MultiwayDiscoveryStream(std::size_t capacity = 0U)
 			: MultiwayDiscoveryStream(capacity, capacity) {}
 
+		/** Reserves separate capacities for discovered states and rows. */
 		MultiwayDiscoveryStream(std::size_t public_state_capacity, std::size_t row_capacity)
 			: public_state_capacity_(public_state_capacity), row_capacity_(row_capacity)
 		{
@@ -50,10 +57,15 @@ namespace texas::solver::multiway
 			rows_.reserve(row_capacity_);
 		}
 
+		/** Appends a discovered public state if the bounded stream has capacity. */
 		[[nodiscard]] bool try_append_public_state(const MultiwayPublicStateDescriptor& state);
+		/** Appends an infoset row shape if the bounded stream has capacity. */
 		[[nodiscard]] bool try_append_row(const MultiwaySparseRowShape& shape) noexcept;
+		/** Clears buffered values and capacity-exhaustion flags. */
 		void rewind() noexcept;
+		/** Sorts discoveries into deterministic merge order. */
 		void sort_fixed_order() noexcept;
+		/** Prepares buffered state and row streams for coordinator merge. */
 		void prepare_for_merge();
 		[[nodiscard]] bool overflowed() const noexcept { return overflowed_; }
 		[[nodiscard]] bool public_state_capacity_exhausted() const noexcept { return public_state_capacity_exhausted_; }
@@ -69,6 +81,7 @@ namespace texas::solver::multiway
 		void record_terminal_visit() noexcept { ++terminal_visits_; }
 		void record_leaf_visit() noexcept { ++leaf_visits_; }
 		void record_missing_lookup() noexcept { ++missing_lookup_requests_; }
+		/** Truncates values and restores counters to a prior traversal boundary. */
 		void rewind_to(
 			std::size_t public_state_count,
 			std::size_t row_count,
@@ -146,6 +159,7 @@ namespace texas::solver::multiway
 			MultiwayDiscoveryParentOrderScratch& scratch);
 	} // namespace detail
 
+	/** Threshold, warmup, recovery, and exploration settings for pruning. */
 	struct MultiwayTraversalPruningConfig
 	{
 		bool enabled = false;
@@ -155,8 +169,11 @@ namespace texas::solver::multiway
 		double action_probability_threshold = 0.0;
 		double regret_threshold = 0.0;
 
+		/** Checks pruning thresholds and recovery interval. */
 		void validate() const;
+		/** Reports whether batch_number is a configured recovery batch. */
 		[[nodiscard]] bool recovery_batch(std::uint64_t batch_number) const noexcept;
+		/** Selects whether a below-threshold action is explored this batch. */
 		[[nodiscard]] bool should_explore_action(
 			std::uint64_t batch_number, bool below_threshold,
 			bool immediate_terminal, bool river) const noexcept;
@@ -165,9 +182,11 @@ namespace texas::solver::multiway
 	// Bounded lazy traversal. It samples opponent and public-chance nodes,
 	// enumerates traverser decisions, and stops at exact terminals or the typed
 	// strategic leaf boundary.
+	/** Runs one externally sampled traversal against coordinator-owned state. */
 	class MultiwayRootExternalSamplingTraversal
 	{
 	public:
+		/** Binds root, abstractions, providers, and depth/pruning limits. */
 		MultiwayRootExternalSamplingTraversal(
 			MultiwaySolverCoordinator& coordinator,
 			const MultiwayRootSnapshot& root,
@@ -181,6 +200,7 @@ namespace texas::solver::multiway
 			const MultiwayFutureBucketArtifact* future_bucket_artifact = nullptr,
 			MultiwayTraversalPruningConfig pruning = {});
 
+		/** Samples one trajectory and appends updates to caller-owned streams. */
 		[[nodiscard]] bool run(
 			PlayerId traverser,
 			std::uint64_t trajectory_id,
@@ -194,16 +214,19 @@ namespace texas::solver::multiway
 			std::vector<MultiwayActionDescriptor>* action_menu_scratch = nullptr,
 			MultiwayDiscoveryStream* discovery_stream = nullptr) const;
 
+		/** Returns the optional selector used for continuation-policy choices. */
 		[[nodiscard]] const MultiwayFixedContinuationSelector* continuation_selector() const noexcept
 		{
 			return continuation_selector_;
 		}
 
+		/** Returns the first acting seat at the root. */
 		[[nodiscard]] PlayerId root_traverser() const noexcept
 		{
 			return root_->public_state.betting.current_player;
 		}
 
+		/** Selects a traverser seat deterministically from a trajectory id. */
 		[[nodiscard]] PlayerId traverser_for_trajectory(
 			std::uint64_t trajectory_id) const noexcept
 		{
@@ -244,6 +267,7 @@ namespace texas::solver::multiway
 		MultiwayTerminalAdapter terminal_;
 	};
 
+	/** Trajectory, worker, admission, merge, and capacity outcomes for a batch. */
 	struct MultiwayRootBatchResult
 	{
 		std::uint64_t trajectories_attempted = 0;
@@ -321,6 +345,7 @@ namespace texas::solver::multiway
 		bool clean = false;
 	};
 
+	/** Per-worker bounded capacities for regret, continuation, and discoveries. */
 	struct MultiwayWorkerStreamCapacities
 	{
 		std::size_t regret_delta_entries = 0U;
@@ -332,9 +357,11 @@ namespace texas::solver::multiway
 	// Deterministic root-only batch runner. Workers are kept logically separate
 	// until coordinator merge; parallel dispatch can be introduced without
 	// changing seeds, partitions, or merge order.
+	/** Executes root trajectories and merges their worker streams deterministically. */
 	class MultiwayRootBatchRunner
 	{
 	public:
+		/** Builds workers with explicit placement and stream capacities. */
 		MultiwayRootBatchRunner(
 			MultiwayRootExternalSamplingTraversal traversal,
 			MultiwaySolverCoordinator& coordinator,
@@ -345,6 +372,7 @@ namespace texas::solver::multiway
 			bool immutable_epochs = false,
 			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		/** Builds workers using the compatibility pin_workers configuration. */
 		MultiwayRootBatchRunner(
 			MultiwayRootExternalSamplingTraversal traversal,
 			MultiwaySolverCoordinator& coordinator,
@@ -355,6 +383,7 @@ namespace texas::solver::multiway
 			bool immutable_epochs = false,
 			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		/** Builds workers with separate per-stream capacities and placement. */
 		MultiwayRootBatchRunner(
 			MultiwayRootExternalSamplingTraversal traversal,
 			MultiwaySolverCoordinator& coordinator,
@@ -365,6 +394,7 @@ namespace texas::solver::multiway
 			bool immutable_epochs = false,
 			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		/** Builds workers with separate capacities using the compatibility flag. */
 		MultiwayRootBatchRunner(
 			MultiwayRootExternalSamplingTraversal traversal,
 			MultiwaySolverCoordinator& coordinator,
@@ -375,11 +405,13 @@ namespace texas::solver::multiway
 			bool immutable_epochs = false,
 			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		/** Stops and joins worker threads. */
 		~MultiwayRootBatchRunner();
 
 		MultiwayRootBatchRunner(const MultiwayRootBatchRunner&) = delete;
 		MultiwayRootBatchRunner& operator=(const MultiwayRootBatchRunner&) = delete;
 
+		/** Runs a bounded trajectory batch and returns detailed batch telemetry. */
 		[[nodiscard]] MultiwayRootBatchResult run(
 			std::uint64_t first_trajectory_id,
 			std::uint64_t trajectory_count,
@@ -389,6 +421,7 @@ namespace texas::solver::multiway
 				std::chrono::steady_clock::time_point::max());
 		[[nodiscard]] std::uint32_t dynamic_chunk_size() const noexcept { return dynamic_chunk_size_; }
 		[[nodiscard]] MultiwaySchedulerMode scheduler_mode() const noexcept { return scheduler_mode_; }
+		/** Returns per-worker and shared runner memory accounting. */
 		[[nodiscard]] MultiwayRootBatchMemorySnapshot memory_snapshot() const noexcept;
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 

@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Declares a reusable arena for short-lived, trivially destructible objects.
+ */
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -11,13 +15,29 @@
 namespace texas::core
 {
 
+	/** @brief Reuses allocated blocks for short-lived, trivially destructible data. */
 	class Arena
 	{
 	public:
+		/** @brief Releases all arena storage for reuse. */
 		void reset() noexcept;
+		/** @brief Returns the current allocation mark used by release(). */
 		std::size_t mark() const noexcept;
+		/** @brief Rewinds allocations to a mark returned by mark().
+		 *
+		 * A mark at or beyond the current mark leaves the arena unchanged.
+		 */
 		void release(std::size_t mark) noexcept;
 
+		/** @brief Reserves raw arena storage for an array of trivially destructible objects.
+		 *
+		 * The arena does not construct the objects. Returned storage remains available
+		 * until a release(), reset(), or destruction rewinds the owning block.
+		 * @tparam T A trivially destructible type.
+		 * @param count Number of T-sized storage slots; zero returns nullptr.
+		 * @return Pointer to suitably aligned uninitialized storage.
+		 * @throws std::overflow_error If the requested byte count or alignment padding overflows.
+		 */
 		template <class T>
 		T* allocate(std::size_t count = 1);
 

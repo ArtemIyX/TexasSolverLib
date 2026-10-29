@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Interns state infosets and copies matching locked strategies by id.
+ */
+
 #include "core/legacy_namespace_compat.hpp"
 
 #include "core/types.hpp"
@@ -15,6 +19,7 @@ namespace texas::util
 	namespace detail
 	{
 
+		/** Stores a strategy in an id-addressed table or map. */
 		template <class LockedByIdTable>
 		void store_locked_strategy(
 			LockedByIdTable& locked_by_id,
@@ -24,6 +29,7 @@ namespace texas::util
 			locked_by_id.set(id, strategy);
 		}
 
+		/** Inserts a strategy into an unordered map keyed by infoset id. */
 		inline void store_locked_strategy(
 			std::unordered_map<InfosetId, std::vector<Probability>>& locked_by_id,
 			InfosetId id,
@@ -34,6 +40,7 @@ namespace texas::util
 
 	} // namespace detail
 
+	/** Interns the HUNL encoding and optionally imports its locked policy. */
 	template <class LockedByIdTable>
 	InfosetId lookup_infoset_id(
 		const HUNLState& state,
@@ -57,6 +64,7 @@ namespace texas::util
 		return id;
 	}
 
+	/** Interns a generic state's infoset key and optionally imports its locked policy. */
 	template <class G, class LockedByIdTable>
 	InfosetId lookup_infoset_id(
 		const G& state,

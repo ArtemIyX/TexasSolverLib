@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * CFR update inputs, regret-matching kernels, and quality metrics for multiway games.
+ */
+
 #include "core/types.hpp"
 #include "games/multiway_private.hpp"
 
@@ -11,14 +15,17 @@
 namespace texas::solver::multiway
 {
 
+	/** Player count and merge determinism settings for CFR updates. */
 	struct MultiwayCFRConfig
 	{
 		std::uint8_t player_count = 2;
 		bool deterministic_trajectory_merges = true;
 
+		/** Checks that player count and supported update settings are valid. */
 		void validate() const;
 	};
 
+	/** Node value, reach weights, and per-action regret/strategy deltas. */
 	struct MultiwayCFRUpdate
 	{
 		double node_value = 0.0;
@@ -46,6 +53,7 @@ namespace texas::solver::multiway
 	// Constructs an update request from the compiled private-deal proposal
 	// contract. This prevents traversal code from reconstructing conditioned
 	// sampling reach from hole cards or rejection attempts.
+	/** Builds a CFR request from the compiled private-deal sampling contract. */
 	MultiwayExternalSamplingRequest make_multiway_external_sampling_request(
 		std::vector<Probability> player_reaches,
 		PlayerId traverser,
@@ -53,12 +61,14 @@ namespace texas::solver::multiway
 		std::vector<Probability> strategy,
 		std::vector<Value> sampled_action_values);
 
+	/** Identifies whether a quality metric was enumerated or estimated by sampling. */
 	enum class MultiwayMetricMethod : std::uint8_t
 	{
 		ExactEnumeration,
 		SampledEstimate,
 	};
 
+	/** Units used to report solver values and quality metrics. */
 	enum class MultiwayValueUnits : std::uint8_t
 	{
 		Chips,
@@ -67,6 +77,7 @@ namespace texas::solver::multiway
 		NormalizedStackFraction,
 	};
 
+	/** Sampling method, uncertainty, and model metadata for a quality metric. */
 	struct MultiwayQualityDiagnostics
 	{
 		MultiwayMetricMethod method = MultiwayMetricMethod::ExactEnumeration;
@@ -83,6 +94,7 @@ namespace texas::solver::multiway
 		std::string model_version;
 	};
 
+	/** Profile values, best responses, improvements, and NashConv diagnostics. */
 	struct MultiwayNashConv
 	{
 		std::vector<Value> profile_values;
@@ -94,16 +106,19 @@ namespace texas::solver::multiway
 
 	// Product of chance reach and every seat except traverser. This deliberately
 	// has no "other player" shortcut and is valid for two through six seats.
+	/** Multiplies chance reach and all non-traverser player reaches. */
 	double multiway_counterfactual_reach(
 		const std::vector<Probability>& player_reaches,
 		PlayerId traverser,
 		Probability chance_reach = 1.0);
 
+	/** Returns a normalized regret-matching strategy for the supplied row. */
 	std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets);
 
 	// Scalar reference kernel for action-major regret rows. `regret_value_count`
 	// bounds the input span; `regret_stride` is the distance between actions for
 	// one bucket. Callers own output.
+	/** Writes regret-matched probabilities from an action-major row. */
 	void multiway_regret_matching_action_major_into(
 		const double* regrets,
 		std::size_t regret_value_count,
@@ -111,14 +126,17 @@ namespace texas::solver::multiway
 		std::size_t regret_stride,
 		Probability* output);
 
+	/** Computes weighted regret and average-strategy deltas for one sample. */
 	MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
 		const MultiwayExternalSamplingRequest& request);
 
+	/** Applies a computed update to owning regret and strategy accumulators. */
 	void apply_multiway_cfr_update(
 		std::vector<double>& regret_sum,
 		std::vector<double>& strategy_sum,
 		const MultiwayCFRUpdate& update);
 
+	/** Computes NashConv from profile and unilateral best-response values. */
 	MultiwayNashConv compute_multiway_nash_conv(
 		const std::vector<Value>& profile_values,
 		const std::vector<Value>& best_response_values,

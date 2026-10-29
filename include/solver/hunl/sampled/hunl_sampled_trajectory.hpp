@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Sampled traversal result, value deltas and deterministic merge helpers.
+ */
+
 #include "core/types.hpp"
 
 #include <array>
@@ -12,8 +16,10 @@ namespace texas::solver::hunl
 
 	class HUNLSampledStorage;
 
+	/** @brief Value estimate and work counters produced by one sampled traversal. */
 	struct HUNLSampledTraversalResult
 	{
+		/** @brief Sentinel indicating no sampled edge slot was recorded. */
 		static constexpr std::uint16_t kNoSampledEdge = std::numeric_limits<std::uint16_t>::max();
 
 		double value = 0.0;
@@ -30,6 +36,7 @@ namespace texas::solver::hunl
 		std::uint8_t sampled_edge_slot_count = 0;
 	};
 
+	/** @brief Regret and average-strategy increment for one action-bucket value. */
 	struct HUNLSampledValueDelta
 	{
 		core::InfosetId infoset_id{};
@@ -40,6 +47,7 @@ namespace texas::solver::hunl
 		std::uint64_t trajectory_id = 0;
 	};
 
+	/** @brief Worker-owned action buffers and unmerged value deltas. */
 	struct HUNLSampledWorkerScratch
 	{
 		std::vector<double> action_values;
@@ -47,13 +55,17 @@ namespace texas::solver::hunl
 		std::vector<HUNLSampledValueDelta> deltas;
 		std::size_t merge_cursor = 0;
 
+		/** @brief Clears active contents while retaining capacity. */
 		void clear_keep_capacity() noexcept;
+		/** @brief Reserves space for at least count value deltas. */
 		void reserve_deltas(std::size_t count);
 	};
 
+	/** @brief Merges one worker's deltas into sampled storage. */
 	void merge_hunl_sampled_worker_deltas(
 		HUNLSampledStorage& storage,
 		HUNLSampledWorkerScratch& scratch);
+	/** @brief Deterministically merges a collection of worker delta streams. */
 	void merge_hunl_sampled_worker_streams(
 		HUNLSampledStorage& storage,
 		std::vector<HUNLSampledWorkerScratch>& streams);

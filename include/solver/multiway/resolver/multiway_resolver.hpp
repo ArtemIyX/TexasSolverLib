@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Validated in-process resolver requests, runtime search, and fallback policy APIs.
+ */
+
 #include "games/multiway_private.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
@@ -30,6 +34,7 @@ namespace texas::solver::multiway
 
 	// Single validated owner for all bounded release-search admission and
 	// execution limits. Resolver budget state is derived from this snapshot.
+	/** Bounded solver, memory, depth, seat, and cache limits for runtime search. */
 	struct MultiwayRuntimeSearchLimits
 	{
 		MultiwaySolverLimits solver{ 1U, 1U, 1U, 1'024U, 1'024U, 8'192U, 8'192U, 64U };
@@ -44,11 +49,13 @@ namespace texas::solver::multiway
 		std::uint64_t continuation_scratch_bytes_per_worker = 0U;
 		std::uint64_t continuation_cache_bytes = 0U;
 
+		/** Checks all runtime search limits and nested solver settings. */
 		void validate() const;
 	};
 
 	// A range supplied by a resolver caller for one non-hero seat. Seat ids are
 	// explicit so the request remains valid after players have folded.
+	/** Weighted private hands supplied for one non-hero seat. */
 	struct MultiwayResolverSeatRange
 	{
 		PlayerId seat = -1;
@@ -58,6 +65,7 @@ namespace texas::solver::multiway
 	// Immutable in-process resolver boundary. public_state must describe the
 	// exact current public game state; generic ranges are intentionally separate
 	// from the known hero hole cards.
+	/** Immutable public state, private ranges, seat order, and deadline input. */
 	struct MultiwayResolverRequest
 	{
 		MultiwayModelIdentity blueprint_identity{};
@@ -76,12 +84,14 @@ namespace texas::solver::multiway
 		std::uint64_t sampling_seed = 1;
 	};
 
+	/** Legal root action and its normalized resolver probability. */
 	struct MultiwayResolverActionProbability
 	{
 		MultiwayActionDescriptor action{};
 		double probability = 0.0;
 	};
 
+	/** Completion or rejection outcome returned by a resolver invocation. */
 	enum class MultiwayResolverStatus : std::uint8_t
 	{
 		Solved,
@@ -94,6 +104,7 @@ namespace texas::solver::multiway
 		RejectedByBudget,
 	};
 
+	/** Failure reason for an attempted runtime search path. */
 	enum class MultiwayResolverSearchFailure : std::uint8_t
 	{
 		None,
@@ -106,6 +117,7 @@ namespace texas::solver::multiway
 
 	// The producing policy path. This remains separate from status so a future
 	// partial search cannot be mislabeled as a completed solve.
+	/** Policy source used to produce the returned resolver distribution. */
 	enum class MultiwayPolicyProvenance : std::uint8_t
 	{
 		None,
@@ -115,6 +127,7 @@ namespace texas::solver::multiway
 		StaticLegalFallback,
 	};
 
+	/** Runtime engine identity recorded in resolver diagnostics. */
 	enum class MultiwayResolverEngine : std::uint8_t
 	{
 		RootExternalSamplingMCCFR,
@@ -124,6 +137,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint64_t MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION = 1U;
 	inline constexpr std::uint64_t MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION = 1U;
 
+	/** Selects fallback-only, shadow, active, or release-default search behavior. */
 	enum class MultiwayResolverSearchMode : std::uint8_t
 	{
 		// Delivers only the stable-root, blueprint, or static-legal fallback chain.
@@ -138,6 +152,7 @@ namespace texas::solver::multiway
 
 	// Explains whether the request may enter runtime search. It is diagnostic-only
 	// and never contains private range or card data.
+	/** Diagnostic reason a request can or cannot enter runtime search. */
 	enum class MultiwayResolverSearchEligibility : std::uint8_t
 	{
 		NotRequested,
@@ -149,6 +164,7 @@ namespace texas::solver::multiway
 		MenuTooLarge,
 	};
 
+	/** Public model, search, memory, fallback, and deadline diagnostics. */
 	struct MultiwayResolverDiagnostics
 	{
 		MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
@@ -199,6 +215,7 @@ namespace texas::solver::multiway
 			MultiwayResolverSearchEligibility::NotRequested;
 	};
 
+	/** Sampled root action, normalized policy, and resolver diagnostics. */
 	struct MultiwayResolverResult
 	{
 		MultiwayActionDescriptor sampled_action{};
@@ -209,9 +226,11 @@ namespace texas::solver::multiway
 
 	// Host-owned fallback storage. The resolver never keeps a private cache, so
 	// cache lifetime and sharing policy remain explicit at the service boundary.
+	/** Host-owned cache of compatible stable root policies. */
 	class MultiwayStableRootPolicyCache
 	{
 	public:
+		/** Finds a cached policy matching model, state, hero, and exact hand. */
 		[[nodiscard]] bool find(
 			const MultiwayModelIdentity& identity,
 			std::uint64_t public_state_id,
@@ -220,6 +239,7 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayActionDescriptor>& menu,
 			std::vector<MultiwayResolverActionProbability>* policy) const;
 
+		/** Replaces the cached stable policy entry. */
 		void store(
 			const MultiwayModelIdentity& identity,
 			std::uint64_t public_state_id,
@@ -244,6 +264,7 @@ namespace texas::solver::multiway
 	// Artifact dependencies are borrowed and must outlive the resolver. A null
 	// bucket registry is valid only for preflop roots; postflop roots then return
 	// a validated static fallback with BucketUnavailable diagnostics.
+	/** Artifact, search, bucket, and fallback dependencies for a resolver. */
 	struct MultiwayResolverConfig
 	{
 		const MultiwayBucketRegistry* buckets = nullptr;
@@ -265,17 +286,22 @@ namespace texas::solver::multiway
 		const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
 		MultiwaySearchProfileMode search_profile_mode = MultiwaySearchProfileMode::Disabled;
 
+		/** Checks dependencies, artifacts, limits, and compatibility identities. */
 		void validate() const;
 	};
 
 	// In-process deadline-safe resolver. A successful solve retains its root
 	// policy for a later compatible deadline fallback. No private request data is
 	// retained after resolve returns.
+	/** Resolves one request through search or the configured safe fallback chain. */
 	class MultiwayResolver
 	{
 	public:
+		/** Creates a resolver with validated configuration and borrowed inputs. */
 		explicit MultiwayResolver(MultiwayResolverConfig config = {});
+		/** Resolves a request and returns a normalized policy with diagnostics. */
 		[[nodiscard]] MultiwayResolverResult resolve(const MultiwayResolverRequest& request) const;
+		/** Creates a stateful multi-decision session from a compatible request. */
 		[[nodiscard]] std::unique_ptr<MultiwayDecisionSession> begin_decision_session(
 			const MultiwayResolverRequest& request) const;
 

@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Request-local mutable search session, row exports, and root planning APIs.
+ */
+
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
@@ -18,6 +22,7 @@ namespace texas::solver::multiway
 	// Borrowed immutable, caller-owned artifact input. A bucket registry is
 	// required for postflop roots and optional for preflop roots. This P1.4
 	// session does not traverse postflop states.
+	/** Non-owning model inputs and continuation settings for one search session. */
 	struct MultiwaySearchSessionDependencies
 	{
 		const MultiwayBucketRegistry* buckets = nullptr;
@@ -25,6 +30,7 @@ namespace texas::solver::multiway
 		bool lossless_current_round_keys = true;
 	};
 
+	/** Public root identity and revision associated with a session. */
 	struct MultiwaySearchSessionRootMetadata
 	{
 		MultiwayPublicStateId public_state{};
@@ -32,6 +38,7 @@ namespace texas::solver::multiway
 		std::uint64_t revision = 0U;
 	};
 
+	/** Counts and root-row presence for an exported session view. */
 	struct MultiwaySearchSessionRowView
 	{
 		std::size_t row_count = 0U;
@@ -41,6 +48,7 @@ namespace texas::solver::multiway
 
 	// A prepared replacement root. Planning it is transactional: the current
 	// session remains unchanged until the runtime owner elects to reroot.
+	/** Candidate root and observed action produced by local expansion planning. */
 	struct MultiwayLocalExpansion
 	{
 		MultiwayRootSnapshot root{};
@@ -49,12 +57,14 @@ namespace texas::solver::multiway
 
 	// Range-wide policy export remains request-local. Only the selected actual
 	// hand may be frozen; hypothetical rows remain available to range updates.
+	/** Exported root actions for one hero hand in each legal range row. */
 	struct MultiwaySearchSessionHeroRow
 	{
 		CanonicalComboId combo{};
 		std::vector<MultiwayRootActionProbability> actions;
 	};
 
+	/** Hero's range policy and optional frozen actual-hand actions. */
 	struct MultiwaySearchSessionHeroPolicy
 	{
 		PlayerId hero_seat = -1;
@@ -67,6 +77,7 @@ namespace texas::solver::multiway
 
 	// Immutable export captured only after a fully merged batch. It contains no
 	// private cards, ranges, worker streams, or sampling seed.
+	/** Public root policy and batch identity from a completed clean batch. */
 	struct MultiwaySearchSessionCleanSnapshot
 	{
 		MultiwayRootPolicy root_policy{};
@@ -82,9 +93,11 @@ namespace texas::solver::multiway
 
 	// One request-local owner for mutable runtime search state. It never retains
 	// caller data after construction and does not own immutable artifacts.
+	/** Owns coordinator state and request-local beliefs for runtime search. */
 	class MultiwaySearchSession
 	{
 	public:
+		/** Builds a session from a validated request and root revision. */
 		MultiwaySearchSession(
 			const MultiwaySolveRequest& request,
 			MultiwaySearchSessionDependencies dependencies,
@@ -95,9 +108,13 @@ namespace texas::solver::multiway
 		MultiwaySearchSession(MultiwaySearchSession&&) = delete;
 		MultiwaySearchSession& operator=(MultiwaySearchSession&&) = delete;
 
+		/** Returns mutable coordinator state for one request-local search. */
 		[[nodiscard]] MultiwaySolverCoordinator& coordinator() noexcept { return coordinator_; }
+		/** Returns read-only coordinator state for policy inspection. */
 		[[nodiscard]] const MultiwaySolverCoordinator& coordinator() const noexcept { return coordinator_; }
+		/** Returns the current private-hand belief view for one seat. */
 		[[nodiscard]] MultiwayRangeBeliefView belief(PlayerId seat) const;
+		/** Applies an observed action to one seat's belief. */
 		[[nodiscard]] MultiwayRangeBeliefUpdateResult apply_observation(
 			PlayerId seat,
 			const MultiwayRangeBeliefObservation& observation);
@@ -110,8 +127,10 @@ namespace texas::solver::multiway
 		{
 			return action_menu_;
 		}
+		/** Stores the translation result for the current root action. */
 		void record_action_translation(MultiwayActionTranslation translation);
 		[[nodiscard]] const MultiwayActionTranslation* action_translation() const noexcept;
+		/** Plans an expanded root after an observed off-menu action. */
 		[[nodiscard]] MultiwayLocalExpansion plan_local_expansion(
 			const MultiwayActionAbstraction& abstraction,
 			MultiwayAction observed_action,
@@ -122,7 +141,9 @@ namespace texas::solver::multiway
 		{
 			return root_metadata_;
 		}
+		/** Returns current row counts and whether the root row exists. */
 		[[nodiscard]] MultiwaySearchSessionRowView row_view() const noexcept;
+		/** Captures a root-policy snapshot only after a clean merged batch. */
 		[[nodiscard]] bool capture_clean_snapshot(
 			bool clean,
 			std::uint64_t batch_index,
@@ -131,18 +152,24 @@ namespace texas::solver::multiway
 			std::uint64_t accepted_trajectories,
 			std::uint64_t merged_delta_entries,
 			std::uint32_t worker_count);
+		/** Returns the last clean snapshot or null before the first one. */
 		[[nodiscard]] const MultiwaySearchSessionCleanSnapshot* clean_snapshot() const noexcept;
+		/** Exports policy rows and actual-hand actions for the requested hero. */
 		[[nodiscard]] MultiwaySearchSessionHeroPolicy export_hero_policy(
 			PlayerId hero_seat,
 			CanonicalComboId actual_hand,
 			const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr) const;
+		/** Freezes the selected hero hand's root actions for this revision. */
 		void freeze_actual_hand_policy(
 			PlayerId hero_seat,
 			CanonicalComboId actual_hand,
 			const std::vector<MultiwayRootActionProbability>& actions);
+		/** Clears any frozen actual-hand policy. */
 		void clear_actual_hand_freeze() noexcept;
+		/** Constructs the next-street root while advancing the root revision. */
 		[[nodiscard]] MultiwayRootSnapshot make_next_round_root(
 			MultiwayRootSnapshot next_root) const;
+		/** Constructs a same-street root for a qualifying reroot. */
 		[[nodiscard]] MultiwayRootSnapshot make_reroot_root(
 			MultiwayRootSnapshot next_root) const;
 

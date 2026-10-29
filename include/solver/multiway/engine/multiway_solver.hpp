@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Multiway model identities, public catalog, sparse storage, and coordinator APIs.
+ */
+
 #include "core/atomic_publish.hpp"
 #include "games/multiway_fixed.hpp"
 #include "games/multiway_private.hpp"
@@ -34,6 +38,7 @@ namespace texas::solver::multiway
 
 	// Stable numeric identities are assigned by the coordinator. Zero is reserved
 	// as an invalid identity so an omitted id cannot become a storage key.
+	/** Stable coordinator-assigned identifier for a canonical public state. */
 	struct MultiwayPublicStateId
 	{
 		std::uint64_t value = 0;
@@ -52,6 +57,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Public-state and acting-seat identity used to address a solver row. */
 	struct MultiwayInfosetId
 	{
 		MultiwayPublicStateId public_state{};
@@ -73,6 +79,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Exact action-menu entry, including its resulting street contribution. */
 	struct MultiwayActionDescriptor
 	{
 		MultiwayAction action = MultiwayAction::Fold;
@@ -92,6 +99,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** One actor and action pair in a public betting history. */
 	struct MultiwayPublicHistoryEntry
 	{
 		core::PlayerId actor = -1;
@@ -123,6 +131,7 @@ namespace texas::solver::multiway
 	// Side-pot settlement follows the existing terminal layer's cyclic seat-id
 	// order, beginning at `odd_chip_first_seat`.  Seat order for transitions is
 	// intentionally separate from this legacy settlement convention.
+	/** Odd-chip settlement order used when dividing tied pots. */
 	enum class MultiwayOddChipRule : std::uint8_t
 	{
 		AscendingSeatIdFromFirstSeat,
@@ -130,6 +139,7 @@ namespace texas::solver::multiway
 
 	// A stable action abstraction is identified by its coordinator-assigned menu
 	// id together with the version that produced its target sizes.
+	/** Action-menu id paired with the abstraction version that produced it. */
 	struct MultiwayActionAbstractionIdentity
 	{
 		std::uint64_t menu_id = 0;
@@ -141,6 +151,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Type of transition that connects a public state to its parent. */
 	enum class MultiwayPublicParentEdgeKind : std::uint8_t
 	{
 		None,
@@ -164,6 +175,7 @@ namespace texas::solver::multiway
 
 	// This descriptor is the canonical public object admitted by the coordinator.
 	// It intentionally contains no private cards, ranges, or mutable policy data.
+	/** Canonical public-only state accepted into the solver catalog. */
 	struct MultiwayPublicStateDescriptor
 	{
 		MultiwayPublicStateId id{};
@@ -197,6 +209,7 @@ namespace texas::solver::multiway
 		core::Street street = core::Street::Flop;
 	};
 
+	/** Fixed-width catalog representation of a public-state descriptor. */
 	struct MultiwayPackedPublicNode
 	{
 		MultiwayPublicStateId id{};
@@ -217,6 +230,7 @@ namespace texas::solver::multiway
 		std::uint32_t legal_menu_handle = 0U;
 	};
 
+	/** Non-owning packed view of a public state's legal action menu. */
 	struct MultiwayPackedMenuView
 	{
 		const MultiwayActionDescriptor* actions = nullptr;
@@ -226,11 +240,13 @@ namespace texas::solver::multiway
 
 	// Append-only fixed-node public catalog. Dynamic descriptors are recreated
 	// only at cold API/checkpoint boundaries.
+	/** Owns canonical public states, action menus, and their packed indexes. */
 	class MultiwayPublicCatalog
 	{
 	public:
 		// Non-owning checkpoint access. These views are valid only while the
 		// coordinator's exclusive checkpoint lease is held.
+		/** Returns a packed node view while the coordinator checkpoint lease is held. */
 		[[nodiscard]] const MultiwayPackedPublicNode* checkpoint_node_at(
 			std::size_t index) const noexcept
 		{
@@ -239,13 +255,16 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayPackedPublicNode* checkpoint_node(
 			MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] std::size_t checkpoint_node_count() const noexcept { return nodes_.size(); }
+		/** Creates a catalog with the configured public-state capacity. */
 		explicit MultiwayPublicCatalog(std::size_t max_nodes = 0U);
 
 		void clear() noexcept;
+		/** Validates and admits one canonical state and its legal menu. */
 		void admit(
 			const MultiwayPublicStateDescriptor& state,
 			std::uint64_t* index_insertion_nanoseconds = nullptr,
 			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
+		/** Validates and admits a batch using its sorted new-state flags. */
 		void admit_batch(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			const std::vector<std::uint8_t>& new_state_flags,
@@ -255,10 +274,13 @@ namespace texas::solver::multiway
 			MultiwayAdmissionDiagnostics* diagnostics = nullptr,
 			const std::vector<std::uint64_t>* validated_menu_keys = nullptr,
 			std::vector<std::uint32_t>* resolved_menu_handles = nullptr);
+		/** Tests whether an id exists in the packed catalog. */
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
 		// Valid while the coordinator's immutable epoch is held by its export
 		// lease. This view never reconstructs or allocates a descriptor.
+		/** Returns a non-owning legal-menu view for a catalog state. */
 		[[nodiscard]] MultiwayPackedMenuView packed_menu(MultiwayPublicStateId id) const noexcept;
+		/** Reconstructs a dynamic descriptor from packed state and menu data. */
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
 		[[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
@@ -328,6 +350,7 @@ namespace texas::solver::multiway
 
 	// The complete public/private root needed by a future traversal. It is copied
 	// into MultiwaySolveRequest and then exposed only through const accessors.
+	/** Immutable root state and model metadata required to start traversal. */
 	struct MultiwayRootSnapshot
 	{
 		MultiwayPublicStateDescriptor public_state;
@@ -350,6 +373,7 @@ namespace texas::solver::multiway
 		// at this root boundary; unsupported normalizations are rejected.
 		MultiwayValueUnits value_units = MultiwayValueUnits::Chips;
 
+		/** Checks root betting, seat, board, ranges, and model metadata. */
 		void validate() const;
 
 		[[nodiscard]] std::uint64_t action_menu_id() const noexcept
@@ -366,6 +390,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Capacity, worker, backend, and external-store settings for one solve. */
 	struct MultiwaySolverLimits
 	{
 		enum class StorageBackend : std::uint8_t
@@ -410,6 +435,7 @@ namespace texas::solver::multiway
 		std::size_t max_discovery_public_states_per_worker = 0;
 		std::size_t max_discovery_rows_per_worker = 0;
 
+		/** Checks compatible backend, capacity, worker, and external settings. */
 		void validate() const;
 		[[nodiscard]] std::size_t regret_delta_capacity() const noexcept
 		{
@@ -439,9 +465,11 @@ namespace texas::solver::multiway
 
 	// Immutable boundary input. Traversal must treat this request as a batch
 	// snapshot and cannot mutate the caller's root, ranges, or policy metadata.
+	/** Validated immutable request passed to solver traversal and coordination. */
 	class MultiwaySolveRequest
 	{
 	public:
+		/** Validates and captures root, CFR, limits, and compiled private ranges. */
 		MultiwaySolveRequest(
 			MultiwayRootSnapshot root,
 			MultiwayCFRConfig cfr_config,
@@ -483,6 +511,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t value_count() const noexcept;
 	};
 
+	/** Row shapes and floating-point or compact accumulator checkpoint data. */
 	struct MultiwaySparseStorageCheckpoint
 	{
 		struct ActivePage
@@ -503,6 +532,7 @@ namespace texas::solver::multiway
 
 	// Runtime-only checkpoint diagnostics. These fields are not serialized or
 	// included in the checkpoint payload hash.
+	/** Runtime-only timing, size, and publication diagnostics for checkpointing. */
 	struct MultiwayCheckpointTelemetry
 	{
 		std::uint64_t snapshot_lock_wait_nanoseconds = 0U;
@@ -560,6 +590,7 @@ namespace texas::solver::multiway
 	// reject a nonzero delta that a Float64 accumulator cannot represent, rather
 	// than silently losing long-run regret or average-strategy mass.
 	// Only the coordinator receives a mutable instance; workers emit deltas.
+	/** Float64 reference accumulator for admitted infoset rows. */
 	class MultiwaySparseRowStorage
 	{
 	public:
@@ -571,6 +602,7 @@ namespace texas::solver::multiway
 			std::size_t value_count = 0U;
 		};
 
+		/** Creates a row store with maximum row and value capacities. */
 		MultiwaySparseRowStorage(std::size_t max_rows, std::size_t max_values);
 
 		[[nodiscard]] bool has_row(MultiwayInfosetId infoset) const noexcept;
@@ -602,6 +634,7 @@ namespace texas::solver::multiway
 			double factor, double threshold, double regret_floor) noexcept;
 		[[nodiscard]] std::size_t prune_negative_regrets(
 			double threshold = 0.0, double regret_floor = 0.0) noexcept;
+		/** Admits a sorted batch of row shapes using parallel new-row flags. */
 		void admit_rows(
 			const std::vector<MultiwaySparseRowShape>& shapes,
 			const std::vector<std::uint8_t>& new_row_flags);
@@ -617,6 +650,7 @@ namespace texas::solver::multiway
 			return { &row, regret_.data() + row.regret_offset,
 				strategy_sum_.data() + row.strategy_sum_offset, row.value_count() };
 		}
+		/** Returns categorized memory accounting for the reference backend. */
 		[[nodiscard]] MultiwaySparseStorageMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
@@ -637,6 +671,7 @@ namespace texas::solver::multiway
 		std::vector<double> strategy_sum_;
 	};
 
+	/** One worker's regret and average-strategy update for an action bucket. */
 	struct MultiwayWorkerDelta
 	{
 		MultiwayInfosetId infoset{};
@@ -650,9 +685,11 @@ namespace texas::solver::multiway
 	// Bounded worker-local stream. Traversal appends allocation-free after the
 	// constructor reserves capacity, sorts once at the worker boundary, and never
 	// accesses coordinator storage directly.
+	/** Preallocated worker-local delta buffer, sorted before coordinator merge. */
 	class MultiwayWorkerDeltaStream
 	{
 	public:
+		/** Reserves capacity for deltas generated by worker_index. */
 		MultiwayWorkerDeltaStream(std::size_t worker_index, std::size_t capacity);
 
 		[[nodiscard]] std::size_t worker_index() const noexcept { return worker_index_; }
@@ -661,6 +698,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool capacity_exhausted() const noexcept { return capacity_exhausted_; }
 		void mark_capacity_exhausted() noexcept { capacity_exhausted_ = true; }
 		void clear_capacity_exhaustion() noexcept { capacity_exhausted_ = false; }
+		/** Appends a delta without growing storage, or reports capacity exhaustion. */
 		[[nodiscard]] bool try_append(const MultiwayWorkerDelta& delta) noexcept;
 		void rewind(std::size_t size) noexcept;
 		void sort_fixed_order() noexcept;
@@ -681,6 +719,7 @@ namespace texas::solver::multiway
 		Probability probability = 0.0;
 	};
 
+	/** Probabilities for the root infoset and bucket of one solve. */
 	struct MultiwayRootPolicy
 	{
 		MultiwayPublicStateId public_state{};
@@ -689,6 +728,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwayRootActionProbability> actions;
 	};
 
+	/** Batch, traversal, admission, and optional quality results for a solve. */
 	struct MultiwaySolveDiagnostics
 	{
 		std::uint64_t batches_completed = 0;
@@ -911,9 +951,11 @@ namespace texas::solver::multiway
 
 	// Immutable boundary output. It deliberately retains only a root policy,
 	// per-seat root values, and diagnostics; it never exports dense global policy.
+	/** Immutable root policy, per-seat values, and diagnostics returned by solve. */
 	class MultiwaySolveResult
 	{
 	public:
+		/** Owns the completed policy, value vector, and diagnostic snapshot. */
 		MultiwaySolveResult(
 			MultiwayRootPolicy root_policy,
 			std::vector<Value> root_values,
@@ -931,16 +973,20 @@ namespace texas::solver::multiway
 
 	// Coordinator boundary for multiway batches. It is the sole owner of public
 	// state admission and row mutation. This is intentionally not a traversal API.
+	/** Sole owner of public-state admission and mutable solver accumulators. */
 	class MultiwaySolverCoordinator
 	{
 	public:
 		class ExportLease;
+		/** Creates coordinator-owned catalogs and storage for a validated request. */
 		explicit MultiwaySolverCoordinator(const MultiwaySolveRequest& request);
 		~MultiwaySolverCoordinator();
 
+		/** Validates and admits one public state outside traversal kernels. */
 		void admit_public_state(const MultiwayPublicStateDescriptor& state);
 		// Inputs must be canonical and public_states must be sorted by id. The
 		// parent_order indexes that stream in parent-first order.
+		/** Admits prevalidated public states and row shapes in parent-first order. */
 		void admit_prepared_batch(
 			const std::vector<MultiwayPublicStateDescriptor>& public_states,
 			const std::vector<std::size_t>& parent_order,
@@ -949,6 +995,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] static bool public_state_candidates_compatible(
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept;
+		/** Admits the row shape for one information set. */
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
 		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const;
 		// Reference-backend checks are lock-free during a sealed epoch. External
@@ -960,6 +1007,7 @@ namespace texas::solver::multiway
 			std::uint32_t bucket,
 			Probability* output,
 			std::size_t output_size) const;
+		/** Merges bounded worker deltas using the configured deterministic order. */
 		void merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams);
 		void merge_worker_streams(const std::vector<const MultiwayWorkerDeltaStream*>& streams);
 		void merge_worker_streams(
@@ -969,6 +1017,7 @@ namespace texas::solver::multiway
 			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
 			MultiwayDeltaMergePath path);
 
+		/** Exports the accumulated average strategy for the root infoset. */
 		[[nodiscard]] MultiwayRootPolicy export_root_policy() const;
 		[[nodiscard]] MultiwayRootPolicy export_root_current_policy() const;
 		[[nodiscard]] std::vector<double> export_root_strategy_sums() const;
@@ -1026,9 +1075,13 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const;
 		[[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
 			MultiwayPublicStateId id) const noexcept;
+		/** Copies coordinator state into a resumable checkpoint snapshot. */
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
+		/** Restores coordinator state from a validated compatible checkpoint. */
 		void restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint);
+		/** Acquires a shared immutable-epoch lease for policy export. */
 		ExportLease acquire_export_lease() const;
+		/** Acquires an exclusive snapshot lease for checkpoint access. */
 		ExportLease acquire_checkpoint_lease() const;
 		void set_external_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
 

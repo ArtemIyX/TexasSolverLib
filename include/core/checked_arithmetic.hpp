@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Declares checked conversions and size arithmetic for non-negative integral values.
+ */
+
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -8,6 +12,12 @@
 namespace texas::core
 {
 
+	/** @brief Converts a non-negative integral value to std::size_t when representable.
+	 * @tparam T Integral type supported by std::make_unsigned_t.
+	 * @param value Value to convert; a negative signed value fails.
+	 * @param[out] result Receives the converted value on success and is unchanged on failure.
+	 * @return True when value is representable as std::size_t.
+	 */
 	template <typename T>
 	[[nodiscard]] constexpr bool checked_to_size(T value, std::size_t& result) noexcept
 	{
@@ -25,6 +35,14 @@ namespace texas::core
 		return true;
 	}
 
+	/** @brief Multiplies non-negative integral values when the product fits std::size_t.
+	 * @tparam Left Integral factor type supported by std::make_unsigned_t.
+	 * @tparam Right Integral factor type supported by std::make_unsigned_t.
+	 * @param left First factor; negative signed values fail.
+	 * @param right Second factor; negative signed values fail.
+	 * @param[out] result Receives the product on success and is unchanged on failure.
+	 * @return True when the product is representable as std::size_t.
+	 */
 	template <typename Left, typename Right>
 	[[nodiscard]] constexpr bool checked_multiply_to_size(
 		Left left, Right right, std::size_t& result) noexcept
@@ -48,6 +66,14 @@ namespace texas::core
 		return true;
 	}
 
+	/** @brief Adds non-negative integral values when the sum fits std::size_t.
+	 * @tparam Left Integral operand type supported by std::make_unsigned_t.
+	 * @tparam Right Integral operand type supported by std::make_unsigned_t.
+	 * @param left First operand; negative signed values fail.
+	 * @param right Second operand; negative signed values fail.
+	 * @param[out] result Receives the sum on success and is unchanged on failure.
+	 * @return True when the sum is representable as std::size_t.
+	 */
 	template <typename Left, typename Right>
 	[[nodiscard]] constexpr bool checked_add_to_size(
 		Left left, Right right, std::size_t& result) noexcept

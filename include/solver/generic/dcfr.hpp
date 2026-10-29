@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Generic discounted counterfactual regret minimization solver.
+ */
+
 #include "core/types.hpp"
 #include "util/checked_numeric.hpp"
 #include "core/game.hpp"
@@ -23,16 +27,17 @@
 namespace texas::solver::dcfr
 {
 
-	/**
-	 * @brief Discounted Counterfactual Regret Minimization parameters.
-	 */
+	/** @brief Discounted Counterfactual Regret Minimization exponents. */
 	struct DCFRConfig
 	{
-		double alpha = 1.5;
-		double beta = 0.0;
-		double gamma = 2.0;
+		double alpha = 1.5; ///< Positive-regret discount exponent; must be finite and greater than zero.
+		double beta = 0.0; ///< Negative-regret discount exponent; must be finite and non-negative.
+		double gamma = 2.0; ///< Strategy-sum discount exponent; must be finite and non-negative.
 	};
 
+	/** @brief Validates alpha and reports values below the analyzed range.
+	 * @throws std::invalid_argument If alpha is non-finite or not positive.
+	 */
 	inline void validate_alpha(double alpha)
 	{
 		if (!std::isfinite(alpha) || alpha <= 0.0)
@@ -47,6 +52,9 @@ namespace texas::solver::dcfr
 		}
 	}
 
+	/** @brief Validates all DCFR exponents.
+	 * @throws std::invalid_argument If any exponent is non-finite or outside its supported range.
+	 */
 	inline void validate_dcfr_config_values(double alpha, double beta, double gamma)
 	{
 		validate_alpha(alpha);
@@ -57,13 +65,17 @@ namespace texas::solver::dcfr
 		}
 	}
 
+	/** @brief Multipliers applied to regrets and strategy sums at one iteration. */
 	struct DCFRIterationScales
 	{
-		double positive_regret = 1.0;
-		double negative_regret = 1.0;
-		double strategy_sum = 1.0;
+		double positive_regret = 1.0; ///< Multiplier for positive cumulative regret.
+		double negative_regret = 1.0; ///< Multiplier for negative cumulative regret.
+		double strategy_sum = 1.0; ///< Multiplier for cumulative strategy.
 	};
 
+	/** @brief Computes DCFR discount multipliers for a one-based iteration.
+	 * @throws std::invalid_argument If iteration is zero.
+	 */
 	[[nodiscard]] inline DCFRIterationScales dcfr_iteration_scales(
 		std::uint32_t iteration,
 		double alpha,
@@ -82,12 +94,11 @@ namespace texas::solver::dcfr
 		};
 	}
 
-	/**
-	 * @brief Base type for solver implementations.
-	 */
+	/** @brief Polymorphic base type shared by generic DCFR solver variants. */
 	class DCFRSolverBase
 	{
 	public:
+		/** @brief Destroys the concrete solver through a base pointer. */
 		virtual ~DCFRSolverBase() = default;
 	};
 
@@ -586,13 +597,21 @@ namespace texas::solver::dcfr
 
 	} // namespace detail
 
+	/** @brief Serial DCFR solver over a game state type satisfying the game interface. */
 	template <class G>
 	class DCFRSolver : public DCFRSolverBase
 	{
 	public:
+		/** @brief Creates a solver for config and root state.
+		 * @throws std::invalid_argument If DCFR exponents are invalid.
+		 */
 		explicit DCFRSolver(DCFRConfig config, G root = G::initial());
 
+		/** @brief Replaces externally fixed strategies by information-set key. */
 		void set_locked_strategies(std::unordered_map<InfosetKey, std::vector<Probability>> locked);
+		/** @brief Runs iterations and returns the average strategy and solve metadata.
+		 * @throws std::invalid_argument If iteration or game data violates solver requirements.
+		 */
 		SolveOutput solve(std::uint32_t iterations);
 
 	private:

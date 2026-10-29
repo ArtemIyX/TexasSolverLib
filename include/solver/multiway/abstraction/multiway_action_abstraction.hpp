@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Defines contextual multiway action menus and off-menu translation policy.
+ */
+
 #include "games/multiway_state.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 
@@ -12,8 +16,10 @@ namespace texas::solver::multiway
 {
 
 	// Keep this synchronized with the traversal's fixed-size action scratch.
+	/** @brief Maximum abstract action count supported by fixed traversal scratch. */
 	inline constexpr std::size_t MULTIWAY_MAX_ABSTRACTED_ACTIONS = 8U;
 
+	/** @brief Preflop betting situation used to choose a default abstract menu. */
 	enum class MultiwayPreflopSituation : std::uint8_t
 	{
 		Auto,
@@ -26,6 +32,7 @@ namespace texas::solver::multiway
 	// Position is intentionally supplied by the hand-history layer. A betting
 	// snapshot does not retain the button or the action history needed to derive
 	// it losslessly.
+	/** @brief Acting player's position relative to opponents. */
 	enum class MultiwayRelativePosition : std::uint8_t
 	{
 		Unknown,
@@ -33,6 +40,7 @@ namespace texas::solver::multiway
 		OutOfPosition,
 	};
 
+	/** @brief Policy for selecting postflop sizing templates. */
 	enum class MultiwayPostflopSizingMode : std::uint8_t
 	{
 		// Preserves the original first-bet/raise configuration.
@@ -41,6 +49,7 @@ namespace texas::solver::multiway
 		Contextual,
 	};
 
+	/** @brief Public context used to select a menu profile. */
 	struct MultiwayActionAbstractionContext
 	{
 		MultiwayPreflopSituation preflop_situation = MultiwayPreflopSituation::Auto;
@@ -48,6 +57,7 @@ namespace texas::solver::multiway
 		MultiwayPostflopSizingMode postflop_sizing = MultiwayPostflopSizingMode::Compatibility;
 	};
 
+	/** @brief Versioned templates and thresholds for multiway action abstraction. */
 	struct MultiwayActionAbstractionConfig
 	{
 		// Increment whenever a menu template or its contextual selection changes.
@@ -76,9 +86,11 @@ namespace texas::solver::multiway
 		// The first contextual raise is always the exact minimum legal raise.
 		std::array<std::uint16_t, 2> contextual_raise_basis_points = { 7500, 12500 };
 
+		/** @brief Validates sizing templates, counts and translation threshold. */
 		void validate() const;
 	};
 
+	/** @brief Outcome of mapping an observed action to a configured menu entry. */
 	enum class MultiwayActionTranslationStatus : std::uint8_t
 	{
 		ExactMenuAction,
@@ -88,6 +100,7 @@ namespace texas::solver::multiway
 
 	// Cold-path policy for deviations which must remain explicit in a local
 	// search rather than use a blueprint translation.
+	/** @brief Rules for deciding whether an off-menu action should be expanded locally. */
 	struct MultiwayDeviationExpansionConfig
 	{
 		std::uint64_t policy_version = 1U;
@@ -96,9 +109,11 @@ namespace texas::solver::multiway
 		std::uint8_t enabled_postflop_street_mask = 0x07U;
 		std::uint8_t maximum_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
 
+		/** @brief Validates policy version, seat count and enabled streets. */
 		void validate() const;
 	};
 
+	/** @brief Local policy for handling an observed off-menu action. */
 	enum class MultiwayDeviationDisposition : std::uint8_t
 	{
 		Translate,
@@ -107,6 +122,7 @@ namespace texas::solver::multiway
 
 	// The observed descriptor remains authoritative for public history and range
 	// updates. translated_action is only a blueprint-policy lookup key.
+	/** @brief Observed action, policy lookup action and translation provenance. */
 	struct MultiwayActionTranslation
 	{
 		MultiwayActionDescriptor observed_action{};
@@ -119,28 +135,35 @@ namespace texas::solver::multiway
 		double translated_scale = 0.0;
 	};
 
+	/** @brief Generates legal abstract menus and classifies observed actions. */
 	class MultiwayActionAbstraction
 	{
 	public:
+		/** @brief Creates the action policy from a validated configuration. */
 		explicit MultiwayActionAbstraction(MultiwayActionAbstractionConfig config = {});
 
+		/** @brief Generates the default legal menu using automatic context. */
 		[[nodiscard]] std::vector<MultiwayActionDescriptor> make_legal_actions(
 			const MultiwayBettingSnapshot& betting) const;
 
+		/** @brief Generates the legal menu for an explicit preflop/postflop context. */
 		[[nodiscard]] std::vector<MultiwayActionDescriptor> make_legal_actions(
 			const MultiwayBettingSnapshot& betting,
 			MultiwayActionAbstractionContext context) const;
 
+		/** @brief Writes a legal menu into caller-owned output storage. */
 		void make_legal_actions_into(
 			const MultiwayBettingSnapshot& betting,
 			MultiwayActionAbstractionContext context,
 			std::vector<MultiwayActionDescriptor>& output) const;
 
+		/** @brief Returns stable identity of the selected menu profile. */
 		[[nodiscard]] std::uint64_t menu_profile_identity(
 			MultiwayActionAbstractionContext context = {}) const noexcept;
 
 		// Cold boundary for legal off-tree actions. Invalid actions are rejected;
 		// actions outside the configured distance remain untranslatable.
+		/** @brief Translates an off-menu observed action when within configured distance. */
 		[[nodiscard]] MultiwayActionTranslation translate_observed_action(
 			const MultiwayBettingSnapshot& betting,
 			const std::vector<MultiwayActionDescriptor>& menu,
@@ -148,6 +171,7 @@ namespace texas::solver::multiway
 			int target_street_contribution,
 			MultiwayActionAbstractionContext context = {}) const;
 
+		/** @brief Chooses blueprint translation or local expansion for an observed action. */
 		[[nodiscard]] MultiwayDeviationDisposition classify_observed_action(
 			const MultiwayBettingSnapshot& betting,
 			const std::vector<MultiwayActionDescriptor>& menu,
@@ -156,6 +180,7 @@ namespace texas::solver::multiway
 			const MultiwayDeviationExpansionConfig& expansion,
 			MultiwayActionAbstractionContext context = {}) const;
 
+		/** @brief Inserts a validated exact observed action into a copied menu. */
 		[[nodiscard]] static std::vector<MultiwayActionDescriptor> insert_exact_observed_action(
 			const MultiwayBettingSnapshot& betting,
 			std::vector<MultiwayActionDescriptor> menu,

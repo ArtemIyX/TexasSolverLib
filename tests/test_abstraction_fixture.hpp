@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Helpers for building temporary suit-abstraction archive fixtures in tests.
+ */
+
 #include "util/abstraction.hpp"
 
 #include <array>
@@ -15,11 +19,13 @@
 namespace test_support
 {
 
+	/** Converts a rank and suit pair to the repository card encoding. */
 	inline std::uint8_t c(std::uint8_t rank, std::uint8_t suit)
 	{
 		return texas::card_to_int(rank, suit);
 	}
 
+	/** Adds one byte to an incremental CRC-32 value. */
 	inline std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b)
 	{
 		crc ^= b;
@@ -30,6 +36,7 @@ namespace test_support
 		return crc;
 	}
 
+	/** Computes the CRC-32 checksum of a byte vector. */
 	inline std::uint32_t crc32(const std::vector<std::uint8_t>& data)
 	{
 		std::uint32_t crc = 0xFFFFFFFFU;
@@ -40,12 +47,14 @@ namespace test_support
 		return ~crc;
 	}
 
+	/** Appends a uint16 little-endian value to out. */
 	inline void append_u16(std::vector<std::uint8_t>& out, std::uint16_t value)
 	{
 		out.push_back(static_cast<std::uint8_t>(value & 0xFFU));
 		out.push_back(static_cast<std::uint8_t>((value >> 8U) & 0xFFU));
 	}
 
+	/** Appends a uint32 little-endian value to out. */
 	inline void append_u32(std::vector<std::uint8_t>& out, std::uint32_t value)
 	{
 		out.push_back(static_cast<std::uint8_t>(value & 0xFFU));
@@ -54,6 +63,7 @@ namespace test_support
 		out.push_back(static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
 	}
 
+	/** Creates an NPY v1 byte-array payload for fixture archives. */
 	inline std::vector<std::uint8_t> make_npy_u8(const std::vector<std::uint8_t>& data)
 	{
 		std::vector<std::uint8_t> out;
@@ -73,11 +83,13 @@ namespace test_support
 		return out;
 	}
 
+	/** Copies JSON text into archive payload bytes. */
 	inline std::vector<std::uint8_t> make_json_bytes(const std::string& json)
 	{
 		return std::vector<std::uint8_t>(json.begin(), json.end());
 	}
 
+	/** Minimal stored-entry ZIP writer for deterministic test archives. */
 	struct ZipBuilder
 	{
 		struct Entry
@@ -90,11 +102,13 @@ namespace test_support
 
 		std::vector<Entry> entries;
 
+		/** Adds one named file entry and computes its CRC. */
 		void add(const std::string& name, const std::vector<std::uint8_t>& data)
 		{
 			entries.push_back(Entry{ name, data, crc32(data), 0 });
 		}
 
+		/** Encodes all local and central directory records into one byte vector. */
 		std::vector<std::uint8_t> finish()
 		{
 			std::vector<std::uint8_t> out;
@@ -151,11 +165,13 @@ namespace test_support
 		}
 	};
 
+	/** Returns the platform temporary directory joined with name. */
 	inline std::filesystem::path make_tmp_path(const std::string& name)
 	{
 		return std::filesystem::temp_directory_path() / name;
 	}
 
+	/** Enumerates sorted two-card hands that do not overlap the board. */
 	inline std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<std::uint8_t>& board)
 	{
 		std::array<bool, 64> blocked = {};
@@ -193,6 +209,7 @@ namespace test_support
 		return hands;
 	}
 
+	/** Metadata and omission settings for a generated abstraction archive. */
 	struct AbstractionFixtureOptions
 	{
 		std::vector<std::uint16_t> bucket_counts = { 1, 1, 1 };
@@ -201,6 +218,7 @@ namespace test_support
 		std::optional<std::string> omit_entry = std::nullopt;
 	};
 
+	/** Assignment and canonical indexes for one street's test archive data. */
 	struct StreetFixtureData
 	{
 		std::vector<std::uint8_t> assignments;
@@ -208,6 +226,7 @@ namespace test_support
 		std::string hand_index_json = "{}";
 	};
 
+	/** Builds assignment and index data for one optional board fixture. */
 	inline StreetFixtureData make_street_fixture_data(
 		texas::Street street,
 		const std::optional<std::vector<std::uint8_t>>& board,
@@ -240,6 +259,7 @@ namespace test_support
 		return data;
 	}
 
+	/** Writes and returns a temporary multi-street abstraction fixture archive. */
 	inline std::filesystem::path write_abstraction_fixture(
 		const std::string& name,
 		const std::optional<std::vector<std::uint8_t>>& flop_board,

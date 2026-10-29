@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Sizing run metrics and report generation for workflow configurations.
+ */
+
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 #include "solver/multiway/workflow/multiway_workflow_config.hpp"
 
@@ -9,6 +13,7 @@
 namespace texas::solver::multiway
 {
 
+	/** Target progress, peak capacities, throughput, and resource measurements. */
 	struct MultiwaySizingReport
 	{
 		MultiwayEvidenceHeader evidence{
@@ -34,13 +39,16 @@ namespace texas::solver::multiway
 		bool target_reached = false;
 		bool passed = false;
 
+		/** Checks schema, trajectory counts, throughput, and pass status. */
 		void validate() const;
 	};
 
+	/** Derives sizing outcome metrics from config and training measurements. */
 	[[nodiscard]] MultiwaySizingReport make_multiway_sizing_report(
 		const MultiwayWorkflowConfig& workflow,
 		const MultiwayTrainingReport& training_report);
 
+	/** Validates and atomically writes a sizing report. */
 	void save_multiway_sizing_report_atomic(
 		const std::filesystem::path& path,
 		const MultiwaySizingReport& report);

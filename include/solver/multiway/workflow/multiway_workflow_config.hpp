@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Workflow resource limits, configuration validation, and text serialization.
+ */
+
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/engine/multiway_worker_topology.hpp"
@@ -26,6 +30,7 @@ namespace texas::solver::multiway
 		MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_BATCHES = 50'000'000U;
 
+	/** Upper limits applied when accepting a workflow configuration. */
 	struct MultiwayWorkflowResourceLimits
 	{
 		std::uint32_t max_training_workers = 16U;
@@ -41,9 +46,11 @@ namespace texas::solver::multiway
 		std::uint64_t max_process_working_set_resident_allowance_bytes = MULTIWAY_WORKFLOW_MAX_WORKING_SET_BYTES;
 		std::uint64_t max_training_batches = MULTIWAY_WORKFLOW_MAX_BATCHES;
 
+		/** Checks that resource ceilings are positive and mutually consistent. */
 		void validate() const;
 	};
 
+	/** Model, storage, scheduling, capacity, resource, and output settings. */
 	struct MultiwayWorkflowConfig
 	{
 		std::uint32_t schema_version = 0U;
@@ -95,25 +102,36 @@ namespace texas::solver::multiway
 		std::uint64_t training_batches = 0U;
 		std::filesystem::path training_log_path;
 
+		/** Validates required values and internal configuration consistency. */
 		void validate() const;
+		/** Validates configuration against caller-selected resource ceilings. */
 		void validate(const MultiwayWorkflowResourceLimits& resource_limits) const;
+		/** Reports whether all worker capacities were resolved to explicit values. */
 		[[nodiscard]] bool capacities_resolved() const noexcept;
+		/** Returns a stable fingerprint of workflow model and runtime settings. */
 		[[nodiscard]] std::uint64_t fingerprint() const noexcept;
+		/** Returns a stable fingerprint of external storage identity settings. */
 		[[nodiscard]] std::uint64_t external_storage_fingerprint() const;
+		/** Returns the effective regret-delta capacity per worker. */
 		[[nodiscard]] std::uint64_t resolved_regret_delta_capacity() const noexcept;
+		/** Returns the effective continuation-delta capacity per worker. */
 		[[nodiscard]] std::uint64_t resolved_continuation_delta_capacity() const noexcept;
+		/** Returns the effective public-state discovery capacity per worker. */
 		[[nodiscard]] std::uint64_t resolved_discovery_public_state_capacity() const noexcept;
+		/** Returns the effective row discovery capacity per worker. */
 		[[nodiscard]] std::uint64_t resolved_discovery_row_capacity() const noexcept;
 		// Parser-only provenance. Zero means the legacy aggregate keys were used.
 		std::uint8_t explicit_stream_capacity_mask = 0U;
 	};
 
+	/** Configured and effective worker counts after batch-size constraints. */
 	struct MultiwayTrainingWorkerResolution
 	{
 		std::uint32_t requested = 0U;
 		std::uint32_t effective = 0U;
 	};
 
+	/** Worker resolution, memory estimate, and resource admission result. */
 	struct MultiwayWorkflowResourcePreflight
 	{
 		MultiwayTrainingWorkerResolution workers{};
@@ -124,19 +142,24 @@ namespace texas::solver::multiway
 		const char* message = "not run";
 	};
 
+	/** Resolves worker count from config, override, and trajectories per batch. */
 	[[nodiscard]] MultiwayTrainingWorkerResolution resolve_multiway_training_workers(
 		std::uint32_t configured_workers,
 		std::uint32_t override_workers,
 		std::uint64_t trajectories_per_batch);
 
+	/** Checks configured resource bounds and solver memory before execution. */
 	[[nodiscard]] MultiwayWorkflowResourcePreflight preflight_multiway_workflow(
 		const MultiwayWorkflowConfig& config,
 		std::uint32_t worker_override,
 		std::uint64_t batches,
 		const MultiwayWorkflowResourceLimits& resource_limits = {});
 
+	/** Parses configuration text and validates the resulting fields. */
 	[[nodiscard]] MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text);
+	/** Serializes a validated workflow configuration to stable text. */
 	[[nodiscard]] std::string serialize_multiway_workflow_config(const MultiwayWorkflowConfig& config);
+	/** Loads and parses a workflow configuration file. */
 	[[nodiscard]] MultiwayWorkflowConfig load_multiway_workflow_config(const std::filesystem::path& path);
 
 } // namespace texas::solver::multiway

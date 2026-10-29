@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Request-local weighted private-hand beliefs and observation updates.
+ */
+
 #include "core/canonical_combo.hpp"
 #include "solver/multiway/session/multiway_range_update.hpp"
 
@@ -12,6 +16,7 @@ namespace texas::solver::multiway
 
 	inline constexpr std::size_t MULTIWAY_RANGE_BELIEF_MAX_SEATS = 6U;
 
+	/** Origin of a range row or the policy observation applied to it. */
 	enum class MultiwayRangeBeliefSource : std::uint8_t
 	{
 		None,
@@ -23,6 +28,7 @@ namespace texas::solver::multiway
 		Fallback,
 	};
 
+	/** Source, revisions, and normalization masses associated with a range row. */
 	struct MultiwayRangeBeliefMetadata
 	{
 		MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
@@ -42,6 +48,7 @@ namespace texas::solver::multiway
 		double normalized_mass = 0.0;
 	};
 
+	/** Canonical hole-card combination and caller-supplied weight. */
 	struct MultiwayRangeBeliefSuppliedEntry
 	{
 		CanonicalComboCards hole = { 0U, 0U };
@@ -50,6 +57,7 @@ namespace texas::solver::multiway
 
 	// Each seat supplies its own public/dead-card mask. A null dead-card pointer
 	// is valid only when dead_card_count is zero.
+	/** Non-owning hand weights and dead cards used to initialize one seat range. */
 	struct MultiwayRangeBeliefSeatInput
 	{
 		const MultiwayRangeBeliefSuppliedEntry* entries = nullptr;
@@ -58,6 +66,7 @@ namespace texas::solver::multiway
 		std::size_t dead_card_count = 0U;
 	};
 
+	/** Outcome of conditioning a seat's belief on an observed action. */
 	enum class MultiwayRangeBeliefUpdateResult : std::uint8_t
 	{
 		Applied,
@@ -67,9 +76,11 @@ namespace texas::solver::multiway
 	// Immutable, borrowed binding to the exact policy row used to observe an
 	// action. The referenced table and policy must remain alive and immutable for
 	// the full apply_observation call.
+	/** Validated view of the policy evidence used for one range update. */
 	class MultiwayRangeBeliefObservation
 	{
 	public:
+		/** Binds a bucket table, action policy, provenance, and observed action. */
 		MultiwayRangeBeliefObservation(
 			const MultiwayBucketTable& table,
 			const MultiwayBucketActionPolicy& policy,
@@ -82,6 +93,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayRangeBeliefSource source() const noexcept { return source_; }
 		[[nodiscard]] std::uint8_t observed_action() const noexcept { return observed_action_; }
 		[[nodiscard]] std::uint64_t source_revision() const noexcept { return source_revision_; }
+		/** Checks that the borrowed table and policy agree on identity and shape. */
 		void validate() const;
 
 	private:
@@ -92,13 +104,17 @@ namespace texas::solver::multiway
 		std::uint64_t source_revision_ = 0U;
 	};
 
+	/** Non-owning view of one seat's normalized hole weights and legal mask. */
 	class MultiwayRangeBeliefView
 	{
 	public:
+		/** Returns whether this view refers to an initialized row. */
 		[[nodiscard]] bool valid() const noexcept { return weights_ != nullptr; }
 		[[nodiscard]] const double* data() const noexcept { return weights_; }
 		[[nodiscard]] std::size_t size() const noexcept { return CANONICAL_HOLE_COMBINATION_COUNT; }
+		/** Returns the weight assigned to one canonical combination. */
 		[[nodiscard]] double weight(CanonicalComboId id) const;
+		/** Returns whether a combination is legal for this seat. */
 		[[nodiscard]] bool legal(CanonicalComboId id) const;
 		[[nodiscard]] const CanonicalComboLegalMask& legal_mask() const;
 		[[nodiscard]] const MultiwayRangeBeliefMetadata& metadata() const;
@@ -120,6 +136,7 @@ namespace texas::solver::multiway
 	// Request-local fixed storage for up to six independent private-card beliefs.
 	// Reset methods either replace every requested seat or leave this object intact.
 	// Returned views are invalidated by a subsequent reset or copy_from call.
+	/** Owns bounded per-seat beliefs and conditions them on observed actions. */
 	class MultiwayRangeBeliefs
 	{
 	public:
@@ -129,16 +146,23 @@ namespace texas::solver::multiway
 		MultiwayRangeBeliefs(MultiwayRangeBeliefs&&) = delete;
 		MultiwayRangeBeliefs& operator=(MultiwayRangeBeliefs&&) = delete;
 
+		/** Replaces all seat rows with legal uniform distributions. */
 		void reset_uniform(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
+		/** Replaces all seat rows from supplied weighted ranges. */
 		void reset_supplied(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
+		/** Conditions one seat's range on a policy-weighted observed action. */
 		[[nodiscard]] MultiwayRangeBeliefUpdateResult apply_observation(
 			std::size_t seat,
 			const MultiwayRangeBeliefObservation& observation);
 
+		/** Replaces this object's beliefs with a copy of another instance. */
 		void copy_from(const MultiwayRangeBeliefs& other) noexcept;
 
+		/** Returns the number of initialized seat rows. */
 		[[nodiscard]] std::size_t seat_count() const noexcept { return seat_count_; }
+		/** Returns the revision incremented by each successful reset/update. */
 		[[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
+		/** Returns a non-owning view for one initialized seat. */
 		[[nodiscard]] MultiwayRangeBeliefView view(std::size_t seat) const;
 
 	private:

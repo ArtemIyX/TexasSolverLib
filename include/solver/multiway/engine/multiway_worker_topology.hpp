@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Worker topology discovery and deterministic processor-placement planning.
+ */
+
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -12,6 +16,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint16_t kMultiwayUnknownTopologyIndex =
 		(std::numeric_limits<std::uint16_t>::max)();
 
+	/** Source used to construct a worker processor inventory. */
 	enum class MultiwayWorkerTopologySource : std::uint8_t
 	{
 		Synthetic,
@@ -19,6 +24,7 @@ namespace texas::solver::multiway
 		Fallback,
 	};
 
+	/** Topology identifiers and allocation state for one logical processor. */
 	struct MultiwayWorkerTopologyRecord
 	{
 		std::uint32_t cpu_set_id = kMultiwayUnknownTopologyId;
@@ -40,6 +46,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Processor records and provenance returned by topology discovery. */
 	struct MultiwayWorkerTopologyInventory
 	{
 		MultiwayWorkerTopologySource source = MultiwayWorkerTopologySource::Synthetic;
@@ -55,12 +62,15 @@ namespace texas::solver::multiway
 			return source == MultiwayWorkerTopologySource::Fallback;
 		}
 
+		/** Reports whether all required Windows topology identifiers are present. */
 		[[nodiscard]] bool has_complete_windows_topology() const noexcept;
 
+		/** Finds a processor by group and logical index, or returns null. */
 		[[nodiscard]] const MultiwayWorkerTopologyRecord* find(
 			std::uint16_t processor_group, std::uint16_t logical_processor_index) const noexcept;
 	};
 
+	/** Strategy for mapping solver workers to discovered processors. */
 	enum class MultiwayWorkerPlacementPolicy : std::uint8_t
 	{
 		OsDefault,
@@ -70,11 +80,14 @@ namespace texas::solver::multiway
 		DiagnosticHardAffinity,
 	};
 
+	/** Returns a stable display name for a placement policy. */
 	[[nodiscard]] const char* multiway_worker_placement_policy_name(
 		MultiwayWorkerPlacementPolicy policy) noexcept;
+	/** Parses a placement-policy name and rejects unsupported values. */
 	[[nodiscard]] MultiwayWorkerPlacementPolicy parse_multiway_worker_placement_policy(
 		const char* value);
 
+	/** Requested placement policy and migration-sampling interval. */
 	struct MultiwayWorkerPlacementConfig
 	{
 		MultiwayWorkerPlacementPolicy policy = MultiwayWorkerPlacementPolicy::OsDefault;
@@ -82,9 +95,11 @@ namespace texas::solver::multiway
 		// boundaries, never from traversal or merge code.
 		std::uint32_t migration_sample_interval_batches = 0U;
 
+		/** Checks that the selected policy and sampling interval are supported. */
 		void validate() const;
 	};
 
+	/** Resolved processor requests for the coordinator and solver workers. */
 	struct MultiwayWorkerPlacementPlan
 	{
 		MultiwayWorkerPlacementPolicy policy = MultiwayWorkerPlacementPolicy::OsDefault;
@@ -97,6 +112,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwayWorkerTopologyRecord> requested;
 	};
 
+	/** Creates an inventory from caller-provided processor records. */
 	[[nodiscard]] MultiwayWorkerTopologyInventory make_multiway_worker_topology(
 		std::vector<MultiwayWorkerTopologyRecord> records,
 		MultiwayWorkerTopologySource source = MultiwayWorkerTopologySource::Synthetic);
@@ -112,6 +128,7 @@ namespace texas::solver::multiway
 
 	// Cold-path, deterministic placement selection. The coordinator identity is
 	// excluded by physical core when that identity is available.
+	/** Resolves stable worker placements using inventory, policy, and coordinator. */
 	[[nodiscard]] MultiwayWorkerPlacementPlan resolve_multiway_worker_placement(
 		const MultiwayWorkerTopologyInventory& inventory,
 		std::uint32_t worker_count,

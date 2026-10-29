@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Scope guard that requests worker shutdown and joins owned threads on unwind.
+ */
+
 #include <thread>
 #include <utility>
 #include <vector>
@@ -7,10 +11,12 @@
 namespace texas::util::detail
 {
 
+	/** Joins all supplied threads after invoking a caller-owned stop callback. */
 	template <class StopFunction>
 	class ThreadJoinGuard
 	{
 	public:
+		/** Borrows threads and stores the function that requests their shutdown. */
 		ThreadJoinGuard(
 			std::vector<std::thread>& threads,
 			StopFunction stop_function)
@@ -21,6 +27,7 @@ namespace texas::util::detail
 		ThreadJoinGuard(const ThreadJoinGuard&) = delete;
 		ThreadJoinGuard& operator=(const ThreadJoinGuard&) = delete;
 
+		/** Stops workers and joins every joinable thread while the guard is active. */
 		~ThreadJoinGuard() noexcept
 		{
 			if (!active_)
@@ -52,6 +59,7 @@ namespace texas::util::detail
 			}
 		}
 
+		/** Disables automatic stop and join behavior for this guard. */
 		void release() noexcept
 		{
 			active_ = false;
@@ -64,6 +72,7 @@ namespace texas::util::detail
 	};
 
 	template <class StopFunction>
+	/** Creates a join guard with a moved stop callback. */
 	ThreadJoinGuard<StopFunction> make_thread_join_guard(
 		std::vector<std::thread>& threads,
 		StopFunction stop_function)

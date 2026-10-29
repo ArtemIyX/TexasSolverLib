@@ -1,5 +1,48 @@
 # Pluribus Roadmap Progress Log
 
+## C++ header documentation coverage
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added Doxygen file briefs and API documentation to all 134 tracked project-owned `.h` and `.hpp` headers, including test-support headers.
+- Based documentation on the declarations and existing implementation behavior; excluded vendored `external/` headers.
+
+### Files
+
+- `include/core/*.hpp` (12 headers)
+- `include/games/*.hpp` (15 headers)
+- `include/logging/*.hpp` (3 headers)
+- `include/preflop/*.hpp` (3 headers)
+- `include/solver/generic/*.hpp` (5 headers)
+- `include/solver/hunl/*.hpp` (1 header)
+- `include/solver/hunl/bucket/*.hpp` (2 headers)
+- `include/solver/hunl/flat/*.hpp` (5 headers)
+- `include/solver/hunl/sampled/*.hpp` (12 headers)
+- `include/solver/multiway/abstraction/*.hpp` (12 headers)
+- `include/solver/multiway/blueprint/*.hpp` (8 headers)
+- `include/solver/multiway/continuation/*.hpp` (6 headers)
+- `include/solver/multiway/engine/*.hpp` (10 headers)
+- `include/solver/multiway/evaluation/*.hpp` (2 headers)
+- `include/solver/multiway/resolver/*.hpp` (4 headers)
+- `include/solver/multiway/session/*.hpp` (6 headers)
+- `include/solver/multiway/workflow/*.hpp` (13 headers)
+- `include/util/*.hpp` (12 headers)
+- `src/logging/terminal.hpp`
+- `tests/test_abstraction_fixture.hpp`
+- `tests/test_harness.hpp`
+
+### Validation
+
+- Tracked-header inventory found 134 in-scope files; every file contains a Doxygen `@file` brief.
+- `git diff --check -- include src tests` passed.
+- No builds, tests, or generated documentation were run because this task only changed documentation.
+
+### Limitations
+
+- Full-worktree `git diff --check` could not inspect the inaccessible `external/pokerHandEvaluator` submodule; the changed source, include, and test paths passed the scoped check.
+- Documentation rendering and compilation were not evaluated.
+
 ## C++ documentation skill
 
 **Status:** Complete

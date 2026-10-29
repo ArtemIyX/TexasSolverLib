@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Lightweight static-registration test harness and assertion helpers.
+ */
+
 #include <cmath>
 #include <functional>
 #include <sstream>
@@ -13,33 +17,40 @@
 namespace test
 {
 
+	/** Exception raised when a test expectation fails. */
 	struct Failure : std::runtime_error
 	{
 		using std::runtime_error::runtime_error;
 	};
 
+	/** Function pointer signature for a registered test case. */
 	using TestFn = void (*)();
 
+	/** Name and invoker for one test registration. */
 	struct TestCase
 	{
 		std::string name;
 		TestFn fn;
 	};
 
+	/** Returns the process-local collection of registered test cases. */
 	inline std::vector<TestCase>& registry()
 	{
 		static std::vector<TestCase> tests;
 		return tests;
 	}
 
+	/** Registers a test function during static initialization. */
 	struct Registrar
 	{
+		/** Adds name and fn to the global test registry. */
 		Registrar(std::string name, TestFn fn)
 		{
 			registry().push_back({ std::move(name), fn });
 		}
 	};
 
+	/** Throws Failure when actual and expected compare unequal. */
 	template <class T, class U>
 	void expect_eq(const T& actual, const U& expected, const char* expr, const char* file, int line)
 	{
@@ -51,6 +62,7 @@ namespace test
 		}
 	}
 
+	/** Throws Failure when condition is false. */
 	inline void expect_true(bool condition, const char* expr, const char* file, int line)
 	{
 		if (!condition)
@@ -61,6 +73,7 @@ namespace test
 		}
 	}
 
+	/** Throws Failure when actual is farther than epsilon from expected. */
 	inline void expect_near(
 		double actual,
 		double expected,
@@ -78,6 +91,7 @@ namespace test
 		}
 	}
 
+	/** Throws Failure unless fn throws the requested exception type. */
 	template <class Exception, class Fn>
 	void expect_throw(Fn&& fn, const char* expr, const char* file, int line)
 	{

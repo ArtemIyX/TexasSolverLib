@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Producer identity, schema headers, and stable evidence serialization.
+ */
+
 #include "solver/multiway/abstraction/multiway_model_identity.hpp"
 #include "solver/multiway/workflow/multiway_binary_provenance.hpp"
 
@@ -9,18 +13,21 @@
 namespace texas::solver::multiway
 {
 
+	/** Evidence profile represented by a workflow report. */
 	enum class MultiwayWorkflowProfileKind : std::uint8_t
 	{
 		Sizing = 1,
 		Acceptance = 2,
 	};
 
+	/** Schema versions for bucket, blueprint, and checkpoint artifacts. */
 	struct MultiwayArtifactSchemaVersions
 	{
 		std::uint32_t bucket_artifact = 0U;
 		std::uint32_t blueprint_artifact = 0U;
 		std::uint32_t checkpoint_artifact = 0U;
 
+		/** Checks that configured artifact schema versions are supported. */
 		void validate() const;
 		constexpr bool operator==(const MultiwayArtifactSchemaVersions& other) const noexcept
 		{
@@ -28,6 +35,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Binary, model, workflow, and artifact schema identity for evidence. */
 	struct MultiwayProducerIdentity
 	{
 		std::uint32_t schema_version = MULTIWAY_EVIDENCE_SCHEMA_VERSION;
@@ -42,6 +50,7 @@ namespace texas::solver::multiway
 		std::uint64_t workflow_config_fingerprint = 0U;
 		MultiwayArtifactSchemaVersions artifact_schemas{};
 
+		/** Checks required producer fields and schema versions. */
 		void validate() const;
 		bool operator==(const MultiwayProducerIdentity& other) const noexcept
 		{
@@ -51,19 +60,23 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** Schema, profile kind, and producer metadata shared by evidence reports. */
 	struct MultiwayEvidenceHeader
 	{
 		std::uint32_t schema_version = 0U;
 		MultiwayWorkflowProfileKind profile_kind = MultiwayWorkflowProfileKind::Acceptance;
 		MultiwayProducerIdentity producer{};
 
+		/** Checks the header against the expected report schema version. */
 		void validate(std::uint32_t expected_schema_version) const;
 	};
 
+	/** Rejects producer metadata that differs from the expected identity. */
 	void validate_matching_producer_identity(
 		const MultiwayProducerIdentity& expected,
 		const MultiwayProducerIdentity& actual);
 
+	/** Serializes a validated evidence header into stable text. */
 	[[nodiscard]] std::string serialize_multiway_evidence_header(
 		const MultiwayEvidenceHeader& header);
 

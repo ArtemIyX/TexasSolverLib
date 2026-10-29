@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Streaming and verified serialization for full multiway training checkpoints.
+ */
+
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/workflow/multiway_binary_provenance.hpp"
 
@@ -8,6 +12,7 @@
 
 namespace texas::solver::multiway
 {
+	/** Predicted sizes and retained scratch for a streamed checkpoint write. */
 	struct MultiwayTrainingCheckpointStreamPlan
 	{
 		std::uint64_t public_state_count = 0U;
@@ -19,6 +24,7 @@ namespace texas::solver::multiway
 		std::uint64_t retained_scratch_bytes = 0U;
 	};
 
+	/** Measurements and publication gates returned by a checkpoint write. */
 	struct MultiwayTrainingCheckpointWriteResult
 	{
 		MultiwayTrainingCheckpointStreamPlan plan{};
@@ -31,6 +37,7 @@ namespace texas::solver::multiway
 		MultiwayExportSystemGateResult system_gate{};
 	};
 
+	/** Non-owning trainer data consumed by the streaming checkpoint writer. */
 	struct MultiwayTrainingCheckpointStreamSource
 	{
 		const MultiwayModelIdentity* identity = nullptr;
@@ -48,6 +55,7 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 4U> street_visits{};
 	};
 
+	/** Optional fault-injection controls for checkpoint publication. */
 	struct MultiwayTrainingCheckpointWriteOptions
 	{
 		bool fail_before_close = false;
@@ -56,9 +64,11 @@ namespace texas::solver::multiway
 
 	// Versioned, lossless process-resume artifact. It is separate from the
 	// root-policy deployment artifact because it retains all sparse accumulators.
+	/** Persistence boundary for resumable training state and sparse accumulators. */
 	class MultiwayTrainingCheckpointArtifacts
 	{
 	public:
+		/** Validates and atomically saves a checkpoint. */
 		static void save_atomic(
 			const std::filesystem::path& path,
 			const MultiwayBlueprintTrainingCheckpoint& checkpoint,
@@ -66,23 +76,27 @@ namespace texas::solver::multiway
 
 		// The caller must validate the fully constructed checkpoint before calling
 		// this trusted training-workflow path.
+		/** Atomically saves a checkpoint already validated by its workflow caller. */
 		static void save_atomic_sealed(
 			const std::filesystem::path& path,
 			const MultiwayBlueprintTrainingCheckpoint& checkpoint,
 			MultiwayCheckpointTelemetry* telemetry = nullptr);
 
+		/** Streams a checkpoint from trainer-owned views and reports write telemetry. */
 		[[nodiscard]] static MultiwayTrainingCheckpointWriteResult save_atomic_streamed(
 			const std::filesystem::path& path,
 			const MultiwayTrainingCheckpointStreamSource& source,
 			MultiwayCheckpointTelemetry* telemetry = nullptr,
 			MultiwayTrainingCheckpointWriteOptions options = {});
 
+		/** Loads a verified checkpoint matching identity, schedule, and seed. */
 		[[nodiscard]] static MultiwayBlueprintTrainingCheckpoint load_verified(
 			const std::filesystem::path& path,
 			const MultiwayModelIdentity& expected_identity,
 			std::uint64_t expected_schedule_hash,
 			std::uint64_t expected_seed);
 
+		/** Computes the stable payload hash for a checkpoint. */
 		[[nodiscard]] static std::uint64_t payload_hash(
 			const MultiwayBlueprintTrainingCheckpoint& checkpoint) noexcept;
 	};

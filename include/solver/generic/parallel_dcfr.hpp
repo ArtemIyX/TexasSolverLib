@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Parallel generic DCFR solver and its traversal work plan.
+ */
+
 #include "core/arena.hpp"
 #include "solver/generic/dcfr.hpp"
 
@@ -12,18 +16,20 @@
 namespace texas::solver::dcfr
 {
 
+	/** @brief One subproblem assigned to a worker. */
 	struct ParallelWorkItem
 	{
-		std::size_t root_node = 0;
-		std::size_t node_begin = 0;
-		std::size_t node_end = 0;
+		std::size_t root_node = 0; ///< Root state index represented by this work item.
+		std::size_t node_begin = 0; ///< Beginning of the assigned node interval.
+		std::size_t node_end = 0; ///< One past the end of the assigned node interval.
 	};
 
+	/** @brief Worker count and work items selected for one solve. */
 	struct ParallelSolvePlan
 	{
-		bool enabled = false;
-		std::size_t worker_count = 1;
-		std::vector<ParallelWorkItem> items;
+		bool enabled = false; ///< Whether parallel traversal is enabled.
+		std::size_t worker_count = 1; ///< Number of workers in the plan.
+		std::vector<ParallelWorkItem> items; ///< Work ranges assigned by the planner.
 	};
 
 	namespace detail
@@ -53,22 +59,27 @@ namespace texas::solver::dcfr
 
 	} // namespace detail
 
+	/** @brief Accumulators owned by one parallel traversal worker. */
 	struct ParallelWorkerState
 	{
-		detail::WorkerInfosetAccumTable accum;
+		detail::WorkerInfosetAccumTable accum; ///< Worker-local regret and strategy sums.
 	};
 
+	/** @brief DCFR solver that partitions traversal work among worker threads. */
 	template <class G>
 	class ParallelDCFRSolver : public DCFRSolverBase
 	{
 	public:
+		/** @brief Creates a parallel solver over config, root and worker settings. */
 		explicit ParallelDCFRSolver(
 			DCFRConfig config,
 			G root = G::initial(),
 			std::size_t worker_count = 1,
 			std::size_t frontier_multiplier = 8);
 
+		/** @brief Replaces externally fixed strategies by information-set key. */
 		void set_locked_strategies(std::unordered_map<InfosetKey, std::vector<Probability>> locked);
+		/** @brief Runs parallel iterations and returns the average strategy and metadata. */
 		SolveOutput solve(std::uint32_t iterations);
 
 	private:
