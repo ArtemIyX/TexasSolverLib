@@ -1,5 +1,171 @@
 # Pluribus Roadmap Progress Log
 
+## Stage 9.1 and 9.2: Pre-pilot validation gates
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Completed Stage 9.1 focused validation for estimator arithmetic, bucket schema, external catalog/storage, WAL recovery, checkpoint manifests, sharded export, and workflow contracts.
+- The prescribed Stage 9.2 full-build workflow passed, as confirmed by the user. Its CTest output reports 116/116 tests passing.
+- Stage 9.3 was not rerun. Stage 9.4 remains pending.
+
+### Files
+
+- `tmp/pb12_stage91_20261029T062952Z/bucket_artifact.log`
+- `tmp/pb12_stage91_20261029T062952Z/checkpoint_equivalence.log`
+- `tmp/pb12_stage91_20261029T062952Z/external_storage.log`
+- `tmp/pb12_stage91_20261029T062952Z/focused_build.log`
+- `tmp/pb12_stage91_20261029T062952Z/memory.log`
+- `tmp/pb12_stage91_20261029T062952Z/qualification_reports.log`
+- `tmp/pb12_stage91_20261029T062952Z/sharded_export.log`
+- `tmp/pb12_stage91_20261029T062952Z/sharded_workflow_lookup.log`
+- `tmp/pb12_stage91_20261029T062952Z/sizing_report.log`
+- `tmp/pb12_stage91_20261029T062952Z/solver.log`
+- `tmp/pb12_stage91_20261029T062952Z/workflow_config.log`
+- `tmp/build_debug.log`
+- `tmp/ctest_debug.log`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Stage 9.1 focused suites passed; outputs are recorded in the listed run logs.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed, as confirmed by the user; CTest reports 116/116 passed.
+
+### Limitations
+
+- Stage 9.4 and larger workloads remain pending.
+
+## Stage 9.3: 1K deterministic differential pilot
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Enabled PB-12 targeted coverage for `CompactInt32` and verified the same eight exact state/menu/seat/bucket rows before training.
+- Ran one batch of 1,000 trajectories on both backends with seed 1, one fixed-scheduler worker, and the same `sizing/f1_sizing_v1` model settings. Both accepted all trajectories with zero discards.
+- Public-state records, sparse rows, logical action values, per-street row counts, merge fingerprint, and policy-content hash matched. Compact checkpoint-only resume with zero added batches produced a byte-identical policy.
+- External and Compact training identity hashes differ because storage backend is bound into identity; their bucket-model hashes and policy-content hashes match.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `src/solver/multiway/workflow/multiway_pb12_coverage.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tmp/pb12_compact_reference_1k_20261029T081219/training.conf`
+- `tmp/pb12_compact_reference_1k_20261029T081219/policy.mwfb`
+- `tmp/pb12_compact_reference_1k_20261029T081219/report.json`
+- `tmp/pb12_compact_reference_1k_20261029T081219/checkpoints/latest.bin`
+- `tmp/pb12_compact_reference_1k_20261029T081219/policy_resume_verified.mwfb`
+- `tmp/pb12_compact_reference_1k_20261029T081219/resume_report_verified.json`
+- `tmp/pb12_compact_reference_1k_20261029T081219/comparison.md`
+- `tmp/pb12_compact_reference_1k_20261029T081219/protected_before.json`
+- `tmp/pb12_compact_reference_1k_20261029T081219/protected_after.json`
+
+### Validation
+
+- `cmake --build build-pb12 --target test_multiway_blueprint_training test_multiway_qualification_reports texas_multiway_train --parallel 2` passed.
+- Focused Compact targeted-admission, External targeted-admission, and checkpoint-report tests each passed (1 test each).
+- The Compact training command in `tmp/pb12_compact_reference_1k_20261029T081219/command.txt` exited 0; report has 1,000 accepted and zero discarded trajectories.
+- The checkpoint-only resume command in `tmp/pb12_compact_reference_1k_20261029T081219/resume_command_verified.txt` exited 0 with zero added batches. The original and resumed Compact policies and checkpoints have identical SHA-256 hashes.
+- The External manifest and Compact report show 69,204 public states, 31,078 rows, and 6,405,846 logical action values. Merge fingerprint `9806774443936985566` and policy-content hash `2488139010106883890` match.
+- Pre/post SHA-256 and size snapshots matched for all 16,664 protected files, including the bucket artifact and the existing External run. `git diff --check --ignore-submodules=all` passed.
+
+### Limitations
+
+- The External report's `peak_public_states` is one below its committed manifest count, and its `peak_sparse_values` is unavailable as zero. The comparison uses the committed manifest for External counts and Compact `export_action_count` for logical-value parity. Backend-bound model identity and artifact payload hashes therefore are not equal; policy-content hashes are equal.
+- Stage 9.4 and larger workloads were not run.
+
+## PB-12 targeted 1K training pilot
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Ran the planned one batch of 1,000 trajectories with `ExternalCompactInt32` and `--pb12-targeted-coverage`.
+- Regular targeted training now runs the existing PB-12 exported-policy verifier after export. The run admitted all eight exact store keys, verified them in the policy, and replayed the captured histories.
+- Training completed with 1,000 accepted trajectories, zero discards, nonzero rows on every street, and `failed=false`.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `tmp/pb12_targeted_training_1k_capacity100m/training.conf`
+- `tmp/pb12_targeted_training_1k_capacity100m/store/`
+- `tmp/pb12_targeted_training_1k_capacity100m/policy.mwfb`
+- `tmp/pb12_targeted_training_1k_capacity100m/report.json`
+- `tmp/pb12_targeted_training_1k_capacity100m/checkpoints/latest.bin`
+
+### Validation
+
+- `cmake --build build-pb12 --target test_multiway_blueprint_training texas_multiway_train --parallel 2` passed.
+- The focused `multiway_pb12_captured_preflop_misses_are_admitted_exported_and_replayed` test passed (1 test).
+- The one-batch training command completed with exit code 0 and policy-content hash `2488139010106883890`.
+- `git diff --check --ignore-submodules=all` passed.
+- The bucket artifact was used as input only and remained 15,369,522,466 bytes with its existing 2026-08-31 timestamp.
+
+### Limitations
+
+- This is the planned 1K pilot, not a 50M qualification run.
+
+## PB-12 targeted training admission and replay
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Recovered the captured public histories from the PB-12 lookup report backup; no histories were inferred from IDs.
+- Added a targeted admission API that rebuilds both captured branches, uses the normal coordinator path to add eight exact rows, and verifies each public state, seat, bucket range, and action-menu ID in External storage before export.
+- Added `--pb12-targeted-coverage` for targeted rows before regular training and `--pb12-coverage-only` for zero-batch admission, export, and replay verification. Coverage-only requires a fresh External store.
+- The exported policy is replay-checked against both captured branches. All eight exact provider lookups must hit and return normalized strategies.
+
+### Files
+
+- `CMakeLists.txt`
+- `configs/multiway/pb12_targeted_coverage.conf`
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/workflow/multiway_pb12_coverage.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_pb12_coverage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Configure: `cmake -S . -B build-pb12 -G Ninja -DCMAKE_MAKE_PROGRAM="C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" -DCMAKE_CXX_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" -DCMAKE_C_COMPILER="C:/Program Files/LLVM/bin/clang-cl.exe" -DCMAKE_TOOLCHAIN_FILE= -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON -DTEXASSOLVER_ENABLE_LOGGING=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` passed.
+- `cmake --build build-pb12 --target test_multiway_blueprint_training texas_multiway_train --parallel 2` passed.
+- With `TEMP` and `TMP` set to `build-pb12/test-temp`, `test_multiway_blueprint_training.exe multiway_pb12_captured_preflop_misses_are_admitted_exported_and_replayed` passed (1 test).
+- `texas_multiway_train.exe --config configs/multiway/pb12_targeted_coverage.conf --pb12-coverage-only` passed against the preserved bucket artifact. It reported `exact_keys=8`, `batches=0`, and produced a policy with 1,352 rows (89,416 bytes); the report records zero trajectories and `failed=false`.
+- `git diff --check --ignore-submodules=all` passed.
+- `artifacts/f1_sizing_v1/buckets/buckets.bin` remains present at 15,369,522,466 bytes and was read-only during the run.
+
+### Limitations
+
+- The default Visual Studio build in `build` was blocked by compiler error C1902; focused targets were built and verified in `build-pb12` with Clang/Ninja.
+
+## PB-12 missing-key admission provenance
+
+**Status:** Complete
+**Completed:** 2026-10-28
+
+- Compared all eight corrected replay keys with the external training row index, public catalog, and exported policy rows.
+- All eight states are absent from both training stores and the policy. The evidence indicates a training coverage gap, not export filtering or identity loss.
+- Confirmed the attempt policy and preserved blueprint have the same SHA-256; the parsed policy row count and payload hash match the export report.
+
+### Files
+
+- `scripts/analyze/compare_pb12_policy_admissions.py`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- The comparison tool returned `training_coverage_gap` for all eight keys.
+- The snapshot audit passed for the source and disposable copy: 16,669 files, no missing, extra, or mismatched files.
+- C++ builds and tests were not run because no C++ sources changed.
+
+### Limitations
+
+- None identified.
+
 ## PB-12 External policy lookup replay diagnostics
 
 **Status:** Complete

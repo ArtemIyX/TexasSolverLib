@@ -18,6 +18,7 @@
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
 #include "solver/multiway/workflow/multiway_workflow_path_policy.hpp"
+#include "solver/multiway/workflow/multiway_pb12_coverage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "core/canonical_combo.hpp"
@@ -166,8 +167,10 @@ namespace
 				  << "  --quiet                Disable console logs and progress\n";
 		if (workflow == Workflow::Train)
 		{
-			std::cout << "  --batches <integer>    Bounded training batch count (0 with --resume exports the checkpoint)\n"
+			std::cout << "  --batches <integer>    Bounded training batches (0 requires --resume or --pb12-coverage-only)\n"
 					  << "  --profile-external-export  Collect bounded External export timings\n"
+					  << "  --pb12-targeted-coverage  Admit the captured PB-12 rows before training\n"
+					  << "  --pb12-coverage-only  Admit, export, and replay those rows without random batches\n"
 					  << "  --input <path>         Verified bucket artifact\n"
 					  << "  --output <path>        Full blueprint artifact\n"
 					  << "  --report <path>        JSON training report\n"
@@ -711,7 +714,9 @@ namespace
 		std::uint32_t dynamic_chunk_size,
 		bool dynamic_chunk_size_specified,
 		bool authorize_50m_stage,
-		bool profile_external_export)
+		bool profile_external_export,
+		bool pb12_targeted_coverage,
+		bool pb12_coverage_only)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -732,6 +737,16 @@ namespace
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
 		auto workflow = load_multiway_workflow_config(config_path);
+		if (pb12_coverage_only)
+		{
+			if (batches_specified && batches != 0U)
+				throw std::invalid_argument("--pb12-coverage-only requires zero batches");
+			if (!resume_path.empty())
+				throw std::invalid_argument("--pb12-coverage-only cannot resume a checkpoint");
+			pb12_targeted_coverage = true;
+			batches = 0U;
+			batches_specified = true;
+		}
 		const auto effective_scheduler_mode = scheduler_specified ? scheduler_mode : workflow.scheduler_mode;
 		const auto effective_dynamic_chunk_size = dynamic_chunk_size_specified ? dynamic_chunk_size : workflow.dynamic_chunk_size;
 		if (input_path.empty())
@@ -746,7 +761,7 @@ namespace
 			batches = workflow.training_batches;
 		if (worker_override == 0U)
 			worker_override = workflow.training_worker_count;
-		if ((batches == 0U && resume_path.empty()) || input_path.empty() || output_path.empty())
+		if ((batches == 0U && resume_path.empty() && !pb12_coverage_only) || input_path.empty() || output_path.empty())
 			throw std::invalid_argument("train requires input_path, output_path, and batches; zero batches require --resume");
 		const auto path_policy = make_default_multiway_workflow_path_policy();
 		input_path = authorize_multiway_workflow_path(
@@ -766,6 +781,12 @@ namespace
 		if (workflow.storage_backend == "ExternalCompactInt32")
 			workflow.storage_directory = authorize_multiway_workflow_path(
 				path_policy, workflow.storage_directory, MultiwayWorkflowPathKind::OutputDirectory);
+		if (pb12_coverage_only)
+		{
+			std::error_code store_error;
+			if (std::filesystem::exists(workflow.storage_directory, store_error) || store_error)
+				throw std::invalid_argument("--pb12-coverage-only requires a fresh External storage directory");
+		}
 		if (!external_storage_snapshot_directory.empty())
 		{
 			if (workflow.storage_backend != "ExternalCompactInt32" || !batches_specified || batches != 0U || resume_path.empty())
@@ -1177,8 +1198,8 @@ namespace
 						static_cast<std::uint64_t>(component.size()));
 			}
 		};
-		const bool export_only_resume = batches == 0U && !resume_path.empty();
-		if (export_only_resume)
+		const bool export_only_run = batches == 0U && (pb12_coverage_only || !resume_path.empty());
+		if (export_only_run)
 		{
 			config.process_memory_snapshots.enabled = false;
 			config.process_memory_snapshots.count = 0U;
@@ -1212,10 +1233,16 @@ namespace
 				session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 					resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
 		}
+		if (pb12_targeted_coverage)
+		{
+			const auto admission = session.admit_pb12_targeted_coverage();
+			log_line("PB-12 targeted coverage admitted: exact_keys="
+				+ std::to_string(admission.target_states.size()));
+		}
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		const auto progress_started_at = std::chrono::steady_clock::now();
-		auto live_progress = progress_enabled
+		auto live_progress = progress_enabled && batches != 0U
 			? texas::logging::Progress::start("training progress", batches)
 			: texas::logging::Progress{};
 		MultiwayTrainingProgressContext progress_context{
@@ -1347,7 +1374,7 @@ namespace
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_telemetry = checkpoint_telemetry;
-		if (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U)
+		if (!pb12_coverage_only && (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U))
 		{
 			training_report.failed = true;
 			populate_storage_report(training_report, &session);
@@ -1365,10 +1392,12 @@ namespace
 		try
 		{
 			export_result = session.save_full_policy_atomic(output_path);
+			if (pb12_targeted_coverage)
+				verify_multiway_pb12_policy_file(output_path, config.identity());
 		}
 		catch (const std::exception& error)
 		{
-			log_line("training export failed: " + std::string(error.what()));
+			log_line("training export or PB-12 policy verification failed: " + std::string(error.what()));
 			publish_training_failure();
 			throw;
 		}
@@ -1398,6 +1427,13 @@ namespace
 			report_path.empty() ? output_path.string() + ".json" : report_path,
 			training_report);
 		log_line("training export: plan_bytes=" + std::to_string(export_result.plan.serialized_bytes) + " result_bytes=" + std::to_string(export_result.serialized_bytes) + " sharded=" + std::to_string(export_result.sharded) + " shard_count=" + std::to_string(export_result.shard_count) + " manifest_bytes=" + std::to_string(export_result.manifest_bytes) + " policy_content_hash=" + std::to_string(export_result.policy_content_hash) + " payload_hash=" + std::to_string(export_result.payload_hash) + " duration_nanoseconds=" + std::to_string(session.status().export_telemetry.duration_nanoseconds) + " publication_mode=" + core::atomic_publish_mode_name(export_result.publication_mode) + " process_gate=" + multiway_export_process_rejection_reason_name(session.status().export_telemetry.process_gate.rejection_reason) + " system_gate=" + multiway_export_system_rejection_reason_name(session.status().export_telemetry.system_gate.rejection_reason));
+		if (pb12_targeted_coverage)
+			log_line("PB-12 targeted policy replay verified: exact_keys=8");
+		if (pb12_coverage_only)
+		{
+			std::cout << "PB-12 targeted coverage admitted, exported, and replay verified: exact_keys=8; batches=0; policy="
+					  << output_path.string() << std::endl;
+		}
 		log_line("training finished: batches=" + std::to_string(batches) + " trajectories=" + std::to_string(status.trajectories) + " blueprint=" + output_path.string());
 		return EXIT_SUCCESS;
 	}
@@ -1584,6 +1620,8 @@ namespace
 		bool pin_workers = false;
 		bool authorize_50m_stage = false;
 		bool profile_external_export = false;
+		bool pb12_targeted_coverage = false;
+		bool pb12_coverage_only = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
 		bool scheduler_specified = false;
 		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
@@ -1627,6 +1665,17 @@ namespace
 			if (argument == "--profile-external-export")
 			{
 				profile_external_export = true;
+				continue;
+			}
+			if (argument == "--pb12-targeted-coverage")
+			{
+				pb12_targeted_coverage = true;
+				continue;
+			}
+			if (argument == "--pb12-coverage-only")
+			{
+				pb12_coverage_only = true;
+				pb12_targeted_coverage = true;
 				continue;
 			}
 			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--external-storage-snapshot-dir" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--diagnostic-limit" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
@@ -1792,6 +1841,8 @@ namespace
 		}
 		if (!external_storage_snapshot_directory.empty() && (workflow != Workflow::Train || config_path.empty()))
 			throw std::invalid_argument("--external-storage-snapshot-dir requires train and --config");
+		if ((pb12_targeted_coverage || pb12_coverage_only) && workflow != Workflow::Train)
+			throw std::invalid_argument("PB-12 targeted coverage options require the train workflow");
 		if (workflow != Workflow::Finalize && !config_path.empty())
 		{
 			const auto path_policy = texas::solver::multiway::make_default_multiway_workflow_path_policy();
@@ -1823,7 +1874,7 @@ namespace
 				threads_specified ? threads : 0U, pin_workers, progress_enabled,
 				training_progress_interval, progress_memory, progress_speed, scheduler_mode, scheduler_specified,
 				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage,
-				profile_external_export);
+				profile_external_export, pb12_targeted_coverage, pb12_coverage_only);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{

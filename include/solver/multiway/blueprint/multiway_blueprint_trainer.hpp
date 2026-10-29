@@ -17,6 +17,7 @@
 
 namespace texas::solver::multiway
 {
+	struct MultiwayPB12CoverageAdmission;
 	struct MultiwayTrainingCheckpointWriteResult;
 	struct MultiwayExternalCheckpointManifest;
 	struct MultiwayExternalStorageTelemetry;
@@ -376,6 +377,8 @@ namespace texas::solver::multiway
 			std::uint64_t batch_count,
 			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
 			void* progress_context = nullptr);
+		// Seeds the captured PB-12 public rows through coordinator admission.
+		[[nodiscard]] MultiwayPB12CoverageAdmission admit_pb12_targeted_coverage();
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 		void resume_from_external_checkpoint(

@@ -1,4 +1,5 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
+#include "solver/multiway/workflow/multiway_pb12_coverage.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
@@ -1891,7 +1892,13 @@ namespace texas::solver::multiway
 		status_.river_rows = diagnostics.river_rows_admitted;
 		status_.discarded_trajectories = diagnostics.trajectories_discarded;
 		status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
-		status_.admitted_action_cells = coordinator_->storage().value_count();
+		const auto* compact_storage = coordinator_->compact_storage();
+		status_.admitted_action_cells = compact_storage != nullptr
+			? compact_storage->value_count()
+			: coordinator_->storage().value_count();
+		status_.peak_public_states = diagnostics.public_states_admitted;
+		status_.peak_sparse_rows = diagnostics.sparse_rows_admitted;
+		status_.peak_sparse_values = status_.admitted_action_cells;
 		status_.street_visits = diagnostics.street_visits;
 	}
 
@@ -1999,6 +2006,11 @@ namespace texas::solver::multiway
 		trainer_->run_batches(
 			batch_count, config_.limits.trajectories_per_batch, config_.deterministic_seed,
 			progress_callback, progress_context);
+	}
+
+	MultiwayPB12CoverageAdmission MultiwayBlueprintTrainingSession::admit_pb12_targeted_coverage()
+	{
+		return admit_multiway_pb12_coverage(root_, *action_abstraction_, *coordinator_);
 	}
 
 	void MultiwayBlueprintTrainingSession::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot)

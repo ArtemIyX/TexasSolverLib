@@ -678,7 +678,7 @@ TEST_CASE(multiway_training_report_calculates_throughput_and_rejects_bad_rss)
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 
-TEST_CASE(multiway_training_report_allows_missing_external_checkpoint_worker_counts)
+TEST_CASE(multiway_training_report_allows_missing_checkpoint_worker_counts)
 {
 	using namespace texas::solver::multiway;
 	MultiwayBlueprintTrainingStatus status;
@@ -706,6 +706,12 @@ TEST_CASE(multiway_training_report_allows_missing_external_checkpoint_worker_cou
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 	report.external_checkpoint_generation = 9U;
 	report.validate();
+
+	report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
+	report.checkpoint_bytes = 1U;
+	report.validate();
+	report.training_wall_nanoseconds = 1U;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
 
 	status.worker_trajectory_counts = { 4U, 0U };
 	report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);

@@ -132,6 +132,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/workflow/multiway_sizing_report.hpp
     include/solver/multiway/workflow/multiway_training_report.hpp
     include/solver/multiway/workflow/multiway_lookup_qualification.hpp
+    include/solver/multiway/workflow/multiway_pb12_coverage.hpp
     include/solver/multiway/workflow/multiway_staged_qualification.hpp
     include/solver/multiway/abstraction/multiway_bucket_model.hpp
     include/solver/multiway/engine/multiway_cfr.hpp
@@ -262,6 +263,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/workflow/multiway_sizing_report.cpp
     src/solver/multiway/workflow/multiway_training_report.cpp
     src/solver/multiway/workflow/multiway_lookup_qualification.cpp
+    src/solver/multiway/workflow/multiway_pb12_coverage.cpp
     src/solver/multiway/workflow/multiway_staged_qualification.cpp
     src/solver/multiway/abstraction/multiway_bucket_model.cpp
     src/solver/multiway/engine/multiway_cfr.cpp
