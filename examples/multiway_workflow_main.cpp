@@ -18,6 +18,8 @@
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
 #include "solver/multiway/workflow/multiway_workflow_path_policy.hpp"
+#include "solver/multiway/workflow/multiway_diagnostic_journal.hpp"
+#include "solver/multiway/workflow/multiway_pb12_coverage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "core/canonical_combo.hpp"
@@ -36,6 +38,7 @@
 #include <vector>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include "core/atomic_publish.hpp"
 
 namespace
@@ -166,8 +169,11 @@ namespace
 				  << "  --quiet                Disable console logs and progress\n";
 		if (workflow == Workflow::Train)
 		{
-			std::cout << "  --batches <integer>    Bounded training batch count (0 with --resume exports the checkpoint)\n"
+			std::cout << "  --batches <integer>    Bounded training batches (0 requires --resume or --pb12-coverage-only)\n"
 					  << "  --profile-external-export  Collect bounded External export timings\n"
+					  << "  --pb12-targeted-coverage  Admit the captured PB-12 rows before training\n"
+					  << "  --pb12-disk-amplification-bound Enforce the PB-12 fixed 3x external-store bound\n"
+					  << "  --pb12-coverage-only  Admit, export, and replay those rows without random batches\n"
 					  << "  --input <path>         Verified bucket artifact\n"
 					  << "  --output <path>        Full blueprint artifact\n"
 					  << "  --report <path>        JSON training report\n"
@@ -219,7 +225,8 @@ namespace
 		else
 		{
 			std::cout << "  --artifacts <dir>      Verified artifact directory\n"
-					  << "  --duplicates <integer> Duplicate deal count\n";
+					  << "  --duplicates <integer> Duplicate deal count\n"
+					  << "  --diagnostic-limit <0..16> Capture bounded public context for missing infosets\n";
 		}
 	}
 
@@ -624,6 +631,119 @@ namespace
 		return EXIT_SUCCESS;
 	}
 
+	struct MultiwayDiagnosticProgress
+	{
+		texas::solver::multiway::MultiwayDiagnosticJournal* journal = nullptr;
+		texas::solver::multiway::MultiwayBlueprintTrainingSession* session = nullptr;
+		texas::solver::multiway::MultiwayExternalStorageTelemetry previous{};
+		std::uint64_t starting_batch = 0U;
+		std::uint64_t worker_active = 0U;
+		std::uint64_t admission = 0U;
+		std::uint64_t merge = 0U;
+		std::uint64_t elapsed = 0U;
+		std::uint64_t previous_monitor_nanoseconds = 0U;
+		std::uint64_t publication_monitor_nanoseconds = 0U;
+		std::uint64_t next_workflow_batch = 0U;
+	};
+
+	void record_component_publication(void* context, std::uint32_t component,
+		std::uint64_t generation, std::uint64_t component_batch, std::uint64_t records)
+	{
+		auto& diagnostic = *static_cast<MultiwayDiagnosticProgress*>(context);
+		const auto started = std::chrono::steady_clock::now();
+		std::ostringstream out;
+		out << "{\"event\":\"component_publication\",\"workflow_batch\":" << diagnostic.next_workflow_batch
+			<< ",\"component\":" << component << ",\"component_generation\":" << generation
+			<< ",\"component_batch\":" << component_batch << ",\"records\":" << records
+			<< ",\"aggregate_committed\":false}";
+		diagnostic.journal->append(out.str());
+		diagnostic.publication_monitor_nanoseconds = texas::solver::multiway::multiway_memory_saturating_add(
+			diagnostic.publication_monitor_nanoseconds, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count()));
+	}
+
+	std::uint64_t diagnostic_delta(std::uint64_t value, std::uint64_t previous)
+	{
+		return value >= previous ? value - previous : value;
+	}
+
+	void write_component_diagnostics(std::ostream& out,
+		const texas::solver::multiway::MultiwayExternalStorageStats& now,
+		const texas::solver::multiway::MultiwayExternalStorageStats& previous)
+	{
+		out << "{\"runs\":" << now.run_count
+			<< ",\"publications\":" << diagnostic_delta(now.publications, previous.publications)
+			<< ",\"published_records\":" << diagnostic_delta(now.published_records, previous.published_records)
+			<< ",\"manifest_bytes\":" << diagnostic_delta(now.manifest_bytes_written, previous.manifest_bytes_written)
+			<< ",\"commit_ns\":" << diagnostic_delta(now.commit_nanoseconds, previous.commit_nanoseconds)
+			<< ",\"compactions\":" << diagnostic_delta(now.compactions, previous.compactions)
+			<< ",\"compaction_ns\":" << diagnostic_delta(now.compaction_nanoseconds, previous.compaction_nanoseconds)
+			<< ",\"compaction_read_bytes\":" << diagnostic_delta(now.compaction_read_bytes, previous.compaction_read_bytes)
+			<< ",\"compaction_written_bytes\":" << diagnostic_delta(now.compaction_written_bytes, previous.compaction_written_bytes)
+			<< ",\"cache_hits\":" << diagnostic_delta(now.cache_hits, previous.cache_hits)
+			<< ",\"cache_misses\":" << diagnostic_delta(now.cache_misses, previous.cache_misses)
+			<< ",\"cache_evictions\":" << diagnostic_delta(now.cache_evictions, previous.cache_evictions)
+			<< ",\"page_cache_hits\":" << diagnostic_delta(now.page_cache_hits, previous.page_cache_hits)
+			<< ",\"page_cache_misses\":" << diagnostic_delta(now.page_cache_misses, previous.page_cache_misses)
+			<< ",\"page_cache_evictions\":" << diagnostic_delta(now.page_cache_evictions, previous.page_cache_evictions)
+			<< ",\"run_checks\":" << diagnostic_delta(now.run_checks, previous.run_checks)
+			<< ",\"read_ns\":" << diagnostic_delta(now.read_nanoseconds, previous.read_nanoseconds) << '}';
+	}
+
+	void record_batch_diagnostics(const texas::solver::multiway::MultiwayBlueprintTrainingStatus& status,
+		MultiwayDiagnosticProgress& diagnostic)
+	{
+		using namespace texas::solver::multiway;
+		const auto started = std::chrono::steady_clock::now();
+		const auto storage = diagnostic.session->external_storage_telemetry(false);
+		const auto memory = capture_multiway_process_memory_snapshot();
+		std::ostringstream out;
+		out << "{\"event\":\"batch\",\"workflow_batch\":" << status.batches
+			<< ",\"invocation_batch\":" << status.batches - diagnostic.starting_batch
+			<< ",\"storage_generation\":" << storage.training_generation
+			<< ",\"store_committed_batch\":" << storage.committed_batch
+			<< ",\"aggregate_commit_ns\":" << diagnostic_delta(storage.aggregate_commit_nanoseconds, diagnostic.previous.aggregate_commit_nanoseconds)
+			<< ",\"worker_active_ns\":" << diagnostic_delta(status.worker_active_nanoseconds, diagnostic.worker_active)
+			<< ",\"admission_ns\":" << diagnostic_delta(status.coordinator_admission_nanoseconds, diagnostic.admission)
+			<< ",\"merge_ns\":" << diagnostic_delta(status.merge_nanoseconds, diagnostic.merge)
+			<< ",\"elapsed_since_previous_batch_ns\":" << diagnostic_delta(status.elapsed_wall_nanoseconds, diagnostic.elapsed)
+			<< ",\"estimated_working_set_peak_bytes\":" << status.memory_ledger.estimated_working_set_peak_bytes
+			<< ",\"estimated_private_peak_bytes\":" << status.memory_ledger.estimated_private_peak_bytes
+			<< ",\"working_set_bytes\":";
+		if (memory.current_working_set_available)
+			out << memory.current_working_set_bytes;
+		else
+			out << "null";
+		out << ",\"peak_working_set_bytes\":";
+		if (memory.peak_working_set_available)
+			out << memory.peak_working_set_bytes;
+		else
+			out << "null";
+		out << ",\"private_committed_bytes\":";
+		if (memory.private_committed_available)
+			out << memory.private_committed_bytes;
+		else
+			out << "null";
+		out << ",\"previous_monitor_ns\":" << diagnostic.previous_monitor_nanoseconds
+			<< ",\"publication_monitor_ns\":" << diagnostic.publication_monitor_nanoseconds
+			<< ",\"catalog\":";
+		write_component_diagnostics(out, storage.catalog, diagnostic.previous.catalog);
+		out << ",\"rows\":";
+		write_component_diagnostics(out, storage.rows, diagnostic.previous.rows);
+		out << ",\"pages\":";
+		write_component_diagnostics(out, storage.pages, diagnostic.previous.pages);
+		out << '}';
+		diagnostic.journal->append(out.str());
+		diagnostic.previous = storage;
+		diagnostic.worker_active = status.worker_active_nanoseconds;
+		diagnostic.admission = status.coordinator_admission_nanoseconds;
+		diagnostic.merge = status.merge_nanoseconds;
+		diagnostic.elapsed = status.elapsed_wall_nanoseconds;
+		diagnostic.publication_monitor_nanoseconds = 0U;
+		diagnostic.next_workflow_batch = texas::solver::multiway::multiway_memory_saturating_add(status.batches, 1U);
+		diagnostic.previous_monitor_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+	}
+
 	struct MultiwayTrainingProgressContext
 	{
 		bool enabled = true;
@@ -638,6 +758,7 @@ namespace
 		std::uint64_t last_reported_trajectories = 0U;
 		std::chrono::steady_clock::time_point started_at{};
 		std::chrono::steady_clock::time_point last_reported_at{};
+		MultiwayDiagnosticProgress* diagnostic = nullptr;
 	};
 
 	void report_multiway_training_progress(
@@ -645,6 +766,8 @@ namespace
 		void* context)
 	{
 		auto& progress = *static_cast<MultiwayTrainingProgressContext*>(context);
+		if (progress.diagnostic != nullptr)
+			record_batch_diagnostics(status, *progress.diagnostic);
 		if (!progress.enabled || progress.interval == 0U || status.batches < progress.starting_batches)
 			return;
 		const auto completed_batches = status.batches - progress.starting_batches;
@@ -710,7 +833,10 @@ namespace
 		std::uint32_t dynamic_chunk_size,
 		bool dynamic_chunk_size_specified,
 		bool authorize_50m_stage,
-		bool profile_external_export)
+		bool profile_external_export,
+		bool pb12_targeted_coverage,
+		bool pb12_coverage_only,
+		bool enforce_pb12_disk_amplification_bound)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -731,6 +857,18 @@ namespace
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
 		auto workflow = load_multiway_workflow_config(config_path);
+		if (enforce_pb12_disk_amplification_bound && workflow.storage_backend != "ExternalCompactInt32")
+			throw std::invalid_argument("--pb12-disk-amplification-bound requires external storage");
+		if (pb12_coverage_only)
+		{
+			if (batches_specified && batches != 0U)
+				throw std::invalid_argument("--pb12-coverage-only requires zero batches");
+			if (!resume_path.empty())
+				throw std::invalid_argument("--pb12-coverage-only cannot resume a checkpoint");
+			pb12_targeted_coverage = true;
+			batches = 0U;
+			batches_specified = true;
+		}
 		const auto effective_scheduler_mode = scheduler_specified ? scheduler_mode : workflow.scheduler_mode;
 		const auto effective_dynamic_chunk_size = dynamic_chunk_size_specified ? dynamic_chunk_size : workflow.dynamic_chunk_size;
 		if (input_path.empty())
@@ -745,7 +883,7 @@ namespace
 			batches = workflow.training_batches;
 		if (worker_override == 0U)
 			worker_override = workflow.training_worker_count;
-		if ((batches == 0U && resume_path.empty()) || input_path.empty() || output_path.empty())
+		if ((batches == 0U && resume_path.empty() && !pb12_coverage_only) || input_path.empty() || output_path.empty())
 			throw std::invalid_argument("train requires input_path, output_path, and batches; zero batches require --resume");
 		const auto path_policy = make_default_multiway_workflow_path_policy();
 		input_path = authorize_multiway_workflow_path(
@@ -765,6 +903,12 @@ namespace
 		if (workflow.storage_backend == "ExternalCompactInt32")
 			workflow.storage_directory = authorize_multiway_workflow_path(
 				path_policy, workflow.storage_directory, MultiwayWorkflowPathKind::OutputDirectory);
+		if (pb12_coverage_only)
+		{
+			std::error_code store_error;
+			if (std::filesystem::exists(workflow.storage_directory, store_error) || store_error)
+				throw std::invalid_argument("--pb12-coverage-only requires a fresh External storage directory");
+		}
 		if (!external_storage_snapshot_directory.empty())
 		{
 			if (workflow.storage_backend != "ExternalCompactInt32" || !batches_specified || batches != 0U || resume_path.empty())
@@ -1010,6 +1154,8 @@ namespace
 			config.limits.external_storage.compaction_scratch_bytes = workflow.compaction_scratch_bytes;
 			config.limits.external_storage.disk_reserve_bytes = workflow.disk_reserve_bytes;
 			config.limits.external_storage.synchronous_durability = workflow.synchronous_durability;
+			if (enforce_pb12_disk_amplification_bound)
+				config.limits.external_storage.disk_amplification_limit = 3U;
 		}
 		if (workflow.process_memory_limit_bytes < 3U)
 		{
@@ -1176,8 +1322,8 @@ namespace
 						static_cast<std::uint64_t>(component.size()));
 			}
 		};
-		const bool export_only_resume = batches == 0U && !resume_path.empty();
-		if (export_only_resume)
+		const bool export_only_run = batches == 0U && (pb12_coverage_only || !resume_path.empty());
+		if (export_only_run)
 		{
 			config.process_memory_snapshots.enabled = false;
 			config.process_memory_snapshots.count = 0U;
@@ -1211,10 +1357,61 @@ namespace
 				session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 					resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
 		}
+		if (pb12_targeted_coverage)
+		{
+			const auto admission = session.admit_pb12_targeted_coverage();
+			log_line("PB-12 targeted coverage admitted: exact_keys="
+				+ std::to_string(admission.target_states.size()));
+		}
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
+		std::unique_ptr<MultiwayDiagnosticJournal> diagnostic_journal;
+		MultiwayDiagnosticProgress diagnostic{};
+		if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			auto candidate = log_path;
+			candidate += ".diagnostics." + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".jsonl";
+			const auto diagnostic_path = authorize_multiway_workflow_path(
+				path_policy, candidate, MultiwayWorkflowPathKind::OutputFile);
+			diagnostic_journal = std::make_unique<MultiwayDiagnosticJournal>(diagnostic_path);
+			std::cerr << "external diagnostic journal: " << diagnostic_path.string() << '\n';
+			diagnostic.journal = diagnostic_journal.get();
+			diagnostic.session = &session;
+			diagnostic.previous = session.external_storage_telemetry(false);
+			diagnostic.starting_batch = session.status().batches;
+			diagnostic.worker_active = session.status().worker_active_nanoseconds;
+			diagnostic.admission = session.status().coordinator_admission_nanoseconds;
+			diagnostic.merge = session.status().merge_nanoseconds;
+			diagnostic.elapsed = session.status().elapsed_wall_nanoseconds;
+			diagnostic.next_workflow_batch = multiway_memory_saturating_add(session.status().batches, 1U);
+			session.set_external_publication_observer(record_component_publication, &diagnostic);
+			const auto started = std::chrono::steady_clock::now();
+			std::ostringstream out;
+			out << "{\"event\":\"start\",\"schema\":1,\"workflow_batch\":" << session.status().batches
+				<< ",\"storage_generation\":" << diagnostic.previous.training_generation
+				<< ",\"store_committed_batch\":" << diagnostic.previous.committed_batch << '}';
+			diagnostic_journal->append(out.str());
+			diagnostic.previous_monitor_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+		}
+		const auto record_checkpoint_diagnostics = [&](std::uint64_t duration, std::uint64_t bytes) {
+			if (!diagnostic_journal)
+				return;
+			const auto started = std::chrono::steady_clock::now();
+			const auto& generation = external_resume->generation;
+			std::ostringstream out;
+			out << "{\"event\":\"checkpoint\",\"workflow_batch\":" << session.status().batches
+				<< ",\"invocation_batch\":" << session.status().batches - diagnostic.starting_batch
+				<< ",\"storage_generation\":" << generation.generation
+				<< ",\"store_committed_batch\":" << generation.committed_batch_number
+				<< ",\"checkpoint_ns\":" << duration << ",\"checkpoint_bytes\":" << bytes
+				<< ",\"previous_monitor_ns\":" << diagnostic.previous_monitor_nanoseconds << '}';
+			diagnostic_journal->append(out.str());
+			diagnostic.previous_monitor_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+		};
 		const auto progress_started_at = std::chrono::steady_clock::now();
-		auto live_progress = progress_enabled
+		auto live_progress = progress_enabled && batches != 0U
 			? texas::logging::Progress::start("training progress", batches)
 			: texas::logging::Progress{};
 		MultiwayTrainingProgressContext progress_context{
@@ -1229,7 +1426,8 @@ namespace
 			session.status().trajectories,
 			session.status().trajectories,
 			progress_started_at,
-			progress_started_at
+			progress_started_at,
+			diagnostic_journal ? &diagnostic : nullptr
 		};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
@@ -1273,10 +1471,12 @@ namespace
 					checkpoint_telemetry.accumulate(last_checkpoint_write.telemetry);
 					checkpoint_bytes = last_checkpoint_write.serialized_bytes;
 				}
-				checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
+				const auto checkpoint_elapsed = static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - checkpoint_start)
 						.count());
+				checkpoint_write_nanoseconds += checkpoint_elapsed;
+				record_checkpoint_diagnostics(checkpoint_elapsed, checkpoint_bytes);
 				session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
 				checkpoint_snapshots_recorded = true;
 			}
@@ -1315,10 +1515,14 @@ namespace
 							throw std::runtime_error("cannot measure training checkpoint");
 						checkpoint_bytes = std::max(checkpoint_bytes, checkpoint.serialized_bytes);
 					}
-					checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
+					const auto checkpoint_elapsed = static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - checkpoint_start)
 							.count());
+					checkpoint_write_nanoseconds += checkpoint_elapsed;
+					if (diagnostic_journal)
+						record_checkpoint_diagnostics(checkpoint_elapsed,
+							static_cast<std::uint64_t>(std::filesystem::file_size(checkpoint_path)));
 					if (capture_checkpoint_phases)
 					{
 						session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
@@ -1346,7 +1550,7 @@ namespace
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_telemetry = checkpoint_telemetry;
-		if (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U)
+		if (!pb12_coverage_only && (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U))
 		{
 			training_report.failed = true;
 			populate_storage_report(training_report, &session);
@@ -1364,10 +1568,12 @@ namespace
 		try
 		{
 			export_result = session.save_full_policy_atomic(output_path);
+			if (pb12_targeted_coverage)
+				verify_multiway_pb12_policy_file(output_path, config.identity());
 		}
 		catch (const std::exception& error)
 		{
-			log_line("training export failed: " + std::string(error.what()));
+			log_line("training export or PB-12 policy verification failed: " + std::string(error.what()));
 			publish_training_failure();
 			throw;
 		}
@@ -1397,6 +1603,13 @@ namespace
 			report_path.empty() ? output_path.string() + ".json" : report_path,
 			training_report);
 		log_line("training export: plan_bytes=" + std::to_string(export_result.plan.serialized_bytes) + " result_bytes=" + std::to_string(export_result.serialized_bytes) + " sharded=" + std::to_string(export_result.sharded) + " shard_count=" + std::to_string(export_result.shard_count) + " manifest_bytes=" + std::to_string(export_result.manifest_bytes) + " policy_content_hash=" + std::to_string(export_result.policy_content_hash) + " payload_hash=" + std::to_string(export_result.payload_hash) + " duration_nanoseconds=" + std::to_string(session.status().export_telemetry.duration_nanoseconds) + " publication_mode=" + core::atomic_publish_mode_name(export_result.publication_mode) + " process_gate=" + multiway_export_process_rejection_reason_name(session.status().export_telemetry.process_gate.rejection_reason) + " system_gate=" + multiway_export_system_rejection_reason_name(session.status().export_telemetry.system_gate.rejection_reason));
+		if (pb12_targeted_coverage)
+			log_line("PB-12 targeted policy replay verified: exact_keys=8");
+		if (pb12_coverage_only)
+		{
+			std::cout << "PB-12 targeted coverage admitted, exported, and replay verified: exact_keys=8; batches=0; policy="
+					  << output_path.string() << std::endl;
+		}
 		log_line("training finished: batches=" + std::to_string(batches) + " trajectories=" + std::to_string(status.trajectories) + " blueprint=" + output_path.string());
 		return EXIT_SUCCESS;
 	}
@@ -1404,7 +1617,8 @@ namespace
 	int run_evaluate(const std::filesystem::path& config_path,
 		const std::filesystem::path& artifacts_path,
 		std::uint64_t trajectories,
-		const std::filesystem::path& report_path)
+		const std::filesystem::path& report_path,
+		std::size_t diagnostic_sample_limit)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -1476,7 +1690,7 @@ namespace
 			const auto blueprint = MultiwayMappedShardedBlueprintProvider::load_verified_for_policy_lookup(
 				blueprint_path, identity);
 			report = qualify_multiway_required_lookups(
-				config, root, buckets, *blueprint, trajectories, evidence);
+				config, root, buckets, *blueprint, trajectories, evidence, diagnostic_sample_limit);
 			repeat = qualify_multiway_required_lookups(
 				config, root, buckets, *blueprint, trajectories, evidence);
 		}
@@ -1485,7 +1699,7 @@ namespace
 			const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified_for_policy_lookup(
 				blueprint_path, identity);
 			report = qualify_multiway_required_lookups(
-				config, root, buckets, blueprint, trajectories, evidence);
+				config, root, buckets, blueprint, trajectories, evidence, diagnostic_sample_limit);
 			repeat = qualify_multiway_required_lookups(
 				config, root, buckets, blueprint, trajectories, evidence);
 		}
@@ -1575,12 +1789,16 @@ namespace
 		std::uint64_t batches = 0U;
 		bool batches_specified = false;
 		std::uint64_t duplicates = 0U;
+		std::size_t lookup_diagnostic_limit = 0U;
 		std::uint32_t threads = (std::min)(texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS,
 			texas::solver::multiway::multiway_bucket_physical_core_count());
 		bool threads_specified = false;
 		bool pin_workers = false;
 		bool authorize_50m_stage = false;
 		bool profile_external_export = false;
+		bool pb12_targeted_coverage = false;
+		bool pb12_coverage_only = false;
+		bool enforce_pb12_disk_amplification_bound = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
 		bool scheduler_specified = false;
 		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
@@ -1626,7 +1844,23 @@ namespace
 				profile_external_export = true;
 				continue;
 			}
-			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--external-storage-snapshot-dir" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
+			if (argument == "--pb12-targeted-coverage")
+			{
+				pb12_targeted_coverage = true;
+				continue;
+			}
+			if (argument == "--pb12-disk-amplification-bound")
+			{
+				enforce_pb12_disk_amplification_bound = true;
+				continue;
+			}
+			if (argument == "--pb12-coverage-only")
+			{
+				pb12_coverage_only = true;
+				pb12_targeted_coverage = true;
+				continue;
+			}
+			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--external-storage-snapshot-dir" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--diagnostic-limit" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
 				{
@@ -1656,6 +1890,13 @@ namespace
 				}
 				if (argument == "--duplicates")
 					duplicates = std::stoull(argv[index]);
+				if (argument == "--diagnostic-limit")
+				{
+					const auto parsed = std::stoull(argv[index]);
+					if (parsed > texas::solver::multiway::MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_SAMPLES)
+						throw std::invalid_argument("--diagnostic-limit must be between 0 and 16");
+					lookup_diagnostic_limit = static_cast<std::size_t>(parsed);
+				}
 				if (argument == "--threads")
 				{
 					const auto parsed = std::stoull(argv[index]);
@@ -1782,6 +2023,10 @@ namespace
 		}
 		if (!external_storage_snapshot_directory.empty() && (workflow != Workflow::Train || config_path.empty()))
 			throw std::invalid_argument("--external-storage-snapshot-dir requires train and --config");
+		if ((pb12_targeted_coverage || pb12_coverage_only) && workflow != Workflow::Train)
+			throw std::invalid_argument("PB-12 targeted coverage options require the train workflow");
+		if (enforce_pb12_disk_amplification_bound && workflow != Workflow::Train)
+			throw std::invalid_argument("--pb12-disk-amplification-bound requires the train workflow");
 		if (workflow != Workflow::Finalize && !config_path.empty())
 		{
 			const auto path_policy = texas::solver::multiway::make_default_multiway_workflow_path_policy();
@@ -1813,11 +2058,13 @@ namespace
 				threads_specified ? threads : 0U, pin_workers, progress_enabled,
 				training_progress_interval, progress_memory, progress_speed, scheduler_mode, scheduler_specified,
 				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage,
-				profile_external_export);
+				profile_external_export, pb12_targeted_coverage, pb12_coverage_only,
+				enforce_pb12_disk_amplification_bound);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{
-			return run_evaluate(config_path, artifacts_path, duplicates, report_path);
+			return run_evaluate(config_path, artifacts_path, duplicates, report_path,
+				lookup_diagnostic_limit);
 		}
 		if (workflow == Workflow::Finalize)
 		{

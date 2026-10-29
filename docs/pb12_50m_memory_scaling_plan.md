@@ -859,6 +859,43 @@ Hard stops:
 - Disk amplification above 3x without an explained bounded phase.
 - P99 batch time grows monotonically with database size.
 
+#### Post-stop implementation and validation boundary
+
+Page publication groups dirty pages until the bounded cache is full. Its
+capacity is limited by the page cache budget, the WAL limit, and the segment
+target; the cache budget includes temporary encoded publication records.
+Intermediate page publications remain inside the aggregate transaction.
+
+One compaction call merges only the newest configured fan-in. It removes at
+most fan-in minus one active runs, so a batch that publishes more runs than
+that can still increase the run count. Compacted output can exceed the segment
+target, and checkpoint pins can retain inputs. Batching therefore does not
+prove bounded run count, manifest cost, disk amplification, or latency. No
+unbounded compaction loop or hard-stop change is introduced here.
+
+External training writes an exclusive diagnostic JSONL journal next to its
+training log. Completed batch records identify both workflow and store batch
+numbers, carry per-component publication counts and record totals, and include
+cache, run-check, read, compaction, commit, and memory counters. Each component
+publication also has a separate durable record with its exact record count.
+Component IDs 0, 1, and 2 identify catalog, rows, and pages. These events are
+tentative: the aggregate transaction may subsequently roll them back.
+Worker-active time is summed across workers. Admission, merge, compaction,
+and commit durations can overlap.
+Checkpoint records carry their own duration. `previous_monitor_ns` is the
+cost of the preceding batch or checkpoint telemetry record, including its
+synchronous flush. `publication_monitor_ns` is the current batch's accumulated
+publication-record cost. A forced termination can leave the last line
+incomplete; prior completed lines
+remain available. Missing checkpoint events must not be inferred.
+
+Before another pilot, explicitly authorize a build and focused tests covering
+bounded publication, fixed-order equivalence, pressure, failures, recovery,
+journal durability, and existing checkpoint behavior. Then separately approve
+a bounded diagnostic run to compare observed memory and monitoring cost with
+the estimator, inspect publication density and run growth, and evaluate the
+unchanged Stage 9.4 gates. These changes alone do not qualify Stage 9.4 or 9.5.
+
 ### Stage 9.5: 60K prior-boundary pilot
 
 This crosses the previous 58K failure only after all earlier stages pass.

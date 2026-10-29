@@ -1,4 +1,5 @@
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 #include "test_harness.hpp"
@@ -43,7 +44,126 @@ TEST_CASE(multiway_qualification_reports_publish_atomically)
 	EXPECT_TRUE(text.find("\"passed\": true") != std::string::npos);
 	EXPECT_TRUE(text.find("\"second_replay_fingerprint\": 9") != std::string::npos);
 	EXPECT_TRUE(text.find("\"policy_content_hash\": 8") != std::string::npos);
+	EXPECT_TRUE(text.find("lookup_diagnostics") == std::string::npos);
 	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_lookup_diagnostics_are_bounded_and_public_only)
+{
+	using namespace texas::solver::multiway;
+	MultiwayPublicStateDescriptor state;
+	state.id = { 123U };
+	state.canonical_history_id = 456U;
+	state.board = { 2U, 7U, 12U, 17U };
+	state.betting.stacks = { 900, 800 };
+	state.betting.contributions = { 100, 200 };
+	state.betting.street_contributions = { 100, 200 };
+	state.betting.folded = { false, false };
+	state.betting.all_in = { false, false };
+	state.betting.may_raise = { true, true };
+	state.betting.pending = { true, false };
+	state.betting.has_acted = { false, true };
+	state.betting.bet_faced_when_acted = { 0, 100 };
+	state.betting.current_player = 0;
+	state.betting.last_aggressor = 1;
+	state.betting.current_bet = 200;
+	state.betting.last_full_raise_size = 100;
+	state.betting.big_blind = 100;
+	state.betting.street = texas::core::Street::Turn;
+	MultiwayActionDescriptor action;
+	action.action = texas::games::multiway::MultiwayAction::Call;
+	action.target_street_contribution = 200;
+	action.action_menu_id = 77U;
+	state.history.push_back({ 1, action });
+	state.legal_actions.push_back(action);
+	state.id = { MultiwayPublicBuilder::stable_public_state_id(
+		state.betting, state.board, state.history, state.legal_actions) };
+
+	MultiwayBlueprintLookupAudit audit;
+	audit.set_diagnostic_sample_limit(2U, 8U);
+	audit.record(MultiwayBlueprintLookupStatus::Hit, { state.id, 1 }, 9U, 77U, 0U, &state);
+	audit.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	audit.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	audit.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 10U, 77U, 1U, &state);
+	audit.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 11U, 77U, 4U, &state);
+	audit.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 12U, 77U, 7U, &state);
+	EXPECT_EQ(audit.lookup_hits, 1U);
+	EXPECT_EQ(audit.missing_infosets, 5U);
+	EXPECT_EQ(audit.diagnostic_samples().size(), 2U);
+
+	MultiwayBlueprintLookupAudit repeated;
+	repeated.set_diagnostic_sample_limit(2U, 8U);
+	repeated.record(MultiwayBlueprintLookupStatus::Hit, { state.id, 1 }, 9U, 77U, 0U, &state);
+	repeated.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	repeated.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	repeated.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 10U, 77U, 1U, &state);
+	repeated.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 11U, 77U, 4U, &state);
+	repeated.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 12U, 77U, 7U, &state);
+	EXPECT_EQ(repeated.fingerprint(), audit.fingerprint());
+	for (std::size_t index = 0U; index < audit.diagnostic_samples().size(); ++index)
+	{
+		const auto& sample = audit.diagnostic_samples()[index];
+		const auto& repeated_sample = repeated.diagnostic_samples()[index];
+		EXPECT_TRUE(sample.identity_context_complete);
+		EXPECT_EQ(sample.reconstructed_public_state_id, state.id.value);
+		EXPECT_EQ(sample.history_stored_count, 1U);
+		EXPECT_EQ(sample.legal_action_count, 1U);
+		EXPECT_EQ(sample.trajectory_id, repeated_sample.trajectory_id);
+		EXPECT_EQ(sample.replay_lookup_ordinal, repeated_sample.replay_lookup_ordinal);
+		EXPECT_EQ(sample.bucket, repeated_sample.bucket);
+	}
+	const auto initial_history_size = state.history.size();
+	for (std::size_t index = initial_history_size; index < MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_HISTORY + 1U; ++index)
+		state.history.push_back({ 1, action });
+	MultiwayBlueprintLookupAudit truncated;
+	truncated.set_diagnostic_sample_limit(1U, 1U);
+	truncated.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	EXPECT_TRUE(!truncated.diagnostic_samples()[0U].identity_context_complete);
+	EXPECT_EQ(truncated.diagnostic_samples()[0U].history_stored_count,
+		MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_HISTORY);
+	MultiwayBlueprintLookupAudit single_trajectory;
+	single_trajectory.set_diagnostic_sample_limit(MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_SAMPLES, 1U);
+	single_trajectory.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	single_trajectory.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 9U, 77U, 0U, &state);
+	EXPECT_EQ(single_trajectory.diagnostic_samples().size(), 1U);
+	MultiwayBlueprintLookupAudit sparse_miss;
+	sparse_miss.set_diagnostic_sample_limit(16U, 1000U);
+	sparse_miss.record(MultiwayBlueprintLookupStatus::Missing, { state.id, 1 }, 55U, 77U, 999U, &state);
+	EXPECT_EQ(sparse_miss.diagnostic_samples().size(), 1U);
+	EXPECT_EQ(sparse_miss.diagnostic_samples()[0U].trajectory_id, 999U);
+
+	MultiwayLookupQualificationReport report;
+	report.evidence.producer = [] {
+		MultiwayProducerIdentity identity;
+		identity.git_commit = "test";
+		identity.build_configuration = "Debug";
+		identity.compiler_identity = "test";
+		identity.model_identity = make_multiway_model_identity(MultiwayBlueprintConfig{});
+		identity.workflow_config_fingerprint = 1U;
+		identity.artifact_schemas = { 4U, 2U, 1U };
+		return identity;
+	}();
+	report.lookup_hits = 1U;
+	report.missing_infosets = 5U;
+	report.policy_content_hash = 8U;
+	report.diagnostic_sample_limit = 2U;
+	report.diagnostic_samples = audit.diagnostic_samples();
+	const auto path = std::filesystem::temp_directory_path() / "texas_solver_lookup_diagnostics_test.json";
+	std::filesystem::remove(path);
+	save_multiway_lookup_qualification_report_atomic(path, report);
+	std::ifstream input(path);
+	const std::string text((std::istreambuf_iterator<char>(input)), {});
+	EXPECT_TRUE(text.find("\"private_cards_included\": false") != std::string::npos);
+	EXPECT_TRUE(text.find("\"selection\": \"stable_hash_priority_over_distinct_keys\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"status\":\"missing_infoset\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_history\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"board_card_ids\":[2,7,12,17]") != std::string::npos);
+	EXPECT_TRUE(text.find("\"reconstructed_public_state_id\":" + std::to_string(state.id.value)) != std::string::npos);
+	EXPECT_TRUE(text.find("hole_cards") == std::string::npos);
+	input.close();
+	std::filesystem::remove(path);
+
+	EXPECT_THROW(audit.set_diagnostic_sample_limit(MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_SAMPLES + 1U, 8U), std::invalid_argument);
 }
 
 TEST_CASE(multiway_training_report_preserves_discard_telemetry)
@@ -558,7 +678,7 @@ TEST_CASE(multiway_training_report_calculates_throughput_and_rejects_bad_rss)
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 
-TEST_CASE(multiway_training_report_allows_missing_external_checkpoint_worker_counts)
+TEST_CASE(multiway_training_report_allows_missing_checkpoint_worker_counts)
 {
 	using namespace texas::solver::multiway;
 	MultiwayBlueprintTrainingStatus status;
@@ -586,6 +706,12 @@ TEST_CASE(multiway_training_report_allows_missing_external_checkpoint_worker_cou
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 	report.external_checkpoint_generation = 9U;
 	report.validate();
+
+	report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
+	report.checkpoint_bytes = 1U;
+	report.validate();
+	report.training_wall_nanoseconds = 1U;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
 
 	status.worker_trajectory_counts = { 4U, 0U };
 	report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);

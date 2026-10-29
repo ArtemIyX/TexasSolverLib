@@ -8,6 +8,7 @@
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
+#include "solver/multiway/workflow/multiway_pb12_coverage.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -225,7 +226,117 @@ namespace
 		return result;
 	}
 
+	struct DisposableTestDirectory
+	{
+		std::filesystem::path path = std::filesystem::temp_directory_path()
+			/ ("texas_solver_pb12_admission_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+
+		~DisposableTestDirectory()
+		{
+			std::error_code error;
+			std::filesystem::remove_all(path, error);
+		}
+	};
+
 } // namespace
+
+TEST_CASE(multiway_lookup_audit_queries_policy_for_first_local_admission)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	texas::MultiwayBlueprintTrainingConfig config;
+	config.rules.player_count = 3U;
+	config.blueprint.player_count = 3U;
+	config.cfr.player_count = 3U;
+	config.limits = export_limits(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+
+	texas::MultiwayBlueprintRow root_row;
+	root_row.infoset = fixture.root.root_infoset;
+	root_row.bucket = fixture.root.root_bucket;
+	root_row.action_menu_id = fixture.root.public_state.legal_actions.front().action_menu_id;
+	const auto action_count = fixture.root.public_state.legal_actions.size();
+	const auto base_probability = static_cast<std::uint32_t>(65535U / action_count);
+	const auto remainder = static_cast<std::uint32_t>(65535U % action_count);
+	for (std::size_t index = 0U; index < action_count; ++index)
+	{
+		root_row.actions.push_back({ fixture.root.public_state.legal_actions[index],
+			static_cast<std::uint16_t>(base_probability + (index < remainder ? 1U : 0U)) });
+	}
+	const texas::MultiwayBlueprintStore store(config.identity(), { std::move(root_row) });
+	const texas::MultiwayBlueprintPolicyProvider provider(store);
+	texas::MultiwaySolverCoordinator coordinator(fixture.request);
+	texas::MultiwayRootExternalSamplingTraversal traversal(
+		coordinator, fixture.request.root(), fixture.abstraction, fixture.buckets,
+		&fixture.evaluator, 1U, 0U, &provider);
+	texas::MultiwayWorkerDeltaStream stream(0U, fixture.request.limits().regret_delta_capacity());
+	texas::MultiwayBlueprintLookupAudit audit;
+	const auto accepted = traversal.run(1, 0U, 0x1234U, stream, 1.0, nullptr, nullptr, 0U, &audit);
+	EXPECT_TRUE(accepted);
+	EXPECT_TRUE(audit.lookup_hits > 0U);
+}
+
+void verify_pb12_targeted_coverage_admission(
+	texas::MultiwaySolverLimits::StorageBackend backend)
+{
+	DisposableTestDirectory disposable;
+	std::filesystem::create_directories(disposable.path);
+	const auto store_path = disposable.path / "training-store";
+	const auto identity_path = disposable.path / "training-store-identity";
+	const auto policy_path = disposable.path / "targeted-policy.bin";
+	const auto limits = export_limits(backend, store_path,
+		2U * 1024U * 1024U, identity_path, true);
+	const auto rules = texas::MultiwayGameRules::standard_6max();
+	const texas::MultiwayActionAbstraction abstraction;
+
+	texas::MultiwayPrivateConfig private_ranges;
+	private_ranges.ranges.resize(6U);
+	for (std::size_t seat = 0U; seat < private_ranges.ranges.size(); ++seat)
+	{
+		const auto rank = static_cast<std::uint8_t>(14U - seat);
+		private_ranges.ranges[seat].push_back({ { card(rank, 0U), card(rank, 1U) }, 1.0 });
+	}
+	auto root = texas::make_multiway_initial_blueprint_root(
+		rules, private_ranges, abstraction, 1U, 1U, 0);
+
+	texas::MultiwayBlueprintTrainingConfig training_config;
+	training_config.rules = rules;
+	training_config.action_abstraction = {};
+	training_config.cfr.player_count = 6U;
+	training_config.limits = limits;
+	training_config.max_decision_depth = 1U;
+	training_config.max_public_chance_depth = 0U;
+	const auto identity = training_config.identity();
+	texas::MultiwayBucketRegistry buckets({ texas::MultiwayBucketTable(
+		identity, texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) });
+	texas::MultiwayBlueprintTrainingSession session(training_config, root, buckets);
+	const auto admission = session.admit_pb12_targeted_coverage();
+	for (std::size_t index = 0U;
+		index < texas::solver::multiway::MULTIWAY_PB12_COVERAGE_KEYS.size(); ++index)
+	{
+		const auto& key = texas::solver::multiway::MULTIWAY_PB12_COVERAGE_KEYS[index];
+		const auto& state = admission.target_states[index];
+		EXPECT_EQ(state.id.value, key.public_state_id);
+		EXPECT_EQ(state.betting.current_player, key.seat);
+		EXPECT_TRUE(!state.legal_actions.empty());
+		EXPECT_EQ(state.legal_actions.front().action_menu_id, key.action_menu_id);
+		EXPECT_TRUE(key.bucket < 169U);
+	}
+	const auto export_result = session.save_full_policy_atomic(policy_path);
+	EXPECT_TRUE(std::filesystem::exists(policy_path));
+	EXPECT_TRUE(export_result.plan.row_count > 0U);
+	texas::verify_multiway_pb12_policy_file(policy_path, identity);
+}
+
+TEST_CASE(multiway_pb12_captured_preflop_misses_are_admitted_exported_and_replayed)
+{
+	verify_pb12_targeted_coverage_admission(
+		texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32);
+}
+
+TEST_CASE(multiway_pb12_captured_preflop_misses_are_admitted_to_compact_storage)
+{
+	verify_pb12_targeted_coverage_admission(
+		texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+}
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts)
 {

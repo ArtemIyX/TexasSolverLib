@@ -6,6 +6,7 @@
 #include "games/multiway_state.hpp"
 #include "solver/multiway/engine/multiway_cfr.hpp"
 #include "solver/multiway/engine/multiway_scheduler.hpp"
+#include "solver/multiway/engine/multiway_external_observer.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -386,6 +387,7 @@ namespace texas::solver::multiway
 			std::uint64_t compaction_scratch_bytes = 0U;
 			std::uint64_t disk_reserve_bytes = 0U;
 			bool synchronous_durability = true;
+			std::uint32_t disk_amplification_limit = 0U;
 		};
 		std::uint64_t seed = 1;
 		std::uint32_t worker_count = 1;
@@ -1028,6 +1030,7 @@ namespace texas::solver::multiway
 		void restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint);
 		ExportLease acquire_export_lease() const;
 		ExportLease acquire_checkpoint_lease() const;
+		void set_external_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
 
 	private:
 		friend class MultiwayTerminalAdapter;

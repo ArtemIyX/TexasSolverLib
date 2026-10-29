@@ -795,6 +795,58 @@ TEST_CASE(multiway_solver_external_coordinator_reopens_committed_rows_and_states
 	}
 }
 
+TEST_CASE(multiway_solver_external_merge_batches_multiple_pages_deterministically)
+{
+	using namespace texas;
+	ExternalCoordinatorDirectory directory;
+	auto limits = valid_limits();
+	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.compact_page_width = 1U;
+	limits.external_storage.directory = directory.path();
+	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	limits.external_storage.row_page_cache_bytes = 65536U;
+	limits.external_storage.maximum_wal_bytes = 65536U;
+	limits.external_storage.segment_target_bytes = 65536U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 65536U;
+	limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	limits.external_storage.synchronous_durability = false;
+	MultiwayCFRConfig cfr;
+	cfr.player_count = 2U;
+	MultiwaySolverCoordinator external(MultiwaySolveRequest(valid_root(), cfr, limits));
+	auto reference_limits = valid_limits();
+	reference_limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
+	reference_limits.compact_page_width = 1U;
+	MultiwaySolverCoordinator reference(MultiwaySolveRequest(valid_root(), cfr, reference_limits));
+	external.admit_infoset_row(root_row(4U));
+	reference.admit_infoset_row(root_row(4U));
+	MultiwayWorkerDeltaStream updates(0U, 4U), other(1U, 4U);
+	for (std::uint32_t bucket = 0U; bucket < 4U; ++bucket)
+	{
+		EXPECT_TRUE(updates.try_append({ root_infoset(), bucket, 0U, 1.0 + bucket, 1.0, bucket }));
+		EXPECT_TRUE(other.try_append({ root_infoset(), bucket, 1U, 1.0, 2.0, bucket }));
+	}
+	updates.sort_fixed_order();
+	other.sort_fixed_order();
+	reference.merge_worker_streams({ updates, other });
+	external.merge_worker_streams({ updates, other });
+	{
+		auto lease = external.acquire_export_lease();
+		const auto stats = lease.external_storage()->telemetry(false).pages;
+		EXPECT_EQ(stats.publications, 1U);
+		EXPECT_EQ(stats.published_records, 4U);
+		EXPECT_EQ(stats.run_count, 1U);
+	}
+	for (std::uint32_t bucket = 0U; bucket < 4U; ++bucket)
+	{
+		std::array<double, 3U> expected{}, actual{};
+		reference.regret_matched_strategy_into(root_infoset(), bucket, expected.data(), expected.size());
+		external.regret_matched_strategy_into(root_infoset(), bucket, actual.data(), actual.size());
+		EXPECT_EQ(actual, expected);
+		EXPECT_NEAR(actual[0], static_cast<double>(bucket + 1U) / (bucket + 2U), 1e-12);
+	}
+}
+
 TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatches)
 {
 	using texas::MultiwayCFRConfig;
@@ -808,7 +860,9 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	limits.compact_page_width = 1U;
 	limits.external_storage.directory = directory.path();
 	limits.external_storage.public_catalog_cache_bytes = 65536U;
-	limits.external_storage.row_page_cache_bytes = 2400U;
+	// The 3 KB budget holds at most two pages; the root plus four child pages force a flush.
+	limits.external_storage.row_page_cache_bytes = 3000U;
+	limits.max_sparse_values = 16U;
 	limits.external_storage.maximum_wal_bytes = 65536U;
 	limits.external_storage.segment_target_bytes = 65536U;
 	limits.external_storage.compaction_fan_in = 2U;
@@ -819,7 +873,7 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	cfr.player_count = 2U;
 	const auto child = checked_action_child_public_state();
 	const texas::MultiwaySparseRowShape child_row = {
-		{ child.id, child.betting.current_player }, 2U,
+		{ child.id, child.betting.current_player }, 4U,
 		static_cast<std::uint8_t>(child.legal_actions.size())
 	};
 	MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(valid_root(), cfr, limits));
@@ -835,14 +889,26 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	seed.sort_fixed_order();
 	seed_empty.sort_fixed_order();
 	coordinator.merge_worker_streams({ seed, seed_empty });
+	std::uint64_t page_publications = 0U;
+	coordinator.set_external_publication_observer([](void* context, std::uint32_t component,
+													  std::uint64_t, std::uint64_t, std::uint64_t) {
+		if (component == 2U)
+			++*static_cast<std::uint64_t*>(context);
+	},
+		&page_publications);
 	MultiwayWorkerDeltaStream valid(0U, 3U);
-	MultiwayWorkerDeltaStream empty(1U, 3U);
+	MultiwayWorkerDeltaStream later(1U, 3U);
 	EXPECT_TRUE(valid.try_append(delta(1U, 1.0, 1.0, 2U)));
-	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 1U, 1.0, 1.0, 3U }));
-	EXPECT_TRUE(valid.try_append({ child_row.infoset, 1U, 255U, 1.0, 1.0, 2U }));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 0U, 1.0, 1.0, 3U }));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 1U, 0U, 1.0, 1.0, 4U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 2U, 0U, 1.0, 1.0, 5U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 3U, 0U, 1.0, 1.0, 6U }));
+	// Action 255 sorts after the valid action-0 pages, so rejection follows the forced flush.
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 0U, 255U, 1.0, 1.0, 2U }));
 	valid.sort_fixed_order();
-	empty.sort_fixed_order();
-	EXPECT_THROW(coordinator.merge_worker_streams({ valid, empty }), std::invalid_argument);
+	later.sort_fixed_order();
+	EXPECT_THROW(coordinator.merge_worker_streams({ valid, later }), std::invalid_argument);
+	EXPECT_TRUE(page_publications > 0U);
 	std::array<double, 3U> root_strategy{};
 	coordinator.regret_matched_strategy_into(root_infoset(), 0U,
 		root_strategy.data(), root_strategy.size());
@@ -893,7 +959,7 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 	external_limits.compact_page_width = 1U;
 	external_limits.external_storage.directory = external_directory.path();
 	external_limits.external_storage.public_catalog_cache_bytes = 65536U;
-	external_limits.external_storage.row_page_cache_bytes = 2400U;
+	external_limits.external_storage.row_page_cache_bytes = 3000U;
 	external_limits.external_storage.maximum_wal_bytes = 65536U;
 	external_limits.external_storage.segment_target_bytes = 65536U;
 	external_limits.external_storage.compaction_fan_in = 2U;

@@ -150,7 +150,10 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("multiway per-worker telemetry vector sizes differ");
 		const bool external_checkpoint_has_no_worker_counts =
 			external_checkpoint_generation != 0U && worker_trajectory_counts.empty();
-		if (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count && !external_checkpoint_has_no_worker_counts)
+		const bool compact_checkpoint_only_export_has_no_worker_counts =
+			checkpoint_bytes != 0U && training_wall_nanoseconds == 0U && worker_trajectory_counts.empty();
+		if (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count
+			&& !external_checkpoint_has_no_worker_counts && !compact_checkpoint_only_export_has_no_worker_counts)
 			throw std::invalid_argument("multiway worker trajectory vector size differs from worker count");
 		if (!std::isfinite(trajectories_per_second()))
 			throw std::invalid_argument("multiway training throughput is not finite");

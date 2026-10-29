@@ -198,6 +198,7 @@ Inputs:
 - `--artifacts <directory>`: directory containing `buckets.bin` and `blueprint.bin`.
 - `--duplicates <integer>`: duplicate deal/lookup count.
 - `--report <path>`: optional report destination.
+- `--diagnostic-limit <0..16>`: optional sample cap for missing infosets; defaults to `0`.
 
 Files read:
 
@@ -209,7 +210,7 @@ Files written:
 
 - `<report>` or `<artifacts>/lookup_report.json` by default.
 
-The lookup report records qualification evidence, replay fingerprints, lookup hits, missing infosets/buckets, and action-menu mismatches. The command fails if qualification does not pass or a repeated lookup is not equivalent.
+The lookup report records qualification evidence, replay fingerprints, lookup hits, missing infosets/buckets, and action-menu mismatches. Qualification checks the provider even when the replay coordinator has just admitted the local row; that check does not affect traversal strategy. With a non-zero diagnostic limit, the report stores up to that many distinct missing policy keys, selected by a deterministic hash priority over the keys, with each key's first sampled replay ordinal, board, public betting state, public action history (up to 64 entries), and legal menu. It records the public state ID recomputed from that context. It contains no private cards. Compare each sample's `key.public_state_id` and `key.reconstructed_public_state_id` first. The evaluator has already queried the same key against the exported policy; without a retained training checkpoint or admission catalog, a true export miss cannot distinguish an unadmitted branch from a training-to-export identity problem. The command fails if qualification does not pass or a repeated lookup is not equivalent.
 
 #### `texas_multiway_finalize`
 

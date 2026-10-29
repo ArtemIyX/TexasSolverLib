@@ -1,4 +1,5 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
+#include "solver/multiway/workflow/multiway_pb12_coverage.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
@@ -1797,7 +1798,7 @@ namespace texas::solver::multiway
 		return result;
 	}
 
-	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainer::external_storage_telemetry() const
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainer::external_storage_telemetry(bool include_disk_usage) const
 	{
 		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 			throw std::logic_error("external storage telemetry requires ExternalCompactInt32");
@@ -1805,7 +1806,13 @@ namespace texas::solver::multiway
 		const auto* external = lease.external_storage();
 		if (external == nullptr)
 			throw std::logic_error("external storage telemetry has no external storage");
-		return external->telemetry();
+		return external->telemetry(include_disk_usage);
+	}
+
+	void MultiwayBlueprintTrainer::set_external_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context)
+	{
+		coordinator_->set_external_publication_observer(observer, context);
 	}
 
 	MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPolicyKind policy_kind) const
@@ -1891,7 +1898,13 @@ namespace texas::solver::multiway
 		status_.river_rows = diagnostics.river_rows_admitted;
 		status_.discarded_trajectories = diagnostics.trajectories_discarded;
 		status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
-		status_.admitted_action_cells = coordinator_->storage().value_count();
+		const auto* compact_storage = coordinator_->compact_storage();
+		status_.admitted_action_cells = compact_storage != nullptr
+			? compact_storage->value_count()
+			: coordinator_->storage().value_count();
+		status_.peak_public_states = diagnostics.public_states_admitted;
+		status_.peak_sparse_rows = diagnostics.sparse_rows_admitted;
+		status_.peak_sparse_values = status_.admitted_action_cells;
 		status_.street_visits = diagnostics.street_visits;
 	}
 
@@ -2001,6 +2014,11 @@ namespace texas::solver::multiway
 			progress_callback, progress_context);
 	}
 
+	MultiwayPB12CoverageAdmission MultiwayBlueprintTrainingSession::admit_pb12_targeted_coverage()
+	{
+		return admit_multiway_pb12_coverage(root_, *action_abstraction_, *coordinator_);
+	}
+
 	void MultiwayBlueprintTrainingSession::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot)
 	{
 		trainer_->resume_from_root_policy(snapshot);
@@ -2072,9 +2090,15 @@ namespace texas::solver::multiway
 		return result;
 	}
 
-	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainingSession::external_storage_telemetry() const
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainingSession::external_storage_telemetry(bool include_disk_usage) const
 	{
-		return trainer_->external_storage_telemetry();
+		return trainer_->external_storage_telemetry(include_disk_usage);
+	}
+
+	void MultiwayBlueprintTrainingSession::set_external_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context)
+	{
+		trainer_->set_external_publication_observer(observer, context);
 	}
 
 	void MultiwayBlueprintTrainingSession::record_process_memory_snapshot(MultiwayMemoryPhase phase)

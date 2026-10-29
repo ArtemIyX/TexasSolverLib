@@ -17,6 +17,7 @@
 
 namespace texas::solver::multiway
 {
+	struct MultiwayPB12CoverageAdmission;
 	struct MultiwayTrainingCheckpointWriteResult;
 	struct MultiwayExternalCheckpointManifest;
 	struct MultiwayExternalStorageTelemetry;
@@ -327,7 +328,8 @@ namespace texas::solver::multiway
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
-		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry(bool include_disk_usage = true) const;
+		void set_external_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
@@ -376,6 +378,8 @@ namespace texas::solver::multiway
 			std::uint64_t batch_count,
 			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
 			void* progress_context = nullptr);
+		// Seeds the captured PB-12 public rows through coordinator admission.
+		[[nodiscard]] MultiwayPB12CoverageAdmission admit_pb12_targeted_coverage();
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 		void resume_from_external_checkpoint(
@@ -397,7 +401,8 @@ namespace texas::solver::multiway
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
-		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry(bool include_disk_usage = true) const;
+		void set_external_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:
