@@ -16,6 +16,14 @@ Use project skills to complete the task at hand
 |cpp-unit-tests| Make unit tests for new features|
 |cpp-code-review| Review fresh-made code|
 |update-project-log| Update LOG file after finishing any task|
+|cmake-maintenance| Any CMakeLists.txt change, CMake module/package/toolchain change, or CMake preset change|
+
+Before editing any repository `CMakeLists.txt`, read and apply
+[cmake-maintenance](.agents/skills/cmake-maintenance/SKILL.md), even when the
+CMake edit is a small part of another task. Also apply it to related `.cmake`,
+`.cmake.in`, `CMakePresets.json`, and `CMakeUserPresets.json` changes.
+This is required without an explicit skill invocation. For vendored CMake files,
+apply the skill's dependency guidance before deciding whether an edit is needed.
 
 ### Scripts
 

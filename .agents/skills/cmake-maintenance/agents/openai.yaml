@@ -1,0 +1,6 @@
+interface:
+  display_name: "CMake Maintenance"
+  short_description: "Maintain portable project CMake targets and tests"
+  default_prompt: "Use $cmake-maintenance to make this CMake change while preserving target, test, platform, and package contracts."
+policy:
+  allow_implicit_invocation: true
