@@ -18,11 +18,11 @@ namespace texas::solver::hunl
 	/** @brief Pairwise win/tie counts between two players' abstraction buckets. */
 	struct HUNLBucketShowdownMatrix
 	{
-		std::uint32_t bucket_count_p0 = 0; ///< Number of player-zero buckets.
-		std::uint32_t bucket_count_p1 = 0; ///< Number of player-one buckets.
-		std::vector<std::uint32_t> valid_pair_counts; ///< Compatible pair count indexed by bucket pair.
-		std::vector<std::int32_t> net_win_counts; ///< Wins minus losses indexed by bucket pair.
-		std::vector<std::uint32_t> tie_pair_counts; ///< Tied compatible-pair count indexed by bucket pair.
+		std::uint32_t bucket_count_p0 = 0;				  ///< Number of player-zero buckets.
+		std::uint32_t bucket_count_p1 = 0;				  ///< Number of player-one buckets.
+		std::vector<std::uint32_t> valid_pair_counts;	  ///< Compatible pair count indexed by bucket pair.
+		std::vector<std::int32_t> net_win_counts;		  ///< Wins minus losses indexed by bucket pair.
+		std::vector<std::uint32_t> tie_pair_counts;		  ///< Tied compatible-pair count indexed by bucket pair.
 		std::vector<std::uint32_t> bucket_hand_counts_p0; ///< Concrete hands per player-zero bucket.
 		std::vector<std::uint32_t> bucket_hand_counts_p1; ///< Concrete hands per player-one bucket.
 
@@ -39,14 +39,14 @@ namespace texas::solver::hunl
 	/** @brief Terminal-node reference to a cached board and contribution vector. */
 	struct HUNLBucketTerminalBinding
 	{
-		std::uint32_t cache_index = 0; ///< Index into the showdown matrix cache.
+		std::uint32_t cache_index = 0;				 ///< Index into the showdown matrix cache.
 		std::array<int, 2> contributions = { 0, 0 }; ///< Contributions used to compute terminal payoff.
 	};
 
 	/** @brief Board and bucket dimensions identifying a cached showdown matrix. */
 	struct HUNLBucketTerminalCacheKey
 	{
-		HUNLFlatPackedBoard board{}; ///< Board shared by the cached matrix.
+		HUNLFlatPackedBoard board{};	   ///< Board shared by the cached matrix.
 		std::uint32_t bucket_count_p0 = 0; ///< Player-zero bucket count.
 		std::uint32_t bucket_count_p1 = 0; ///< Player-one bucket count.
 

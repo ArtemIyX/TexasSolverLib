@@ -17,7 +17,7 @@ namespace texas::solver::hunl
 	struct HUNLSampledTerminalInput
 	{
 		std::array<int, 2> contributions = { 0, 0 }; ///< Total contributions by player.
-		PlayerId traversing_player = 0; ///< Player whose utility is returned.
+		PlayerId traversing_player = 0;				 ///< Player whose utility is returned.
 	};
 
 	/** @brief Evaluates terminal utility from the sampled traversing player's perspective. */

@@ -27,7 +27,7 @@ namespace texas::solver::hunl
 	struct HUNLSampledBuilderConfig
 	{
 		std::size_t max_cached_public_states = 0; ///< Maximum cached states; zero means no count limit.
-		std::uint64_t memory_limit_bytes = 0; ///< Maximum estimated bytes; zero means no byte limit.
+		std::uint64_t memory_limit_bytes = 0;	  ///< Maximum estimated bytes; zero means no byte limit.
 	};
 
 	/** @brief Fixed-capacity canonical public-state key for sampled graph lookup. */

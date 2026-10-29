@@ -12,7 +12,7 @@ namespace texas::games::multiway
 	/** @brief Supported rake calculations for multiway pot settlement. */
 	enum class MultiwayRakeMode : std::uint8_t
 	{
-		ExplicitZero, ///< Removes no chips from contested pots.
+		ExplicitZero,			  ///< Removes no chips from contested pots.
 		PercentageOfContestedPot, ///< Applies a capped percentage to the contested-pot total.
 	};
 
@@ -24,9 +24,9 @@ namespace texas::games::multiway
 	struct MultiwayRakePolicy
 	{
 		MultiwayRakeMode mode = MultiwayRakeMode::ExplicitZero; ///< Rake calculation to use.
-		std::uint16_t basis_points = 0; ///< Percentage rate in hundredths of a percent.
-		int cap = 0; ///< Maximum rake in chips for percentage mode.
-		bool no_flop_no_drop = true; ///< Skip percentage rake when flop_seen is false.
+		std::uint16_t basis_points = 0;							///< Percentage rate in hundredths of a percent.
+		int cap = 0;											///< Maximum rake in chips for percentage mode.
+		bool no_flop_no_drop = true;							///< Skip percentage rake when flop_seen is false.
 
 		/** @brief Returns the explicit-zero rake policy. */
 		[[nodiscard]] static constexpr MultiwayRakePolicy explicit_zero() noexcept

@@ -31,7 +31,7 @@ namespace texas::solver::dcfr
 	struct DCFRConfig
 	{
 		double alpha = 1.5; ///< Positive-regret discount exponent; must be finite and greater than zero.
-		double beta = 0.0; ///< Negative-regret discount exponent; must be finite and non-negative.
+		double beta = 0.0;	///< Negative-regret discount exponent; must be finite and non-negative.
 		double gamma = 2.0; ///< Strategy-sum discount exponent; must be finite and non-negative.
 	};
 
@@ -70,7 +70,7 @@ namespace texas::solver::dcfr
 	{
 		double positive_regret = 1.0; ///< Multiplier for positive cumulative regret.
 		double negative_regret = 1.0; ///< Multiplier for negative cumulative regret.
-		double strategy_sum = 1.0; ///< Multiplier for cumulative strategy.
+		double strategy_sum = 1.0;	  ///< Multiplier for cumulative strategy.
 	};
 
 	/** @brief Computes DCFR discount multipliers for a one-based iteration.

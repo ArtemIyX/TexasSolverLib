@@ -31,39 +31,39 @@ namespace texas::games::hunl
 	/** @brief Selects the postflop graph representation used by the flat solver. */
 	enum class HUNLFlatSolveMode : std::uint8_t
 	{
-		Auto = 0, ///< Choose a supported solve mode from the configuration.
+		Auto = 0,		  ///< Choose a supported solve mode from the configuration.
 		ExplicitHand = 1, ///< Solve an explicitly dealt private hand.
-		Bucketed = 2, ///< Solve against bucket-indexed private ranges.
+		Bucketed = 2,	  ///< Solve against bucket-indexed private ranges.
 	};
 
 	/** @brief Selects how configured private hand ranges are interpreted. */
 	enum class HUNLRangePolicy : std::uint8_t
 	{
-		Unspecified = 0, ///< Infer from whether initial ranges are present.
-		Uniform = 1, ///< Use uniform private hands.
+		Unspecified = 0,	  ///< Infer from whether initial ranges are present.
+		Uniform = 1,		  ///< Use uniform private hands.
 		UseInitialRanges = 2, ///< Require and use the configured initial ranges.
-		RequireExplicit = 3, ///< Require an explicit range contract.
+		RequireExplicit = 3,  ///< Require an explicit range contract.
 	};
 
 	/** @brief One private hand and its non-negative range weight. */
 	struct HUNLWeightedHand
 	{
 		std::array<std::uint8_t, 2> hole = { 0, 0 }; ///< Two encoded private cards.
-		double weight = 0.0; ///< Relative hand weight.
+		double weight = 0.0;						 ///< Relative hand weight.
 	};
 
 	/** @brief One abstraction bucket and its non-negative range weight. */
 	struct HUNLWeightedBucket
 	{
 		Street street = Street::Preflop; ///< Street for which the bucket is defined.
-		std::uint32_t bucket = 0; ///< Bucket index within the street's abstraction.
-		double weight = 0.0; ///< Relative bucket weight.
+		std::uint32_t bucket = 0;		 ///< Bucket index within the street's abstraction.
+		double weight = 0.0;			 ///< Relative bucket weight.
 	};
 
 	/** @brief Hand and/or bucket weights supplied for one player. */
 	struct HUNLRangeInput
 	{
-		std::vector<HUNLWeightedHand> hand_weights; ///< Explicit private hands, if provided.
+		std::vector<HUNLWeightedHand> hand_weights;		///< Explicit private hands, if provided.
 		std::vector<HUNLWeightedBucket> bucket_weights; ///< Abstract buckets, if provided.
 	};
 
@@ -71,7 +71,7 @@ namespace texas::games::hunl
 	struct HUNLJointRangeDeal
 	{
 		std::array<std::array<std::uint8_t, 2>, 2> hole = {}; ///< Private hand by player.
-		double weight = 0.0; ///< Normalized joint weight after blocker conditioning.
+		double weight = 0.0;								  ///< Normalized joint weight after blocker conditioning.
 	};
 
 	// Joint root reach after board and cross-player blocker conditioning.  This
@@ -115,13 +115,13 @@ namespace texas::games::hunl
 	/** @brief Fixed-capacity information needed to construct an HUNL infoset key. */
 	struct HUNLInfosetEncoding
 	{
-		std::array<std::uint8_t, 2> hole = { 0, 0 }; ///< Acting player's private cards.
-		std::array<std::uint8_t, 5> board = { 0, 0, 0, 0, 0 }; ///< Board prefix; unused entries must be zero.
+		std::array<std::uint8_t, 2> hole = { 0, 0 };				 ///< Acting player's private cards.
+		std::array<std::uint8_t, 5> board = { 0, 0, 0, 0, 0 };		 ///< Board prefix; unused entries must be zero.
 		std::array<std::uint8_t, 4> street_lengths = { 0, 0, 0, 0 }; ///< History-code count for each street segment.
-		std::array<int, HUNL_MAX_HISTORY_CODES> history_codes = {}; ///< Concatenated signed action-history codes.
-		std::uint8_t board_count = 0; ///< Number of active board cards.
-		Street street = Street::Preflop; ///< Current street.
-		std::uint8_t history_count = 0; ///< Number of active history codes.
+		std::array<int, HUNL_MAX_HISTORY_CODES> history_codes = {};	 ///< Concatenated signed action-history codes.
+		std::uint8_t board_count = 0;								 ///< Number of active board cards.
+		Street street = Street::Preflop;							 ///< Current street.
+		std::uint8_t history_count = 0;								 ///< Number of active history codes.
 
 		/** @brief Compares every active and canonical storage field. */
 		bool operator==(const HUNLInfosetEncoding& other) const noexcept
@@ -153,38 +153,38 @@ namespace texas::games::hunl
 	 */
 	struct HUNLConfig
 	{
-		int starting_stack = 10'000; ///< Starting chips per player.
-		int small_blind = 50; ///< Small-blind amount.
-		int big_blind = 100; ///< Big-blind amount and solver chip unit reference.
-		int ante = 0; ///< Ante posted by each player.
-		Street starting_street = Street::Preflop; ///< Street at which the state begins.
-		std::vector<std::uint8_t> initial_board; ///< Known board prefix for a postflop start.
-		int initial_pot = 0; ///< Chips already in the pot at the starting state.
-		std::array<int, 2> initial_contributions = { 0, 0 }; ///< Starting contributions by player.
+		int starting_stack = 10'000;																 ///< Starting chips per player.
+		int small_blind = 50;																		 ///< Small-blind amount.
+		int big_blind = 100;																		 ///< Big-blind amount and solver chip unit reference.
+		int ante = 0;																				 ///< Ante posted by each player.
+		Street starting_street = Street::Preflop;													 ///< Street at which the state begins.
+		std::vector<std::uint8_t> initial_board;													 ///< Known board prefix for a postflop start.
+		int initial_pot = 0;																		 ///< Chips already in the pot at the starting state.
+		std::array<int, 2> initial_contributions = { 0, 0 };										 ///< Starting contributions by player.
 		std::optional<std::array<std::array<std::uint8_t, 2>, 2>> initial_hole_cards = std::nullopt; ///< Explicit private cards by player, when solving a fixed deal.
-		std::uint8_t preflop_raise_cap = 4; ///< Maximum raises on the preflop street.
-		std::uint8_t postflop_raise_cap = 3; ///< Maximum raises on each postflop street.
-		std::vector<double> bet_size_fractions = { 0.33, 0.75, 1.00, 1.50, 2.00 }; ///< Default pot-relative opening-bet sizes.
-		std::optional<std::vector<double>> flop_bet_fractions = std::nullopt; ///< Optional flop-specific bet menu.
-		std::optional<std::vector<double>> turn_bet_fractions = std::nullopt; ///< Optional turn-specific bet menu.
-		std::optional<std::vector<double>> river_bet_fractions = std::nullopt; ///< Optional river-specific bet menu.
-		std::vector<double> raise_size_xs = { 3.0 }; ///< Multipliers used to form raise-to candidates.
-		bool include_all_in = true; ///< Whether the action menu can include an all-in action.
-		std::optional<double> auto_all_in_spr_threshold = std::nullopt; ///< Optional SPR threshold that adds an all-in action.
-		int force_allin_threshold = 1; ///< Remaining-stack threshold for forcing an all-in action.
-		int min_bet_bb = 1; ///< Minimum opening bet in big blinds.
-		bool allow_oop_flop_lead = false; ///< Whether the out-of-position player may lead first on the flop.
-		double rake_rate = 0.0; ///< Fraction of contested pot taken as rake.
-		int rake_cap = 0; ///< Maximum rake in chips; zero disables the cap.
-		std::array<std::uint16_t, 3> bucket_counts_by_street = { 0, 0, 0 }; ///< Bucket counts for flop, turn and river.
-		std::optional<std::string> abstraction_path = std::nullopt; ///< Optional abstraction artifact path.
-		std::optional<std::string> abstraction_version = std::nullopt; ///< Optional abstraction version identifier.
-		std::uint32_t depth_limit_plies = 0; ///< Maximum tree depth; zero means unlimited.
-		HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto; ///< Flat solver's private-hand mode.
+		std::uint8_t preflop_raise_cap = 4;															 ///< Maximum raises on the preflop street.
+		std::uint8_t postflop_raise_cap = 3;														 ///< Maximum raises on each postflop street.
+		std::vector<double> bet_size_fractions = { 0.33, 0.75, 1.00, 1.50, 2.00 };					 ///< Default pot-relative opening-bet sizes.
+		std::optional<std::vector<double>> flop_bet_fractions = std::nullopt;						 ///< Optional flop-specific bet menu.
+		std::optional<std::vector<double>> turn_bet_fractions = std::nullopt;						 ///< Optional turn-specific bet menu.
+		std::optional<std::vector<double>> river_bet_fractions = std::nullopt;						 ///< Optional river-specific bet menu.
+		std::vector<double> raise_size_xs = { 3.0 };												 ///< Multipliers used to form raise-to candidates.
+		bool include_all_in = true;																	 ///< Whether the action menu can include an all-in action.
+		std::optional<double> auto_all_in_spr_threshold = std::nullopt;								 ///< Optional SPR threshold that adds an all-in action.
+		int force_allin_threshold = 1;																 ///< Remaining-stack threshold for forcing an all-in action.
+		int min_bet_bb = 1;																			 ///< Minimum opening bet in big blinds.
+		bool allow_oop_flop_lead = false;															 ///< Whether the out-of-position player may lead first on the flop.
+		double rake_rate = 0.0;																		 ///< Fraction of contested pot taken as rake.
+		int rake_cap = 0;																			 ///< Maximum rake in chips; zero disables the cap.
+		std::array<std::uint16_t, 3> bucket_counts_by_street = { 0, 0, 0 };							 ///< Bucket counts for flop, turn and river.
+		std::optional<std::string> abstraction_path = std::nullopt;									 ///< Optional abstraction artifact path.
+		std::optional<std::string> abstraction_version = std::nullopt;								 ///< Optional abstraction version identifier.
+		std::uint32_t depth_limit_plies = 0;														 ///< Maximum tree depth; zero means unlimited.
+		HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto;								 ///< Flat solver's private-hand mode.
 		// Range/bucket solving is a separate solve contract from explicit-hand solving.
 		// The current postflop solver rejects this contract until its joint-combo reach
 		// and terminal-value pipeline is implemented.
-		HUNLRangePolicy range_policy = HUNLRangePolicy::Unspecified; ///< Range interpretation requested by the caller.
+		HUNLRangePolicy range_policy = HUNLRangePolicy::Unspecified;								  ///< Range interpretation requested by the caller.
 		std::array<std::optional<HUNLRangeInput>, 2> initial_ranges = { std::nullopt, std::nullopt }; ///< Optional starting range per player.
 		/** @brief Validates chip settings, street state, action menus and range inputs.
 		 * @throws std::invalid_argument If any configuration field is inconsistent or out of range.
@@ -202,51 +202,51 @@ namespace texas::games::hunl
 	/** @brief Runtime betting data and action-menu settings for one action enumeration. */
 	struct ActionContext
 	{
-		int pot = 0; ///< Current pot size in chips.
-		int to_call = 0; ///< Additional chips the acting player must match to call.
-		std::array<int, 2> stacks = { 0, 0 }; ///< Remaining stacks by player.
-		std::array<int, 2> contributions = { 0, 0 }; ///< Contributions by player on this street.
-		std::uint8_t cur_player = 0; ///< Acting player index.
-		Street street = Street::Preflop; ///< Current street.
-		std::uint8_t street_num_raises = 0; ///< Raises already made on this street.
-		PlayerId street_aggressor = -1; ///< Most recent aggressor, or -1 when none.
-		int big_blind = 100; ///< Big-blind size used to scale configured thresholds.
+		int pot = 0;															   ///< Current pot size in chips.
+		int to_call = 0;														   ///< Additional chips the acting player must match to call.
+		std::array<int, 2> stacks = { 0, 0 };									   ///< Remaining stacks by player.
+		std::array<int, 2> contributions = { 0, 0 };							   ///< Contributions by player on this street.
+		std::uint8_t cur_player = 0;											   ///< Acting player index.
+		Street street = Street::Preflop;										   ///< Current street.
+		std::uint8_t street_num_raises = 0;										   ///< Raises already made on this street.
+		PlayerId street_aggressor = -1;											   ///< Most recent aggressor, or -1 when none.
+		int big_blind = 100;													   ///< Big-blind size used to scale configured thresholds.
 		std::vector<double> bet_size_fractions = { 0.33, 0.75, 1.00, 1.50, 2.00 }; ///< Default pot-relative bet sizes.
-		std::optional<std::vector<double>> flop_bet_fractions = std::nullopt; ///< Optional flop-specific bet sizes.
-		std::optional<std::vector<double>> turn_bet_fractions = std::nullopt; ///< Optional turn-specific bet sizes.
-		std::optional<std::vector<double>> river_bet_fractions = std::nullopt; ///< Optional river-specific bet sizes.
-		std::vector<double> raise_size_xs = { 3.0 }; ///< Multipliers used to form raise-to candidates.
-		std::uint8_t preflop_raise_cap = 4; ///< Maximum preflop raises.
-		std::uint8_t postflop_raise_cap = 3; ///< Maximum raises on each postflop street.
-		int force_allin_threshold = 1; ///< Remaining-stack threshold for forcing an all-in action.
-		int min_bet_bb = 1; ///< Minimum opening bet, in big blinds.
-		bool include_all_in = true; ///< Whether an all-in candidate is allowed.
-		std::optional<double> auto_all_in_spr_threshold = std::nullopt; ///< SPR threshold for automatic all-in inclusion.
-		bool allow_oop_flop_lead = false; ///< Whether the out-of-position player may lead first on the flop.
-		std::uint32_t street_action_count = 0; ///< Number of actions already taken on this street.
+		std::optional<std::vector<double>> flop_bet_fractions = std::nullopt;	   ///< Optional flop-specific bet sizes.
+		std::optional<std::vector<double>> turn_bet_fractions = std::nullopt;	   ///< Optional turn-specific bet sizes.
+		std::optional<std::vector<double>> river_bet_fractions = std::nullopt;	   ///< Optional river-specific bet sizes.
+		std::vector<double> raise_size_xs = { 3.0 };							   ///< Multipliers used to form raise-to candidates.
+		std::uint8_t preflop_raise_cap = 4;										   ///< Maximum preflop raises.
+		std::uint8_t postflop_raise_cap = 3;									   ///< Maximum raises on each postflop street.
+		int force_allin_threshold = 1;											   ///< Remaining-stack threshold for forcing an all-in action.
+		int min_bet_bb = 1;														   ///< Minimum opening bet, in big blinds.
+		bool include_all_in = true;												   ///< Whether an all-in candidate is allowed.
+		std::optional<double> auto_all_in_spr_threshold = std::nullopt;			   ///< SPR threshold for automatic all-in inclusion.
+		bool allow_oop_flop_lead = false;										   ///< Whether the out-of-position player may lead first on the flop.
+		std::uint32_t street_action_count = 0;									   ///< Number of actions already taken on this street.
 	};
 
 	/** @brief Hold'em game state used by the solver pipeline. */
 	struct HUNLState
 	{
 		std::optional<std::array<std::array<std::uint8_t, 2>, 2>> hole_cards = std::nullopt; ///< Private cards by player, absent while undealt.
-		std::vector<std::uint8_t> board; ///< Community cards dealt so far.
-		Street street = Street::Preflop; ///< Current betting street.
-		std::array<int, 2> contributions = { 0, 0 }; ///< Current-street contributions by player.
-		std::array<int, 2> stacks = { 0, 0 }; ///< Chips remaining by player.
-		std::vector<ActionId> street_history; ///< Action identifiers on the current street.
-		PlayerId street_aggressor = -1; ///< Last player to aggress on the current street, or -1.
-		std::uint8_t street_num_raises = 0; ///< Raises made on the current street.
-		int to_call = 0; ///< Chips required from the actor to call.
-		PlayerId cur_player = -1; ///< Acting player, or the chance sentinel when dealing.
-		std::array<bool, 2> folded = { false, false }; ///< Fold status by player.
-		std::array<bool, 2> all_in = { false, false }; ///< All-in status by player.
-		std::shared_ptr<const HUNLConfig> config; ///< Immutable settings governing this state.
-		std::vector<std::vector<std::string>> betting_tokens; ///< Completed-street tokens for display/key formatting.
-		std::vector<std::string> current_street_tokens; ///< Current-street tokens for display/key formatting.
-		std::vector<std::vector<int>> betting_history_codes; ///< Encoded action history for completed streets.
-		std::vector<int> current_street_history_codes; ///< Encoded actions on the current street.
-		std::uint8_t pending_board_deals = 0; ///< Remaining chance cards before the next betting street.
+		std::vector<std::uint8_t> board;													 ///< Community cards dealt so far.
+		Street street = Street::Preflop;													 ///< Current betting street.
+		std::array<int, 2> contributions = { 0, 0 };										 ///< Current-street contributions by player.
+		std::array<int, 2> stacks = { 0, 0 };												 ///< Chips remaining by player.
+		std::vector<ActionId> street_history;												 ///< Action identifiers on the current street.
+		PlayerId street_aggressor = -1;														 ///< Last player to aggress on the current street, or -1.
+		std::uint8_t street_num_raises = 0;													 ///< Raises made on the current street.
+		int to_call = 0;																	 ///< Chips required from the actor to call.
+		PlayerId cur_player = -1;															 ///< Acting player, or the chance sentinel when dealing.
+		std::array<bool, 2> folded = { false, false };										 ///< Fold status by player.
+		std::array<bool, 2> all_in = { false, false };										 ///< All-in status by player.
+		std::shared_ptr<const HUNLConfig> config;											 ///< Immutable settings governing this state.
+		std::vector<std::vector<std::string>> betting_tokens;								 ///< Completed-street tokens for display/key formatting.
+		std::vector<std::string> current_street_tokens;										 ///< Current-street tokens for display/key formatting.
+		std::vector<std::vector<int>> betting_history_codes;								 ///< Encoded action history for completed streets.
+		std::vector<int> current_street_history_codes;										 ///< Encoded actions on the current street.
+		std::uint8_t pending_board_deals = 0;												 ///< Remaining chance cards before the next betting street.
 
 		/** @brief Creates the default initial game state. */
 		static HUNLState initial();

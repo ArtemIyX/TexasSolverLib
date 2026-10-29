@@ -20,14 +20,14 @@ namespace texas::solver::hunl
 	/** @brief Bucket IDs, hand counts and range weights for one information set. */
 	struct HUNLFlatBucketEntry
 	{
-		InfosetId infoset_id{}; ///< Owning information-set ID.
-		Street street = Street::Preflop; ///< Street whose abstraction is used.
-		std::vector<std::uint8_t> board; ///< Board associated with the information set.
-		std::string canonical_board; ///< Canonically ordered board key.
-		std::uint32_t bucket_count = 0; ///< Number of dense buckets represented.
-		std::vector<std::uint32_t> dense_bucket_ids; ///< Dense bucket ID by concrete hand index.
+		InfosetId infoset_id{};						   ///< Owning information-set ID.
+		Street street = Street::Preflop;			   ///< Street whose abstraction is used.
+		std::vector<std::uint8_t> board;			   ///< Board associated with the information set.
+		std::string canonical_board;				   ///< Canonically ordered board key.
+		std::uint32_t bucket_count = 0;				   ///< Number of dense buckets represented.
+		std::vector<std::uint32_t> dense_bucket_ids;   ///< Dense bucket ID by concrete hand index.
 		std::vector<std::uint32_t> bucket_hand_counts; ///< Concrete-hand count by dense bucket.
-		std::vector<double> bucket_weights; ///< Optional range mass by dense bucket.
+		std::vector<double> bucket_weights;			   ///< Optional range mass by dense bucket.
 	};
 
 	/** @brief Abstraction tables and per-information-set dense bucket metadata. */

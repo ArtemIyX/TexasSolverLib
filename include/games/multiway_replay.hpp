@@ -15,16 +15,16 @@ namespace texas::games::multiway
 	/** @brief Public decision event, including the policy seed used by its producer. */
 	struct MultiwayReplayDecision
 	{
-		core::PlayerId acting_seat = -1; ///< Seat that made the decision.
+		core::PlayerId acting_seat = -1;			  ///< Seat that made the decision.
 		MultiwayAction action = MultiwayAction::Fold; ///< Action applied by the engine.
-		int target_street_contribution = 0; ///< Actor's total contribution on the current street after the action.
-		std::uint64_t decision_seed = 0; ///< Seed retained for reproducing upstream policy sampling.
+		int target_street_contribution = 0;			  ///< Actor's total contribution on the current street after the action.
+		std::uint64_t decision_seed = 0;			  ///< Seed retained for reproducing upstream policy sampling.
 	};
 
 	/** @brief Kind of event in a public multiway hand history. */
 	enum class MultiwayReplayEventKind : std::uint8_t
 	{
-		Decision, ///< Apply one betting action.
+		Decision,		  ///< Apply one betting action.
 		StreetTransition, ///< Begin a street after betting is complete.
 	};
 
@@ -32,18 +32,18 @@ namespace texas::games::multiway
 	struct MultiwayReplayEvent
 	{
 		MultiwayReplayEventKind kind = MultiwayReplayEventKind::Decision; ///< Which payload is active.
-		MultiwayReplayDecision decision{}; ///< Decision payload when kind is Decision.
-		core::Street next_street = core::Street::Flop; ///< Destination street for a transition.
-		core::PlayerId first_player = -1; ///< First actor after a transition.
-		std::vector<std::uint8_t> board; ///< Canonical board dealt at transition; empty is accepted for legacy histories.
+		MultiwayReplayDecision decision{};								  ///< Decision payload when kind is Decision.
+		core::Street next_street = core::Street::Flop;					  ///< Destination street for a transition.
+		core::PlayerId first_player = -1;								  ///< First actor after a transition.
+		std::vector<std::uint8_t> board;								  ///< Canonical board dealt at transition; empty is accepted for legacy histories.
 	};
 
 	/** @brief Versioned public configuration and ordered event stream for one hand. */
 	struct MultiwayHandHistory
 	{
-		std::uint64_t schema_version = 1; ///< Serialization schema version; currently only version 1 is accepted.
-		std::uint64_t hand_seed = 0; ///< Hand-level seed retained for replay consumers.
-		MultiwayGameConfig initial_config{}; ///< Public state used to construct the initial engine state.
+		std::uint64_t schema_version = 1;		 ///< Serialization schema version; currently only version 1 is accepted.
+		std::uint64_t hand_seed = 0;			 ///< Hand-level seed retained for replay consumers.
+		MultiwayGameConfig initial_config{};	 ///< Public state used to construct the initial engine state.
 		std::vector<MultiwayReplayEvent> events; ///< Events applied in order.
 
 		/** @brief Creates an empty history from table rules.

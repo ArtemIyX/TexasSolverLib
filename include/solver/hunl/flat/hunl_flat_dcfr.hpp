@@ -33,12 +33,12 @@ namespace texas::solver::hunl
 	/** @brief Per-worker elapsed time by flat solver stage. */
 	struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatStageProfile
 	{
-		double discount_seconds = 0.0; ///< Time spent discounting accumulated values.
-		double strategy_seconds = 0.0; ///< Time spent deriving current strategy.
-		double reach_seconds = 0.0; ///< Time spent propagating and aggregating reach.
-		double terminal_seconds = 0.0; ///< Time spent evaluating terminal values.
-		double backward_seconds = 0.0; ///< Time spent propagating values backward.
-		double regret_seconds = 0.0; ///< Time spent updating regrets.
+		double discount_seconds = 0.0;		   ///< Time spent discounting accumulated values.
+		double strategy_seconds = 0.0;		   ///< Time spent deriving current strategy.
+		double reach_seconds = 0.0;			   ///< Time spent propagating and aggregating reach.
+		double terminal_seconds = 0.0;		   ///< Time spent evaluating terminal values.
+		double backward_seconds = 0.0;		   ///< Time spent propagating values backward.
+		double regret_seconds = 0.0;		   ///< Time spent updating regrets.
 		double average_strategy_seconds = 0.0; ///< Time spent accumulating average strategy.
 	};
 #if defined(_MSC_VER)
@@ -48,12 +48,12 @@ namespace texas::solver::hunl
 	/** @brief Stage category used to attribute flat solver timing. */
 	enum class HUNLFlatStageKind : std::uint8_t
 	{
-		Discount = 0, ///< DCFR discount stage.
-		Strategy = 1, ///< Current strategy computation stage.
-		Reach = 2, ///< Reach propagation and reduction stage.
-		Terminal = 3, ///< Terminal utility evaluation stage.
-		Backward = 4, ///< Backward value stage.
-		Regret = 5, ///< Regret update stage.
+		Discount = 0,		 ///< DCFR discount stage.
+		Strategy = 1,		 ///< Current strategy computation stage.
+		Reach = 2,			 ///< Reach propagation and reduction stage.
+		Terminal = 3,		 ///< Terminal utility evaluation stage.
+		Backward = 4,		 ///< Backward value stage.
+		Regret = 5,			 ///< Regret update stage.
 		AverageStrategy = 6, ///< Average strategy accumulation stage.
 	};
 

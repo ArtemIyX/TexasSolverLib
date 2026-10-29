@@ -18,45 +18,45 @@ namespace texas::solver::hunl
 	/** @brief Flat solver stage identifier. */
 	enum class HUNLFlatPipelineStageId : std::uint8_t
 	{
-		ForwardProfile = 0, ///< Propagate policy and chance reach.
-		AggregateReach = 1, ///< Aggregate hand reach by bucket.
-		OpponentReach = 2, ///< Build opponent counterfactual reach.
-		ShowdownEquity = 3, ///< Evaluate showdown terminals.
+		ForwardProfile = 0,	  ///< Propagate policy and chance reach.
+		AggregateReach = 1,	  ///< Aggregate hand reach by bucket.
+		OpponentReach = 2,	  ///< Build opponent counterfactual reach.
+		ShowdownEquity = 3,	  ///< Evaluate showdown terminals.
 		DepthLimitedEval = 4, ///< Evaluate configured depth-limited leaves.
-		BackwardCFV = 5, ///< Propagate counterfactual values backward.
-		RegretUpdate = 6, ///< Update cumulative regrets.
+		BackwardCFV = 5,	  ///< Propagate counterfactual values backward.
+		RegretUpdate = 6,	  ///< Update cumulative regrets.
 	};
 
 	/** @brief Data domain partitioned by a pipeline stage. */
 	enum class HUNLFlatPipelineDomain : std::uint8_t
 	{
-		Infoset = 0, ///< Stage processes information sets.
-		Node = 1, ///< Stage processes nodes.
+		Infoset = 0,   ///< Stage processes information sets.
+		Node = 1,	   ///< Stage processes nodes.
 		DepthNode = 2, ///< Stage processes nodes grouped by depth.
 	};
 
 	/** @brief Graph and table counts used to size pipeline buffers. */
 	struct HUNLFlatPipelineBuffers
 	{
-		std::uint32_t infoset_count = 0; ///< Number of graph information sets.
-		std::uint32_t node_count = 0; ///< Number of graph nodes.
-		std::uint32_t bucket_count = 0; ///< Number of table buckets.
-		std::uint32_t value_count = 0; ///< Number of table values.
-		std::uint32_t terminal_node_count = 0; ///< Number of terminal nodes.
-		std::uint32_t showdown_node_count = 0; ///< Number of showdown terminals.
+		std::uint32_t infoset_count = 0;			///< Number of graph information sets.
+		std::uint32_t node_count = 0;				///< Number of graph nodes.
+		std::uint32_t bucket_count = 0;				///< Number of table buckets.
+		std::uint32_t value_count = 0;				///< Number of table values.
+		std::uint32_t terminal_node_count = 0;		///< Number of terminal nodes.
+		std::uint32_t showdown_node_count = 0;		///< Number of showdown terminals.
 		std::uint32_t depth_limited_node_count = 0; ///< Number of depth-limited leaves.
-		bool has_depth_limited_nodes = false; ///< Whether any depth-limited stage work exists.
+		bool has_depth_limited_nodes = false;		///< Whether any depth-limited stage work exists.
 	};
 
 	/** @brief One pipeline stage and its worker-range assignment. */
 	struct HUNLFlatPipelineStagePlan
 	{
 		HUNLFlatPipelineStageId id = HUNLFlatPipelineStageId::ForwardProfile; ///< Stage identifier.
-		HUNLFlatPipelineDomain domain = HUNLFlatPipelineDomain::Infoset; ///< Work-item domain.
-		bool optional = false; ///< Whether the stage may be skipped when no work exists.
-		std::vector<HUNLFlatRange> worker_ranges; ///< One range by worker.
-		std::vector<std::vector<HUNLFlatRange>> worker_depth_ranges; ///< Depth ranges by worker.
-		std::vector<std::uint64_t> worker_costs; ///< Estimated work by worker.
+		HUNLFlatPipelineDomain domain = HUNLFlatPipelineDomain::Infoset;	  ///< Work-item domain.
+		bool optional = false;												  ///< Whether the stage may be skipped when no work exists.
+		std::vector<HUNLFlatRange> worker_ranges;							  ///< One range by worker.
+		std::vector<std::vector<HUNLFlatRange>> worker_depth_ranges;		  ///< Depth ranges by worker.
+		std::vector<std::uint64_t> worker_costs;							  ///< Estimated work by worker.
 	};
 
 	/** @brief Buffer requirements and ordered worker plan for flat stages. */

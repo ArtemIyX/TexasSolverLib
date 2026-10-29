@@ -39,11 +39,11 @@ namespace texas::preflop
 		enum class Kind
 		{
 			NonTerminal, ///< No terminal payoff is cached.
-			Fold, ///< Payoff is fixed by contributions and folding player.
-			Equity, ///< Payoff depends on precomputed class-pair equity.
+			Fold,		 ///< Payoff is fixed by contributions and folding player.
+			Equity,		 ///< Payoff depends on precomputed class-pair equity.
 		} kind = Kind::NonTerminal;
 
-		std::array<double, 2> payoff = { 0.0, 0.0 }; ///< Constant payoff by player for fixed-payoff leaves.
+		std::array<double, 2> payoff = { 0.0, 0.0 };														///< Constant payoff by player for fixed-payoff leaves.
 		std::array<std::vector<double>, 2> payoff_table = { std::vector<double>{}, std::vector<double>{} }; ///< Payoff vectors by player for equity leaves.
 	};
 
@@ -53,24 +53,24 @@ namespace texas::preflop
 		/** @brief Category of a node in the preflop betting tree. */
 		enum class NodeKind
 		{
-			Fold, ///< Fold terminal node.
+			Fold,		///< Fold terminal node.
 			EquityLeaf, ///< Showdown terminal node using equity values.
-			Decision, ///< Player decision node.
+			Decision,	///< Player decision node.
 		};
 
 		/** @brief One decision or terminal node and its child/action data. */
 		struct Node
 		{
-			NodeKind kind = NodeKind::Fold; ///< Node category.
-			std::uint8_t player = 0; ///< Acting player at a decision node.
-			std::vector<std::size_t> children; ///< Child node indices aligned with actions.
-			std::vector<std::string> actions; ///< Text labels aligned with children.
-			std::string key_suffix; ///< Betting-history suffix used in information-set keys.
-			std::array<int, 2> contributions = { 0, 0 }; ///< Contributions at this node.
+			NodeKind kind = NodeKind::Fold;						 ///< Node category.
+			std::uint8_t player = 0;							 ///< Acting player at a decision node.
+			std::vector<std::size_t> children;					 ///< Child node indices aligned with actions.
+			std::vector<std::string> actions;					 ///< Text labels aligned with children.
+			std::string key_suffix;								 ///< Betting-history suffix used in information-set keys.
+			std::array<int, 2> contributions = { 0, 0 };		 ///< Contributions at this node.
 			std::array<int, 2> initial_contributions = { 0, 0 }; ///< Contributions at the configured root.
-			int big_blind = 100; ///< Big-blind size used for payoff normalization.
-			int initial_pot = 0; ///< Pot at the configured root.
-			std::size_t folded_player = 0; ///< Player who folded at a fold terminal.
+			int big_blind = 100;								 ///< Big-blind size used for payoff normalization.
+			int initial_pot = 0;								 ///< Pot at the configured root.
+			std::size_t folded_player = 0;						 ///< Player who folded at a fold terminal.
 		};
 
 		std::vector<Node> nodes; ///< Nodes indexed by tree-local indices.
@@ -82,7 +82,7 @@ namespace texas::preflop
 	/** @brief Cached terminal payoffs and shared blocker masses for one tree and equity table. */
 	struct Class169TerminalCache
 	{
-		std::vector<Class169LeafEntry> leaves; ///< Leaf data indexed by tree node.
+		std::vector<Class169LeafEntry> leaves;					///< Leaf data indexed by tree node.
 		std::array<std::vector<double>, 2> shared_blocker_mass; ///< Reach mass by class for each player.
 
 		/** @brief Builds terminal data and blocker masses for the supplied inputs. */
@@ -105,11 +105,11 @@ namespace texas::preflop
 	struct Class169RvrOutput
 	{
 		std::unordered_map<std::string, std::vector<double>> average_strategy; ///< Probabilities by information-set key.
-		std::uint32_t decision_node_count = 0; ///< Number of decision nodes traversed.
-		std::uint32_t strategy_entry_count = 0; ///< Number of strategy entries returned.
-		std::uint32_t iterations = 0; ///< Completed iterations.
-		std::array<std::size_t, 2> hand_count_per_player = { 0, 0 }; ///< Active concrete hands by player.
-		double wallclock_seconds = 0.0; ///< Total elapsed time in seconds.
+		std::uint32_t decision_node_count = 0;								   ///< Number of decision nodes traversed.
+		std::uint32_t strategy_entry_count = 0;								   ///< Number of strategy entries returned.
+		std::uint32_t iterations = 0;										   ///< Completed iterations.
+		std::array<std::size_t, 2> hand_count_per_player = { 0, 0 };		   ///< Active concrete hands by player.
+		double wallclock_seconds = 0.0;										   ///< Total elapsed time in seconds.
 	};
 
 	/** @brief Solves a preflop configuration using the vector DCFR implementation. */

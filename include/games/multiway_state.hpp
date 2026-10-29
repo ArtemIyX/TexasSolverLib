@@ -19,10 +19,10 @@ namespace texas::games::multiway
 	/** @brief Betting actions accepted by the multiway state machine. */
 	enum class MultiwayAction : std::uint8_t
 	{
-		Fold, ///< Folds while retaining prior contributions in the pot.
+		Fold,  ///< Folds while retaining prior contributions in the pot.
 		Check, ///< Ends the turn without adding chips when no call is owed.
-		Call, ///< Adds up to the amount needed to match the current bet.
-		Bet, ///< Opens or increases the current bet using a street-total target.
+		Call,  ///< Adds up to the amount needed to match the current bet.
+		Bet,   ///< Opens or increases the current bet using a street-total target.
 		Raise, ///< Increases an existing bet using a street-total target.
 		AllIn, ///< Commits the acting seat's remaining stack.
 	};
@@ -30,22 +30,22 @@ namespace texas::games::multiway
 	/** @brief Classifies the next betting or terminal operation for a state. */
 	enum class MultiwayNextNodeKind : std::uint8_t
 	{
-		BettingDecision, ///< An actionable seat must choose a betting action.
+		BettingDecision,  ///< An actionable seat must choose a betting action.
 		StreetTransition, ///< Betting is complete and another street begins.
-		BoardRunout, ///< Betting is closed but cards must run out before showdown.
-		FoldTerminal, ///< At most one player remains live.
+		BoardRunout,	  ///< Betting is closed but cards must run out before showdown.
+		FoldTerminal,	  ///< At most one player remains live.
 		ShowdownTerminal, ///< River betting is complete and hands are ready to settle.
 	};
 
 	/** @brief Initial stacks, contributions and betting metadata for a multiway hand. */
 	struct MultiwayGameConfig
 	{
-		std::vector<int> starting_stacks; ///< Total stack by seat before initial_contributions are posted.
-		std::vector<int> initial_contributions; ///< Total-hand chips already committed by each seat.
-		std::vector<int> initial_street_contributions; ///< Current-street part of each initial contribution; empty means zero.
-		core::PlayerId first_player = 0; ///< First seat considered for action.
-		int big_blind = 100; ///< Positive amount used as the minimum opening full raise.
-		core::Street street = core::Street::Flop; ///< Street represented by the initial state.
+		std::vector<int> starting_stacks;									  ///< Total stack by seat before initial_contributions are posted.
+		std::vector<int> initial_contributions;								  ///< Total-hand chips already committed by each seat.
+		std::vector<int> initial_street_contributions;						  ///< Current-street part of each initial contribution; empty means zero.
+		core::PlayerId first_player = 0;									  ///< First seat considered for action.
+		int big_blind = 100;												  ///< Positive amount used as the minimum opening full raise.
+		core::Street street = core::Street::Flop;							  ///< Street represented by the initial state.
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero(); ///< Settlement policy carried into the game.
 
 		/** @brief Validates seat vectors, contributions, first player and rake policy.
@@ -61,20 +61,20 @@ namespace texas::games::multiway
 	 */
 	struct MultiwayBettingSnapshot
 	{
-		std::vector<int> stacks; ///< Remaining chips by seat.
-		std::vector<int> contributions; ///< Total chips committed by seat this hand.
-		std::vector<int> street_contributions; ///< Chips committed by seat on the current street.
-		std::vector<bool> folded; ///< Whether each seat has folded.
-		std::vector<bool> all_in; ///< Whether each seat has no remaining chips.
-		std::vector<bool> may_raise; ///< Whether each seat currently retains raise rights.
-		std::vector<bool> pending; ///< Whether each actionable seat still owes a response.
-		std::vector<bool> has_acted; ///< Whether each seat has acted on this street.
-		std::vector<int> bet_faced_when_acted; ///< Bet amount each seat faced at its last action.
-		core::PlayerId current_player = -1; ///< Acting seat, or -1 when no action is pending.
-		core::PlayerId last_aggressor = -1; ///< Last seat to bet or raise, or -1 if none.
-		int current_bet = 0; ///< Highest current-street contribution.
-		int last_full_raise_size = 0; ///< Minimum increment for a full raise.
-		int big_blind = 0; ///< Big-blind amount used to reset the minimum raise size.
+		std::vector<int> stacks;				  ///< Remaining chips by seat.
+		std::vector<int> contributions;			  ///< Total chips committed by seat this hand.
+		std::vector<int> street_contributions;	  ///< Chips committed by seat on the current street.
+		std::vector<bool> folded;				  ///< Whether each seat has folded.
+		std::vector<bool> all_in;				  ///< Whether each seat has no remaining chips.
+		std::vector<bool> may_raise;			  ///< Whether each seat currently retains raise rights.
+		std::vector<bool> pending;				  ///< Whether each actionable seat still owes a response.
+		std::vector<bool> has_acted;			  ///< Whether each seat has acted on this street.
+		std::vector<int> bet_faced_when_acted;	  ///< Bet amount each seat faced at its last action.
+		core::PlayerId current_player = -1;		  ///< Acting seat, or -1 when no action is pending.
+		core::PlayerId last_aggressor = -1;		  ///< Last seat to bet or raise, or -1 if none.
+		int current_bet = 0;					  ///< Highest current-street contribution.
+		int last_full_raise_size = 0;			  ///< Minimum increment for a full raise.
+		int big_blind = 0;						  ///< Big-blind amount used to reset the minimum raise size.
 		core::Street street = core::Street::Flop; ///< Street represented by this state.
 
 		void validate() const;

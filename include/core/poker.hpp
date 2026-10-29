@@ -19,10 +19,10 @@ namespace texas::core
 	/** @brief Betting and resolution stages in a Hold'em hand. */
 	enum class Street : std::uint8_t
 	{
-		Preflop = 0, ///< Before community cards are dealt.
-		Flop = 1, ///< Three community cards are available.
-		Turn = 2, ///< Four community cards are available.
-		River = 3, ///< Five community cards are available.
+		Preflop = 0,  ///< Before community cards are dealt.
+		Flop = 1,	  ///< Three community cards are available.
+		Turn = 2,	  ///< Four community cards are available.
+		River = 3,	  ///< Five community cards are available.
 		Showdown = 4, ///< Hand resolution after betting is complete.
 	};
 
@@ -93,8 +93,8 @@ namespace texas::core
 } // namespace texas::core
 
 /** @brief Transitional aliases for the shared poker-domain API.
-	 * New shared-domain code should use texas::core directly.
-	 */
+ * New shared-domain code should use texas::core directly.
+ */
 namespace texas::games::hunl
 {
 	using ::texas::core::are_valid_and_distinct_cards;

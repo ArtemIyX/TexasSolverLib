@@ -17,9 +17,9 @@ namespace texas::preflop
 	/** @brief Preflop solver output with runtime metadata. */
 	struct PreflopSolveOutput
 	{
-		SolveOutput base; ///< Generic solver result and strategy data.
+		SolveOutput base;				 ///< Generic solver result and strategy data.
 		std::uint32_t infoset_count = 0; ///< Number of returned information sets.
-		double wallclock_seconds = 0.0; ///< Total wrapper elapsed time in seconds.
+		double wallclock_seconds = 0.0;	 ///< Total wrapper elapsed time in seconds.
 	};
 
 	/** @brief Solves the HUNL preflop subgame using the supplied DCFR parameters. */

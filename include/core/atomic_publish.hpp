@@ -13,18 +13,18 @@ namespace texas::core
 	/** @brief Identifies the filesystem operation that published a replacement. */
 	enum class AtomicPublishMode : std::uint8_t
 	{
-		Unknown = 0U, ///< No recognized publish mechanism was reported.
-		Rename, ///< The temporary path was renamed to the destination.
+		Unknown = 0U,	///< No recognized publish mechanism was reported.
+		Rename,			///< The temporary path was renamed to the destination.
 		WindowsReplace, ///< A Windows replacement operation published the temporary file.
-		CopyFallback, ///< The temporary file was copied because no destination existed.
-		BackupRename ///< The destination was backed up before the temporary file was renamed.
+		CopyFallback,	///< The temporary file was copied because no destination existed.
+		BackupRename	///< The destination was backed up before the temporary file was renamed.
 	};
 
 	/** @brief Selects which fallback operations are permitted after rename fails. */
 	enum class AtomicPublishFallbackPolicy : std::uint8_t
 	{
 		AllowCopyFallback = 0U, ///< Permit copy fallback when the destination does not exist.
-		RejectCopyFallback, ///< Reject copy fallback but permit the backup-and-rename path.
+		RejectCopyFallback,		///< Reject copy fallback but permit the backup-and-rename path.
 		RejectNonAtomicFallback ///< Reject all fallback paths after native replacement fails.
 	};
 

@@ -27,17 +27,17 @@ namespace texas::logging
 	/** @brief Result of initializing the logging runtime. */
 	struct InitializeResult
 	{
-		bool ok = true; ///< Whether initialization succeeded.
+		bool ok = true;		 ///< Whether initialization succeeded.
 		std::string message; ///< Failure detail when initialization fails.
 	};
 	/** @brief Runtime resources and injectable behavior used by logging initialization. */
 	struct RuntimeDependencies
 	{
-		std::ostream* console_stream = nullptr; ///< Console destination, or null for the default stream.
-		bool terminal_known = false; ///< Whether terminal capabilities are known.
-		bool interactive_terminal = false; ///< Whether the output is interactive.
+		std::ostream* console_stream = nullptr;						///< Console destination, or null for the default stream.
+		bool terminal_known = false;								///< Whether terminal capabilities are known.
+		bool interactive_terminal = false;							///< Whether the output is interactive.
 		std::function<std::chrono::steady_clock::time_point()> now; ///< Clock source used by progress display.
-		bool fail_file_sink = false; ///< Test hook that forces file-sink creation to fail.
+		bool fail_file_sink = false;								///< Test hook that forces file-sink creation to fail.
 	};
 	/** @brief RAII lifetime for a configured logging runtime. */
 	class LoggingSession

@@ -19,16 +19,16 @@ namespace texas::solver::dcfr
 	/** @brief One subproblem assigned to a worker. */
 	struct ParallelWorkItem
 	{
-		std::size_t root_node = 0; ///< Root state index represented by this work item.
+		std::size_t root_node = 0;	///< Root state index represented by this work item.
 		std::size_t node_begin = 0; ///< Beginning of the assigned node interval.
-		std::size_t node_end = 0; ///< One past the end of the assigned node interval.
+		std::size_t node_end = 0;	///< One past the end of the assigned node interval.
 	};
 
 	/** @brief Worker count and work items selected for one solve. */
 	struct ParallelSolvePlan
 	{
-		bool enabled = false; ///< Whether parallel traversal is enabled.
-		std::size_t worker_count = 1; ///< Number of workers in the plan.
+		bool enabled = false;				 ///< Whether parallel traversal is enabled.
+		std::size_t worker_count = 1;		 ///< Number of workers in the plan.
 		std::vector<ParallelWorkItem> items; ///< Work ranges assigned by the planner.
 	};
 

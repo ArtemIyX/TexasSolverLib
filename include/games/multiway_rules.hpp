@@ -19,15 +19,15 @@ namespace texas::games::multiway
 	 */
 	struct MultiwayGameRules
 	{
-		std::uint64_t profile_version = 1; ///< Nonzero version included in identity().
-		std::uint8_t player_count = 6; ///< Seat count, from two through six.
-		int initial_stack_chips = 10'000; ///< Starting stack assigned to each player.
-		int small_blind_chips = 50; ///< Small blind contribution in chips.
-		int big_blind_chips = 100; ///< Big blind contribution in chips.
-		int ante_chips = 0; ///< Must be zero for the supported profile.
-		int straddle_chips = 0; ///< Must be zero for the supported profile.
+		std::uint64_t profile_version = 1;									  ///< Nonzero version included in identity().
+		std::uint8_t player_count = 6;										  ///< Seat count, from two through six.
+		int initial_stack_chips = 10'000;									  ///< Starting stack assigned to each player.
+		int small_blind_chips = 50;											  ///< Small blind contribution in chips.
+		int big_blind_chips = 100;											  ///< Big blind contribution in chips.
+		int ante_chips = 0;													  ///< Must be zero for the supported profile.
+		int straddle_chips = 0;												  ///< Must be zero for the supported profile.
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero(); ///< Rake applied at settlement.
-		bool rebuys_enabled = false; ///< Must be false for the supported profile.
+		bool rebuys_enabled = false;										  ///< Must be false for the supported profile.
 
 		/** @brief Returns the default six-seat cash-game profile. */
 		[[nodiscard]] static constexpr MultiwayGameRules standard_6max() noexcept

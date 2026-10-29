@@ -16,7 +16,7 @@ namespace texas::solver::hunl
 	struct HUNLSampledTrajectoryRange
 	{
 		std::uint64_t begin = 0; ///< First trajectory ID.
-		std::uint64_t end = 0; ///< One past the final trajectory ID.
+		std::uint64_t end = 0;	 ///< One past the final trajectory ID.
 
 		/** @brief Returns the number of trajectory IDs in the range. */
 		[[nodiscard]] std::uint64_t size() const noexcept
@@ -28,7 +28,7 @@ namespace texas::solver::hunl
 	/** @brief One worker's assigned trajectory interval. */
 	struct HUNLSampledWorkerBatch
 	{
-		std::size_t worker_index = 0; ///< Worker receiving the batch.
+		std::size_t worker_index = 0;			 ///< Worker receiving the batch.
 		HUNLSampledTrajectoryRange trajectories; ///< Deterministic half-open interval.
 	};
 

@@ -18,14 +18,14 @@ namespace texas::games::multiway
 
 	struct MultiwayGameRules;
 
-	constexpr std::size_t kMultiwayFixedMaxSeats = 6U; ///< Maximum supported seat count.
+	constexpr std::size_t kMultiwayFixedMaxSeats = 6U;	 ///< Maximum supported seat count.
 	constexpr std::size_t kMultiwayFixedMaxActions = 4U; ///< Capacity of a fixed legal-action menu.
 
 	/** @brief Fixed-capacity list of actions legal in one betting state. */
 	struct MultiwayFixedActionMenu
 	{
 		std::array<MultiwayAction, kMultiwayFixedMaxActions> actions = {}; ///< Legal actions in menu order.
-		std::uint8_t count = 0; ///< Number of valid entries at the start of actions.
+		std::uint8_t count = 0;											   ///< Number of valid entries at the start of actions.
 
 		/** @brief Reports whether action appears among the first count entries.
 		 * @param action Action ID to search for.
@@ -41,22 +41,22 @@ namespace texas::games::multiway
 	 */
 	struct MultiwayFixedState
 	{
-		std::uint8_t seat_count = 0; ///< Active table size, from two through kMultiwayFixedMaxSeats.
-		std::array<int, kMultiwayFixedMaxSeats> stacks = {}; ///< Remaining chips by seat.
-		std::array<int, kMultiwayFixedMaxSeats> contributions = {}; ///< Total chips committed this hand by seat.
+		std::uint8_t seat_count = 0;									   ///< Active table size, from two through kMultiwayFixedMaxSeats.
+		std::array<int, kMultiwayFixedMaxSeats> stacks = {};			   ///< Remaining chips by seat.
+		std::array<int, kMultiwayFixedMaxSeats> contributions = {};		   ///< Total chips committed this hand by seat.
 		std::array<int, kMultiwayFixedMaxSeats> street_contributions = {}; ///< Chips committed on the current street.
-		std::array<bool, kMultiwayFixedMaxSeats> folded = {}; ///< Whether each seat has folded.
-		std::array<bool, kMultiwayFixedMaxSeats> all_in = {}; ///< Whether each seat has no chips remaining.
-		std::array<bool, kMultiwayFixedMaxSeats> may_raise = {}; ///< Whether each seat retains raise rights.
-		std::array<bool, kMultiwayFixedMaxSeats> pending = {}; ///< Whether each actionable seat still owes a response.
-		std::array<bool, kMultiwayFixedMaxSeats> has_acted = {}; ///< Whether each seat has acted on this street.
+		std::array<bool, kMultiwayFixedMaxSeats> folded = {};			   ///< Whether each seat has folded.
+		std::array<bool, kMultiwayFixedMaxSeats> all_in = {};			   ///< Whether each seat has no chips remaining.
+		std::array<bool, kMultiwayFixedMaxSeats> may_raise = {};		   ///< Whether each seat retains raise rights.
+		std::array<bool, kMultiwayFixedMaxSeats> pending = {};			   ///< Whether each actionable seat still owes a response.
+		std::array<bool, kMultiwayFixedMaxSeats> has_acted = {};		   ///< Whether each seat has acted on this street.
 		std::array<int, kMultiwayFixedMaxSeats> bet_faced_when_acted = {}; ///< Current bet faced at each seat's last action.
-		PlayerId current_player = -1; ///< Acting seat, or -1 when no betting decision is pending.
-		PlayerId last_aggressor = -1; ///< Seat that made the last bet or raise, or -1 if none.
-		int current_bet = 0; ///< Highest street contribution that other seats must match.
-		int last_full_raise_size = 0; ///< Minimum increment for a full raise.
-		int big_blind = 0; ///< Big-blind amount used as the opening full-raise size.
-		Street street = Street::Flop; ///< Current betting street.
+		PlayerId current_player = -1;									   ///< Acting seat, or -1 when no betting decision is pending.
+		PlayerId last_aggressor = -1;									   ///< Seat that made the last bet or raise, or -1 if none.
+		int current_bet = 0;											   ///< Highest street contribution that other seats must match.
+		int last_full_raise_size = 0;									   ///< Minimum increment for a full raise.
+		int big_blind = 0;												   ///< Big-blind amount used as the opening full-raise size.
+		Street street = Street::Flop;									   ///< Current betting street.
 
 		/** @brief Validates dimensions and per-seat betting-state invariants.
 		 * @throws std::invalid_argument If seat counts, values or flags are inconsistent.
@@ -120,13 +120,13 @@ namespace texas::games::multiway
 	/** @brief Inputs required to settle a multiway hand in fixed-capacity storage. */
 	struct MultiwayFixedTerminalInput
 	{
-		std::uint8_t seat_count = 0; ///< Active table size; per-seat arrays use entries [0, seat_count).
-		std::array<int, kMultiwayFixedMaxSeats> contributions = {}; ///< Total chips committed by each seat.
-		std::array<bool, kMultiwayFixedMaxSeats> folded = {}; ///< Whether each seat folded before settlement.
-		std::array<Strength, kMultiwayFixedMaxSeats> strengths = {}; ///< Evaluated hand strength for each seat.
-		PlayerId odd_chip_first_seat = 0; ///< First seat eligible to receive an odd split chip.
+		std::uint8_t seat_count = 0;										  ///< Active table size; per-seat arrays use entries [0, seat_count).
+		std::array<int, kMultiwayFixedMaxSeats> contributions = {};			  ///< Total chips committed by each seat.
+		std::array<bool, kMultiwayFixedMaxSeats> folded = {};				  ///< Whether each seat folded before settlement.
+		std::array<Strength, kMultiwayFixedMaxSeats> strengths = {};		  ///< Evaluated hand strength for each seat.
+		PlayerId odd_chip_first_seat = 0;									  ///< First seat eligible to receive an odd split chip.
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero(); ///< Policy used to calculate rake.
-		bool flop_seen = true; ///< Whether the flop was dealt for no-flop-no-drop rake.
+		bool flop_seen = true;												  ///< Whether the flop was dealt for no-flop-no-drop rake.
 
 		/** @brief Validates seat counts, contributions and rake configuration.
 		 * @throws std::invalid_argument If there is no live player or the input is invalid.
@@ -137,30 +137,30 @@ namespace texas::games::multiway
 	/** @brief One fixed-capacity side-pot layer and its eligible seats. */
 	struct MultiwayFixedSidePot
 	{
-		int amount = 0; ///< Chips remaining in this pot after rake is taken.
-		int contribution_cap = 0; ///< Highest per-seat contribution included in this layer.
+		int amount = 0;														///< Chips remaining in this pot after rake is taken.
+		int contribution_cap = 0;											///< Highest per-seat contribution included in this layer.
 		std::array<PlayerId, kMultiwayFixedMaxSeats> eligible_players = {}; ///< Non-folded seats eligible to win this pot.
-		std::uint8_t eligible_count = 0; ///< Number of valid eligible_players entries.
+		std::uint8_t eligible_count = 0;									///< Number of valid eligible_players entries.
 	};
 
 	/** @brief Reusable temporary arrays for fixed-capacity settlement. */
 	struct MultiwayFixedTerminalScratch
 	{
-		std::array<int, kMultiwayFixedMaxSeats> levels = {}; ///< Sorted distinct contribution levels for the current call.
-		std::uint8_t level_count = 0; ///< Number of valid levels entries.
+		std::array<int, kMultiwayFixedMaxSeats> levels = {};	   ///< Sorted distinct contribution levels for the current call.
+		std::uint8_t level_count = 0;							   ///< Number of valid levels entries.
 		std::array<PlayerId, kMultiwayFixedMaxSeats> winners = {}; ///< Temporary winner seats for one pot.
 	};
 
 	/** @brief Fixed-capacity payouts, refunds, utilities and pot details for a settled hand. */
 	struct MultiwayFixedTerminalResult
 	{
-		std::uint8_t seat_count = 0; ///< Number of seats represented by result arrays.
+		std::uint8_t seat_count = 0;										///< Number of seats represented by result arrays.
 		std::array<MultiwayFixedSidePot, kMultiwayFixedMaxSeats> pots = {}; ///< Contested side pots in contribution order.
-		std::uint8_t pot_count = 0; ///< Number of valid pots entries.
-		std::array<int, kMultiwayFixedMaxSeats> refunds = {}; ///< Uncalled contributions returned to each seat.
-		std::array<int, kMultiwayFixedMaxSeats> payouts = {}; ///< Pot winnings after rake and odd-chip allocation.
-		std::array<Value, kMultiwayFixedMaxSeats> utilities = {}; ///< Net payout minus contribution for each seat.
-		int rake_taken = 0; ///< Chips removed from contested pots under the rake policy.
+		std::uint8_t pot_count = 0;											///< Number of valid pots entries.
+		std::array<int, kMultiwayFixedMaxSeats> refunds = {};				///< Uncalled contributions returned to each seat.
+		std::array<int, kMultiwayFixedMaxSeats> payouts = {};				///< Pot winnings after rake and odd-chip allocation.
+		std::array<Value, kMultiwayFixedMaxSeats> utilities = {};			///< Net payout minus contribution for each seat.
+		int rake_taken = 0;													///< Chips removed from contested pots under the rake policy.
 	};
 
 	/** @brief Settles a hand using the rake policy stored in input.

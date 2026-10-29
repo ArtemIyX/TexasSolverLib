@@ -16,8 +16,8 @@
 namespace texas::games
 {
 
-	inline constexpr ActionId LEDUC_FOLD = 0; ///< Folds the acting player's hand.
-	inline constexpr ActionId LEDUC_CALL = 1; ///< Matches the current stake.
+	inline constexpr ActionId LEDUC_FOLD = 0;  ///< Folds the acting player's hand.
+	inline constexpr ActionId LEDUC_CALL = 1;  ///< Matches the current stake.
 	inline constexpr ActionId LEDUC_RAISE = 2; ///< Increases the current stake.
 
 	/**
@@ -26,17 +26,17 @@ namespace texas::games
 	class LeducState final : public Game
 	{
 	public:
-		std::vector<int> private_cards; ///< Dealt private cards in player order.
-		std::optional<int> public_card; ///< Public card dealt between betting rounds, if available.
+		std::vector<int> private_cards;		  ///< Dealt private cards in player order.
+		std::optional<int> public_card;		  ///< Public card dealt between betting rounds, if available.
 		std::vector<ActionId> round1_history; ///< Actions in the first betting round.
 		std::vector<ActionId> round2_history; ///< Actions in the second betting round.
-		std::array<int, 2> ante; ///< Chips committed by each player, including matched stakes.
-		std::array<bool, 2> folded; ///< Whether each player has folded.
-		std::uint8_t round_num; ///< Current betting round, one or two.
-		std::uint8_t num_raises; ///< Raises made in the current betting round.
-		std::uint8_t num_calls; ///< Calls made since the latest raise in this round.
-		int stakes; ///< Amount each player must reach to match the current wager.
-		PlayerId cur_player; ///< Acting player, or -1 while chance or no player acts.
+		std::array<int, 2> ante;			  ///< Chips committed by each player, including matched stakes.
+		std::array<bool, 2> folded;			  ///< Whether each player has folded.
+		std::uint8_t round_num;				  ///< Current betting round, one or two.
+		std::uint8_t num_raises;			  ///< Raises made in the current betting round.
+		std::uint8_t num_calls;				  ///< Calls made since the latest raise in this round.
+		int stakes;							  ///< Amount each player must reach to match the current wager.
+		PlayerId cur_player;				  ///< Acting player, or -1 while chance or no player acts.
 
 		/** @brief Constructs the initial state with one-chip antes and a pending deal. */
 		LeducState();

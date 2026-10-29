@@ -23,10 +23,10 @@ namespace texas::solver::dcfr
 	/** @brief Regret and strategy accumulators for one multi-hand information set. */
 	struct VectorInfosetData
 	{
-		std::size_t action_count = 0; ///< Number of actions at this information set.
-		std::size_t hand_count = 0; ///< Number of private hands represented.
-		std::vector<double> regret; ///< Cumulative regret indexed by hand and action.
-		std::vector<double> strategy_sum; ///< Cumulative strategy weight indexed by hand and action.
+		std::size_t action_count = 0;		  ///< Number of actions at this information set.
+		std::size_t hand_count = 0;			  ///< Number of private hands represented.
+		std::vector<double> regret;			  ///< Cumulative regret indexed by hand and action.
+		std::vector<double> strategy_sum;	  ///< Cumulative strategy weight indexed by hand and action.
 		std::uint32_t last_discount_iter = 0; ///< Last iteration at which discounts were applied.
 
 		/** @brief Creates empty accumulators. */
@@ -38,31 +38,31 @@ namespace texas::solver::dcfr
 	/** @brief Memory and information-set counts for a vector solver. */
 	struct VectorMemoryProfile
 	{
-		std::uint64_t total_bytes = 0; ///< Estimated or measured total bytes for solver storage.
-		std::unordered_map<std::string, std::uint64_t> by_street; ///< Storage bytes grouped by street name.
-		std::uint32_t infoset_count = 0; ///< Total information sets.
+		std::uint64_t total_bytes = 0;											///< Estimated or measured total bytes for solver storage.
+		std::unordered_map<std::string, std::uint64_t> by_street;				///< Storage bytes grouped by street name.
+		std::uint32_t infoset_count = 0;										///< Total information sets.
 		std::unordered_map<std::string, std::uint32_t> infoset_count_by_street; ///< Information-set counts by street.
-		std::array<std::size_t, 2> hand_count = { 0, 0 }; ///< Hand counts by player.
+		std::array<std::size_t, 2> hand_count = { 0, 0 };						///< Hand counts by player.
 	};
 
 	/** @brief Average strategy and run metadata from a vector DCFR solve. */
 	struct VectorSolveOutput
 	{
 		std::unordered_map<std::string, std::vector<double>> average_strategy; ///< Action probabilities by information-set key.
-		std::uint32_t decision_node_count = 0; ///< Number of decision nodes processed.
-		std::uint32_t strategy_entry_count = 0; ///< Number of returned strategy entries.
-		std::uint32_t iterations = 0; ///< Completed solver iterations.
-		std::array<std::size_t, 2> hand_count_per_player = { 0, 0 }; ///< Active private-hand count by player.
-		VectorMemoryProfile memory_profile; ///< Storage and information-set measurements.
+		std::uint32_t decision_node_count = 0;								   ///< Number of decision nodes processed.
+		std::uint32_t strategy_entry_count = 0;								   ///< Number of returned strategy entries.
+		std::uint32_t iterations = 0;										   ///< Completed solver iterations.
+		std::array<std::size_t, 2> hand_count_per_player = { 0, 0 };		   ///< Active private-hand count by player.
+		VectorMemoryProfile memory_profile;									   ///< Storage and information-set measurements.
 	};
 
 	/** @brief Concrete hand lists and chip scale used by vector terminal evaluation. */
 	struct EvalContext
 	{
-		std::array<std::size_t, 2> hand_count = { 0, 0 }; ///< Number of concrete hands for each player.
+		std::array<std::size_t, 2> hand_count = { 0, 0 };			  ///< Number of concrete hands for each player.
 		std::array<std::vector<std::array<std::uint8_t, 2>>, 2> hole; ///< Concrete cards by player and hand index.
-		std::array<std::vector<std::string>, 2> hole_str; ///< Formatted cards aligned with hole.
-		int big_blind = 0; ///< Big-blind chip amount used for utility normalization.
+		std::array<std::vector<std::string>, 2> hole_str;			  ///< Formatted cards aligned with hole.
+		int big_blind = 0;											  ///< Big-blind chip amount used for utility normalization.
 
 		/** @brief Derives hand lists from the initial state. */
 		static EvalContext from_root(const HUNLState& initial);
@@ -78,13 +78,13 @@ namespace texas::solver::dcfr
 	/** @brief DCFR solver state for vector-valued hand reach and payoff operations. */
 	struct VectorDCFR
 	{
-		double alpha = 1.5; ///< Positive-regret discount exponent.
-		double beta = 0.0; ///< Negative-regret discount exponent.
-		double gamma = 2.0; ///< Strategy-sum discount exponent.
-		std::uint32_t iteration = 0; ///< Current completed iteration.
+		double alpha = 1.5;										///< Positive-regret discount exponent.
+		double beta = 0.0;										///< Negative-regret discount exponent.
+		double gamma = 2.0;										///< Strategy-sum discount exponent.
+		std::uint32_t iteration = 0;							///< Current completed iteration.
 		std::vector<std::optional<VectorInfosetData>> infosets; ///< Per-information-set accumulators.
-		std::vector<bool> has_chance_template; ///< Whether node chance templates have been recorded.
-		std::vector<std::uint8_t> chance_depth; ///< Remaining chance depth by tree node.
+		std::vector<bool> has_chance_template;					///< Whether node chance templates have been recorded.
+		std::vector<std::uint8_t> chance_depth;					///< Remaining chance depth by tree node.
 
 		/** @brief Constructs a fresh solver without randomized regret initialization. */
 		static VectorDCFR new_solver(

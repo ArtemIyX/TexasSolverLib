@@ -45,35 +45,35 @@ namespace texas::solver::hunl
 	/** @brief Contiguous storage offsets and dimensions for one information set. */
 	struct HUNLFlatInfosetTableMeta
 	{
-		InfosetId id{}; ///< Graph information-set ID.
-		std::size_t offset = 0; ///< First value offset in flat storage.
-		std::size_t value_count = 0; ///< Number of action-hand values.
-		std::size_t bucket_offset = 0; ///< First bucket offset in reach storage.
-		std::size_t bucket_count = 0; ///< Number of buckets allocated for this player.
-		std::size_t hand_count = 0; ///< Concrete hands represented per bucket.
+		InfosetId id{};						  ///< Graph information-set ID.
+		std::size_t offset = 0;				  ///< First value offset in flat storage.
+		std::size_t value_count = 0;		  ///< Number of action-hand values.
+		std::size_t bucket_offset = 0;		  ///< First bucket offset in reach storage.
+		std::size_t bucket_count = 0;		  ///< Number of buckets allocated for this player.
+		std::size_t hand_count = 0;			  ///< Concrete hands represented per bucket.
 		std::uint32_t last_discount_iter = 0; ///< Last applied DCFR discount iteration.
-		std::size_t reach_count = 0; ///< Number of reach values stored.
-		PlayerId player = -1; ///< Player owning the information set.
-		std::uint8_t action_count = 0; ///< Number of actions at this information set.
+		std::size_t reach_count = 0;		  ///< Number of reach values stored.
+		PlayerId player = -1;				  ///< Player owning the information set.
+		std::uint8_t action_count = 0;		  ///< Number of actions at this information set.
 	};
 
 	/** @brief Half-open flat-array range [begin, end). */
 	struct HUNLFlatRange
 	{
 		std::size_t begin = 0; ///< First included index.
-		std::size_t end = 0; ///< One past the last included index.
+		std::size_t end = 0;   ///< One past the last included index.
 	};
 
 	/** @brief Per-worker partitions across infosets, buckets, values, nodes and depths. */
 	struct HUNLFlatWorkerAssignment
 	{
-		std::uint32_t worker_index = 0; ///< Worker assigned these ranges.
-		HUNLFlatRange infoset_range; ///< Information-set range.
-		HUNLFlatRange bucket_range; ///< Bucket range.
-		HUNLFlatRange value_range; ///< Value-array range.
-		HUNLFlatRange node_range; ///< Node range.
-		std::vector<HUNLFlatRange> depth_node_ranges; ///< Node ranges by depth.
-		std::vector<HUNLFlatRange> depth_reduce_ranges; ///< Reduction ranges by depth.
+		std::uint32_t worker_index = 0;					 ///< Worker assigned these ranges.
+		HUNLFlatRange infoset_range;					 ///< Information-set range.
+		HUNLFlatRange bucket_range;						 ///< Bucket range.
+		HUNLFlatRange value_range;						 ///< Value-array range.
+		HUNLFlatRange node_range;						 ///< Node range.
+		std::vector<HUNLFlatRange> depth_node_ranges;	 ///< Node ranges by depth.
+		std::vector<HUNLFlatRange> depth_reduce_ranges;	 ///< Reduction ranges by depth.
 		std::vector<std::uint64_t> depth_backward_costs; ///< Estimated backward work by depth.
 	};
 
@@ -88,15 +88,15 @@ namespace texas::solver::hunl
 	/** @brief Cache-line-aligned temporary arrays owned by one flat solver worker. */
 	struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch
 	{
-		HUNLAlignedVector<double> player0_reach; ///< Temporary player-zero reach values.
-		HUNLAlignedVector<double> player1_reach; ///< Temporary player-one reach values.
-		HUNLAlignedVector<double> chance_reach; ///< Temporary chance reach values.
-		HUNLAlignedVector<double> bucket_reach; ///< Temporary bucket reach values.
-		HUNLAlignedVector<double> row_values; ///< Temporary row values.
-		HUNLAlignedVector<double> row_weights; ///< Temporary row weights.
-		HUNLAlignedVector<double> local_bucket_mass; ///< Worker-local bucket mass.
-		std::vector<std::uint32_t> dirty_nodes; ///< Nodes touched by sparse worker operations.
-		std::vector<std::uint32_t> dirty_buckets; ///< Buckets touched by sparse worker operations.
+		HUNLAlignedVector<double> player0_reach;								   ///< Temporary player-zero reach values.
+		HUNLAlignedVector<double> player1_reach;								   ///< Temporary player-one reach values.
+		HUNLAlignedVector<double> chance_reach;									   ///< Temporary chance reach values.
+		HUNLAlignedVector<double> bucket_reach;									   ///< Temporary bucket reach values.
+		HUNLAlignedVector<double> row_values;									   ///< Temporary row values.
+		HUNLAlignedVector<double> row_weights;									   ///< Temporary row weights.
+		HUNLAlignedVector<double> local_bucket_mass;							   ///< Worker-local bucket mass.
+		std::vector<std::uint32_t> dirty_nodes;									   ///< Nodes touched by sparse worker operations.
+		std::vector<std::uint32_t> dirty_buckets;								   ///< Buckets touched by sparse worker operations.
 		std::unordered_map<std::uint32_t, std::uint32_t> next_depth_local_offsets; ///< Local offset by next-depth node.
 
 		/** @brief Clears active values while retaining allocated capacity. */
@@ -138,12 +138,12 @@ namespace texas::solver::hunl
 	/** @brief Estimated memory use of graph, solver and worker storage. */
 	struct HUNLFlatMemoryEstimate
 	{
-		std::uint64_t graph_bytes = 0; ///< Graph and graph-index storage.
-		std::uint64_t infoset_table_bytes = 0; ///< Regret and strategy table storage.
+		std::uint64_t graph_bytes = 0;			///< Graph and graph-index storage.
+		std::uint64_t infoset_table_bytes = 0;	///< Regret and strategy table storage.
 		std::uint64_t solver_buffers_bytes = 0; ///< Solver-wide temporary arrays.
 		std::uint64_t worker_scratch_bytes = 0; ///< Per-worker scratch arrays.
-		std::uint64_t parallel_plan_bytes = 0; ///< Worker partition metadata.
-		std::uint64_t auxiliary_bytes = 0; ///< Caller-supplied additional estimate.
+		std::uint64_t parallel_plan_bytes = 0;	///< Worker partition metadata.
+		std::uint64_t auxiliary_bytes = 0;		///< Caller-supplied additional estimate.
 
 		/** @brief Sums the estimate components. */
 		[[nodiscard]] std::uint64_t total_bytes() const noexcept;
@@ -154,10 +154,10 @@ namespace texas::solver::hunl
 	{
 		bool include_solver_buffers = true; ///< Include solver-wide temporary storage.
 		bool include_worker_scratch = true; ///< Include per-worker scratch storage.
-		bool include_parallel_plan = true; ///< Include worker partition metadata.
-		std::size_t max_child_count = 0; ///< Optional maximum child fanout for scratch sizing.
-		std::size_t max_bucket_count = 0; ///< Optional maximum bucket fanout for scratch sizing.
-		std::uint64_t auxiliary_bytes = 0; ///< Additional caller-provided bytes.
+		bool include_parallel_plan = true;	///< Include worker partition metadata.
+		std::size_t max_child_count = 0;	///< Optional maximum child fanout for scratch sizing.
+		std::size_t max_bucket_count = 0;	///< Optional maximum bucket fanout for scratch sizing.
+		std::uint64_t auxiliary_bytes = 0;	///< Additional caller-provided bytes.
 	};
 
 	/** @brief Estimates memory required by a flat graph and solver configuration. */

@@ -34,11 +34,11 @@ namespace texas::solver::hunl
 	/** @brief Root strategy, range-wide diagnostics and progress from a sampled solve. */
 	struct HUNLSampledSolveResult
 	{
-		HUNLSampledRootStrategy root_strategy; ///< Acting-root strategy for the selected hero hand.
+		HUNLSampledRootStrategy root_strategy;											///< Acting-root strategy for the selected hero hand.
 		std::optional<HUNLSampledRootStrategy> range_wide_root_strategy = std::nullopt; ///< Optional range-wide diagnostic strategy.
-		HUNLSampledProfileSnapshot profile; ///< Profile captured when the result was produced.
-		std::uint64_t batches_completed = 0; ///< Whole trajectory batches completed.
-		bool timed_out = false; ///< Whether a supplied budget or deadline expired.
+		HUNLSampledProfileSnapshot profile;												///< Profile captured when the result was produced.
+		std::uint64_t batches_completed = 0;											///< Whole trajectory batches completed.
+		bool timed_out = false;															///< Whether a supplied budget or deadline expired.
 	};
 
 	/** @brief Memory estimates for sampled graph, rows, workers and exports. */
@@ -68,8 +68,8 @@ namespace texas::solver::hunl
 	/** @brief Result category of sampled memory preflight. */
 	enum class HUNLSampledMemoryStatus : std::uint8_t
 	{
-		Ok = 0, ///< Estimate is within warning limits.
-		Warning = 1, ///< Estimate crosses warning threshold.
+		Ok = 0,		  ///< Estimate is within warning limits.
+		Warning = 1,  ///< Estimate crosses warning threshold.
 		Rejected = 2, ///< Estimate crosses a hard limit or request is unsupported.
 	};
 
@@ -79,20 +79,20 @@ namespace texas::solver::hunl
 		/** @brief Maximum number of before/after estimates retained. */
 		static constexpr std::size_t kMaxRecordedSteps = 128;
 
-		bool reduced_minibatch = false; ///< Whether fallback lowered batch size.
+		bool reduced_minibatch = false;									///< Whether fallback lowered batch size.
 		std::array<std::uint64_t, kMaxRecordedSteps> estimate_before{}; ///< Estimates before each adjustment.
-		std::array<std::uint64_t, kMaxRecordedSteps> estimate_after{}; ///< Estimates after each adjustment.
-		std::size_t recorded_step_count = 0; ///< Number of recorded adjustments.
+		std::array<std::uint64_t, kMaxRecordedSteps> estimate_after{};	///< Estimates after each adjustment.
+		std::size_t recorded_step_count = 0;							///< Number of recorded adjustments.
 	};
 
 	/** @brief Memory preflight status, estimate and effective sampled settings. */
 	struct HUNLSampledMemoryPreflight
 	{
 		HUNLSampledMemoryStatus status = HUNLSampledMemoryStatus::Ok; ///< Admission category.
-		HUNLSampledMemoryEstimate estimate{}; ///< Estimated memory for the request.
-		HUNLSampledSolverConfig effective_config{}; ///< Configuration after permitted fallback.
-		HUNLSampledAdaptiveAdjustments adjustments{}; ///< Fallback steps taken during preflight.
-		const char* message = ""; ///< Static detail for warning or rejection.
+		HUNLSampledMemoryEstimate estimate{};						  ///< Estimated memory for the request.
+		HUNLSampledSolverConfig effective_config{};					  ///< Configuration after permitted fallback.
+		HUNLSampledAdaptiveAdjustments adjustments{};				  ///< Fallback steps taken during preflight.
+		const char* message = "";									  ///< Static detail for warning or rejection.
 	};
 
 	/** @brief Coordinates validation, memory preflight and sampled traversal sessions. */

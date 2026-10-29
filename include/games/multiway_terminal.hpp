@@ -25,12 +25,12 @@ namespace texas::games::multiway
 	/** @brief Contributions, fold status and hand strengths for a terminal hand. */
 	struct MultiwayTerminalInput
 	{
-		std::vector<int> contributions; ///< Total chips committed by each seat, including folded seats.
-		std::vector<bool> folded; ///< Whether each seat folded before settlement.
-		std::vector<Strength> strengths; ///< Evaluated hand strength by seat.
-		PlayerId odd_chip_first_seat = 0; ///< First seat in cyclic order to receive odd split chips.
+		std::vector<int> contributions;										  ///< Total chips committed by each seat, including folded seats.
+		std::vector<bool> folded;											  ///< Whether each seat folded before settlement.
+		std::vector<Strength> strengths;									  ///< Evaluated hand strength by seat.
+		PlayerId odd_chip_first_seat = 0;									  ///< First seat in cyclic order to receive odd split chips.
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero(); ///< Policy applied to contested pots.
-		bool flop_seen = true; ///< Whether the flop was dealt for no-flop-no-drop rake.
+		bool flop_seen = true;												  ///< Whether the flop was dealt for no-flop-no-drop rake.
 
 		/** @brief Validates matching two-through-six-seat arrays and settlement inputs.
 		 * @throws std::invalid_argument If seat counts, contributions, rake or odd-chip seat are invalid.
@@ -41,8 +41,8 @@ namespace texas::games::multiway
 	/** @brief A contribution layer with its eligible non-folded seats. */
 	struct MultiwaySidePot
 	{
-		int amount = 0; ///< Chips in this layer; settlement result pots have rake removed.
-		int contribution_cap = 0; ///< Highest per-seat contribution included in this layer.
+		int amount = 0;							///< Chips in this layer; settlement result pots have rake removed.
+		int contribution_cap = 0;				///< Highest per-seat contribution included in this layer.
 		std::vector<PlayerId> eligible_players; ///< Non-folded seats that may win this pot.
 	};
 
@@ -50,17 +50,17 @@ namespace texas::games::multiway
 	struct MultiwayPotLayout
 	{
 		std::vector<MultiwaySidePot> pots; ///< Contested side pots ordered by contribution cap.
-		std::vector<int> refunds; ///< Uncalled contributions returned to each seat.
+		std::vector<int> refunds;		   ///< Uncalled contributions returned to each seat.
 	};
 
 	/** @brief Payout, refund, utility and rake results for a settled hand. */
 	struct MultiwayTerminalResult
 	{
-		std::vector<MultiwaySidePot> pots; ///< Contested pots after rake.
-		std::vector<int> refunds; ///< Uncalled chips returned to each seat.
-		std::vector<int> payouts; ///< Chips awarded to each seat from contested pots.
-		std::vector<Value> utilities; ///< Net values after contributions, in utility_units.
-		int rake_taken = 0; ///< Chips removed from contested pots exactly once by the rake policy.
+		std::vector<MultiwaySidePot> pots;							 ///< Contested pots after rake.
+		std::vector<int> refunds;									 ///< Uncalled chips returned to each seat.
+		std::vector<int> payouts;									 ///< Chips awarded to each seat from contested pots.
+		std::vector<Value> utilities;								 ///< Net values after contributions, in utility_units.
+		int rake_taken = 0;											 ///< Chips removed from contested pots exactly once by the rake policy.
 		texas::solver::multiway::MultiwayValueUnits utility_units{}; ///< Unit tag for utilities; payouts and refunds remain chips.
 	};
 

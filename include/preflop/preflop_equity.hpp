@@ -28,7 +28,7 @@ namespace texas::preflop
 	/** @brief Concrete hero and villain private cards for one class-pair variant. */
 	struct HoleRep
 	{
-		std::array<std::uint8_t, 2> hero{}; ///< Hero's encoded private cards.
+		std::array<std::uint8_t, 2> hero{};	   ///< Hero's encoded private cards.
 		std::array<std::uint8_t, 2> villain{}; ///< Villain's encoded private cards.
 	};
 

@@ -32,10 +32,10 @@ namespace texas::solver::hunl
 	/** @brief Immutable public-game snapshot used as a structured resolver root. */
 	struct HUNLLiveRootSnapshot
 	{
-		HUNLState public_state; ///< Public state with private cards omitted.
-		std::vector<ActionId> legal_actions; ///< Legal actions captured at the root.
+		HUNLState public_state;				  ///< Public state with private cards omitted.
+		std::vector<ActionId> legal_actions;  ///< Legal actions captured at the root.
 		std::string canonical_public_history; ///< Canonical history expected for the state.
-		std::string state_version; ///< Caller-supplied version identifying this snapshot.
+		std::string state_version;			  ///< Caller-supplied version identifying this snapshot.
 
 		/** @brief Checks that snapshot state and metadata agree with config.
 		 * @throws std::invalid_argument If the public state or metadata is inconsistent.
@@ -61,15 +61,15 @@ namespace texas::solver::hunl
 		// starts unseeded (uniform regret matching); it never silently treats a
 		// version string as a prior strategy or leaf value table.
 		std::string blueprint_version; ///< Provenance label for the selected external blueprint.
-		std::string model_version; ///< Provenance label for the selected external model.
+		std::string model_version;	   ///< Provenance label for the selected external model.
 		// The private hand whose acting-root strategy is exported. Bucket zero is
 		// the only current structured-range bucket; keeping it explicit prevents
 		// a future abstraction from silently changing the export contract.
 		struct HeroSelection
 		{
-			PlayerId player = -1; ///< Acting player whose strategy is returned.
+			PlayerId player = -1;							   ///< Acting player whose strategy is returned.
 			std::array<std::uint8_t, 2> hole_cards = { 0, 0 }; ///< Hero's private cards.
-			std::uint32_t bucket = 0; ///< Export bucket; current contract supports bucket zero.
+			std::uint32_t bucket = 0;						   ///< Export bucket; current contract supports bucket zero.
 		};
 		std::optional<HeroSelection> hero_selection = std::nullopt; ///< Optional explicit hero hand and bucket selection.
 		// Optional diagnostic only. It never replaces `root_strategy`.
@@ -90,19 +90,19 @@ namespace texas::solver::hunl
 	/** @brief Solver metrics, quality values and average strategy output. */
 	struct HUNLSolveOutput
 	{
-		std::unordered_map<std::string, std::vector<double>> average_strategy; ///< Average action probabilities by infoset key.
-		double exploitability = 0.0; ///< Per-player exploitability value reported by the solver.
-		double total_nash_conv = 0.0; ///< Total Nash-conv value reported by the solver.
+		std::unordered_map<std::string, std::vector<double>> average_strategy;		   ///< Average action probabilities by infoset key.
+		double exploitability = 0.0;												   ///< Per-player exploitability value reported by the solver.
+		double total_nash_conv = 0.0;												   ///< Total Nash-conv value reported by the solver.
 		HUNLQualityMetric quality_metric = HUNLQualityMetric::PerPlayerExploitability; ///< Interpretation of quality fields.
-		double game_value = 0.0; ///< Player-zero game value.
-		std::uint32_t iterations = 0; ///< Completed solver iterations.
-		double wallclock_seconds = 0.0; ///< Total solve wrapper time.
-		double traversal_seconds = 0.0; ///< Time spent in traversal.
-		double solver_finalize_seconds = 0.0; ///< Time spent finalizing solver output.
-		double wrapper_postprocess_seconds = 0.0; ///< Time spent in wrapper postprocessing.
-		std::uint32_t infoset_count = 0; ///< Number of output information sets.
-		bool used_parallel = false; ///< Whether the parallel solver path ran.
-		SolveProfile profile; ///< Solver and traversal profile counters.
+		double game_value = 0.0;													   ///< Player-zero game value.
+		std::uint32_t iterations = 0;												   ///< Completed solver iterations.
+		double wallclock_seconds = 0.0;												   ///< Total solve wrapper time.
+		double traversal_seconds = 0.0;												   ///< Time spent in traversal.
+		double solver_finalize_seconds = 0.0;										   ///< Time spent finalizing solver output.
+		double wrapper_postprocess_seconds = 0.0;									   ///< Time spent in wrapper postprocessing.
+		std::uint32_t infoset_count = 0;											   ///< Number of output information sets.
+		bool used_parallel = false;													   ///< Whether the parallel solver path ran.
+		SolveProfile profile;														   ///< Solver and traversal profile counters.
 	};
 
 	/** @brief Structured error categories used by postflop HUNL validation. */
@@ -110,16 +110,16 @@ namespace texas::solver::hunl
 	{
 		PreflopNotSupported = 0, ///< Requested start street is preflop.
 		BoardLengthMismatch = 1, ///< Board size does not match the postflop street.
-		RakeNonZero = 2, ///< Current backend does not accept non-zero rake.
-		InvalidConfig = 3, ///< Configuration is otherwise invalid for the solver.
+		RakeNonZero = 2,		 ///< Current backend does not accept non-zero rake.
+		InvalidConfig = 3,		 ///< Configuration is otherwise invalid for the solver.
 	};
 
 	/** @brief Selects the recursive or flat graph solver backend. */
 	enum class HUNLBackendSelection
 	{
-		Auto = 0, ///< Choose a backend from graph size and configuration.
+		Auto = 0,	   ///< Choose a backend from graph size and configuration.
 		Recursive = 1, ///< Use the recursive tree backend.
-		Flat = 2, ///< Use the flat graph backend.
+		Flat = 2,	   ///< Use the flat graph backend.
 	};
 
 	/** @brief Solves a supported postflop configuration using DCFR.

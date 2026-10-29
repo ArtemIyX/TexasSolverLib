@@ -17,11 +17,11 @@ namespace texas::solver::hunl
 	/** @brief One exported root action with its probability and menu metadata. */
 	struct HUNLSampledActionProbability
 	{
-		std::uint32_t action_index = 0; ///< Position in the root action row.
+		std::uint32_t action_index = 0;	  ///< Position in the root action row.
 		ActionId action_id = ACTION_FOLD; ///< HUNL action identifier.
-		int target_contribution = 0; ///< Target contribution for contribution-based actions.
+		int target_contribution = 0;	  ///< Target contribution for contribution-based actions.
 		std::uint64_t action_menu_id = 0; ///< Identifier for the action menu used to produce the entry.
-		double probability = 0.0; ///< Average action probability.
+		double probability = 0.0;		  ///< Average action probability.
 	};
 
 	/** @brief Ordered action-probability entries for a sampled root strategy. */

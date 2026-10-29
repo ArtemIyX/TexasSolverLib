@@ -15,7 +15,7 @@ namespace texas::games
 {
 
 	inline constexpr ActionId PASS = 0; ///< Checks or folds, depending on the betting history.
-	inline constexpr ActionId BET = 1; ///< Bets or calls, depending on the betting history.
+	inline constexpr ActionId BET = 1;	///< Bets or calls, depending on the betting history.
 
 	/**
 	 * @brief Kuhn poker game state.
@@ -23,9 +23,9 @@ namespace texas::games
 	class KuhnState final : public Game
 	{
 	public:
-		std::array<int, 2> cards; ///< Private card for each player; -1 marks an undealt card.
+		std::array<int, 2> cards;	   ///< Private card for each player; -1 marks an undealt card.
 		std::vector<ActionId> history; ///< Player actions in chronological order.
-		std::uint8_t chance_phase; ///< Number of private cards dealt, from zero through two.
+		std::uint8_t chance_phase;	   ///< Number of private cards dealt, from zero through two.
 
 		/** @brief Constructs the initial chance node with both cards undealt. */
 		KuhnState();

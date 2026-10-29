@@ -22,13 +22,13 @@ namespace texas::games::multiway
 	struct MultiwayWeightedHole
 	{
 		std::array<std::uint8_t, 2> hole = { 0, 0 }; ///< Unordered pair of encoded card indices.
-		double weight = 0.0; ///< Relative mass assigned to this hand.
+		double weight = 0.0;						 ///< Relative mass assigned to this hand.
 	};
 
 	/** @brief Public board and one weighted private-hand range per seat. */
 	struct MultiwayPrivateConfig
 	{
-		std::vector<std::uint8_t> board; ///< Known public cards, from zero through five.
+		std::vector<std::uint8_t> board;					   ///< Known public cards, from zero through five.
 		std::vector<std::vector<MultiwayWeightedHole>> ranges; ///< Weighted hands by seat.
 		/** @brief Validates seat counts, card blockers and positive finite range mass.
 		 * @throws std::invalid_argument If the board or any range is invalid.
@@ -39,8 +39,8 @@ namespace texas::games::multiway
 	/** @brief Result of checking whether configured ranges admit a joint deal. */
 	enum class MultiwayPrivateRangeFeasibilityStatus : std::uint8_t
 	{
-		Feasible, ///< A blocker-compatible assignment was found.
-		Infeasible, ///< Search exhausted the combinations without finding an assignment.
+		Feasible,			   ///< A blocker-compatible assignment was found.
+		Infeasible,			   ///< Search exhausted the combinations without finding an assignment.
 		SearchBudgetExhausted, ///< The node budget ended the search before a conclusion.
 	};
 
@@ -48,9 +48,9 @@ namespace texas::games::multiway
 	struct MultiwayPrivateRangeFeasibilityResult
 	{
 		MultiwayPrivateRangeFeasibilityStatus status = MultiwayPrivateRangeFeasibilityStatus::Infeasible; ///< Search conclusion.
-		std::uint64_t visited_nodes = 0; ///< Search nodes visited before conclusion.
-		std::uint64_t node_budget = 0; ///< Maximum nodes requested for the search.
-		std::string reason; ///< Human-readable explanation matching status.
+		std::uint64_t visited_nodes = 0;																  ///< Search nodes visited before conclusion.
+		std::uint64_t node_budget = 0;																	  ///< Maximum nodes requested for the search.
+		std::string reason;																				  ///< Human-readable explanation matching status.
 	};
 
 	/** @brief Checks for a compatible joint private deal before worker sampling.
@@ -67,7 +67,7 @@ namespace texas::games::multiway
 	struct MultiwayFixedPrivateHoles
 	{
 		std::array<std::array<std::uint8_t, 2>, 6> values = {}; ///< Active hole pairs occupy entries [0, count).
-		std::uint8_t count = 0U; ///< Number of active hands.
+		std::uint8_t count = 0U;								///< Number of active hands.
 
 		/** @brief Constructs an empty collection. */
 		MultiwayFixedPrivateHoles() = default;
@@ -121,17 +121,17 @@ namespace texas::games::multiway
 	struct MultiwayJointPrivateSample
 	{
 		MultiwayFixedPrivateHoles holes{}; ///< Accepted private hand by seat, if any.
-		std::uint32_t attempts = 0; ///< Sequential joint-deal attempts made.
+		std::uint32_t attempts = 0;		   ///< Sequential joint-deal attempts made.
 		// Samples are drawn sequentially from each seat's blocker-compatible
 		// range mass. The probability fields contain the product of those
 		// conditional proposal probabilities.
-		double chance_reach = 0.0; ///< Product of conditional proposal probabilities for the accepted deal.
+		double chance_reach = 0.0;				   ///< Product of conditional proposal probabilities for the accepted deal.
 		double conditional_deal_probability = 0.0; ///< Product probability under sequential blocker-conditioned draws.
-		double proposal_reach = 0.0; ///< Product of conditional proposal probabilities used by the sampler.
-		double inclusion_reach = 0.0; ///< Inclusion weight recorded for the sample.
-		std::uint32_t accepted_trajectories = 0; ///< Accepted trajectory count reported by the sampler.
-		std::uint32_t rejected_trajectories = 0; ///< Rejected trajectory count reported by the sampler.
-		std::uint32_t discarded_trajectories = 0; ///< Discarded trajectory count reported by the sampler.
+		double proposal_reach = 0.0;			   ///< Product of conditional proposal probabilities used by the sampler.
+		double inclusion_reach = 0.0;			   ///< Inclusion weight recorded for the sample.
+		std::uint32_t accepted_trajectories = 0;   ///< Accepted trajectory count reported by the sampler.
+		std::uint32_t rejected_trajectories = 0;   ///< Rejected trajectory count reported by the sampler.
+		std::uint32_t discarded_trajectories = 0;  ///< Discarded trajectory count reported by the sampler.
 
 		/** @brief Reports whether no hands were accepted. */
 		[[nodiscard]] bool empty() const noexcept { return holes.empty(); }
@@ -147,16 +147,16 @@ namespace texas::games::multiway
 	struct MultiwayPrivateWorkerScratch
 	{
 		std::array<std::array<std::uint8_t, 2>, 6> holes = {}; ///< Sampled hand by seat.
-		std::array<bool, 64> used = {}; ///< Board and already-selected card blockers.
-		std::uint8_t seat_count = 0; ///< Number of sampled seats on success.
-		std::uint32_t attempts = 0; ///< Sequential joint-deal attempts made.
-		double chance_reach = 0.0; ///< Product of conditional proposal probabilities.
-		double conditional_deal_probability = 0.0; ///< Probability product under sequential draws.
-		double proposal_reach = 0.0; ///< Proposal probability product.
-		double inclusion_reach = 0.0; ///< Inclusion weight recorded for the draw.
-		std::uint32_t accepted_trajectories = 0; ///< Accepted trajectory count.
-		std::uint32_t rejected_trajectories = 0; ///< Rejected trajectory count.
-		std::uint32_t discarded_trajectories = 0; ///< Discarded trajectory count.
+		std::array<bool, 64> used = {};						   ///< Board and already-selected card blockers.
+		std::uint8_t seat_count = 0;						   ///< Number of sampled seats on success.
+		std::uint32_t attempts = 0;							   ///< Sequential joint-deal attempts made.
+		double chance_reach = 0.0;							   ///< Product of conditional proposal probabilities.
+		double conditional_deal_probability = 0.0;			   ///< Probability product under sequential draws.
+		double proposal_reach = 0.0;						   ///< Proposal probability product.
+		double inclusion_reach = 0.0;						   ///< Inclusion weight recorded for the draw.
+		std::uint32_t accepted_trajectories = 0;			   ///< Accepted trajectory count.
+		std::uint32_t rejected_trajectories = 0;			   ///< Rejected trajectory count.
+		std::uint32_t discarded_trajectories = 0;			   ///< Discarded trajectory count.
 	};
 
 	/** @brief Canonicalized weighted ranges for blocker-aware worker sampling.
@@ -212,13 +212,13 @@ namespace texas::games::multiway
 	/** @brief Complete board, private cards and betting data for showdown evaluation. */
 	struct MultiwayShowdownInput
 	{
-		std::vector<std::uint8_t> board; ///< Five distinct community-card indices.
-		std::vector<std::array<std::uint8_t, 2>> holes; ///< Distinct private pair by seat.
-		std::vector<int> contributions; ///< Total chips committed by each seat.
-		std::vector<bool> folded; ///< Whether each seat folded before showdown.
-		PlayerId odd_chip_first_seat = 0; ///< First seat for odd split-chip assignment.
+		std::vector<std::uint8_t> board;									  ///< Five distinct community-card indices.
+		std::vector<std::array<std::uint8_t, 2>> holes;						  ///< Distinct private pair by seat.
+		std::vector<int> contributions;										  ///< Total chips committed by each seat.
+		std::vector<bool> folded;											  ///< Whether each seat folded before showdown.
+		PlayerId odd_chip_first_seat = 0;									  ///< First seat for odd split-chip assignment.
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero(); ///< Policy applied to contested pots.
-		bool flop_seen = true; ///< Whether the flop was dealt for no-flop-no-drop rake.
+		bool flop_seen = true;												  ///< Whether the flop was dealt for no-flop-no-drop rake.
 
 		/** @brief Validates board, seat dimensions, card uniqueness and rake policy.
 		 * @throws std::invalid_argument If any checked field is invalid.
