@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## PB-11 CI follow-up: Force page-sub-batch rollback coverage
+
+**Status:** Test fixture corrected; CI rerun pending
+**Completed:** 2026-10-29
+
+- User-reported Linux CTest failure: `multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatches` observed no page publication before the intentionally invalid delta.
+- The test's 3,000-byte cache did not guarantee a flush before the invalid delta because only the root and first child page were dirtied before that delta was rejected. A 2,048-byte attempt was rejected because its remaining page-cache budget could not hold one committable page. The fixture now keeps the valid 3,000-byte cache, admits four child buckets, and updates the root plus four distinct child pages before the invalid delta; this exceeds the cache's two-page capacity and forces a subbatch publication. Production code is unchanged.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- User-provided CI results confirm the original no-publication failure and that the 2,048-byte attempt failed with `external compact page cache cannot hold a committable page`.
+- `git diff --check` passed after the change. Builds and tests were not run by the assistant, per repository instructions.
+
+### Limitations
+
+- CI rerun is required to confirm the test fixture passes on Linux.
+
 ## Stage 9.4 post-stop: Correct the first bounded append admission
 
 **Status:** Complete, bounded diagnostic verified; P99 inconclusive

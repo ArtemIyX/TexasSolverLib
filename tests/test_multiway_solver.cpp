@@ -860,7 +860,9 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	limits.compact_page_width = 1U;
 	limits.external_storage.directory = directory.path();
 	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	// The 3 KB budget holds at most two pages; the root plus four child pages force a flush.
 	limits.external_storage.row_page_cache_bytes = 3000U;
+	limits.max_sparse_values = 16U;
 	limits.external_storage.maximum_wal_bytes = 65536U;
 	limits.external_storage.segment_target_bytes = 65536U;
 	limits.external_storage.compaction_fan_in = 2U;
@@ -871,7 +873,7 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	cfr.player_count = 2U;
 	const auto child = checked_action_child_public_state();
 	const texas::MultiwaySparseRowShape child_row = {
-		{ child.id, child.betting.current_player }, 2U,
+		{ child.id, child.betting.current_player }, 4U,
 		static_cast<std::uint8_t>(child.legal_actions.size())
 	};
 	MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(valid_root(), cfr, limits));
@@ -895,13 +897,17 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	},
 		&page_publications);
 	MultiwayWorkerDeltaStream valid(0U, 3U);
-	MultiwayWorkerDeltaStream empty(1U, 3U);
+	MultiwayWorkerDeltaStream later(1U, 3U);
 	EXPECT_TRUE(valid.try_append(delta(1U, 1.0, 1.0, 2U)));
-	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 1U, 1.0, 1.0, 3U }));
-	EXPECT_TRUE(valid.try_append({ child_row.infoset, 1U, 255U, 1.0, 1.0, 2U }));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 0U, 1.0, 1.0, 3U }));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 1U, 1.0, 1.0, 4U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 0U, 2U, 1.0, 1.0, 5U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 0U, 3U, 1.0, 1.0, 6U }));
+	// Action 255 sorts after the valid action-0 pages, so rejection follows the forced flush.
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 1U, 255U, 1.0, 1.0, 2U }));
 	valid.sort_fixed_order();
-	empty.sort_fixed_order();
-	EXPECT_THROW(coordinator.merge_worker_streams({ valid, empty }), std::invalid_argument);
+	later.sort_fixed_order();
+	EXPECT_THROW(coordinator.merge_worker_streams({ valid, later }), std::invalid_argument);
 	EXPECT_TRUE(page_publications > 0U);
 	std::array<double, 3U> root_strategy{};
 	coordinator.regret_matched_strategy_into(root_infoset(), 0U,
