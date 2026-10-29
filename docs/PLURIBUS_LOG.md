@@ -1,5 +1,81 @@
 # Pluribus Roadmap Progress Log
 
+## C++ documentation skill
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added scoped C++ documentation coverage rules, examples, writing guidance, and future automation references.
+- Checked project examples against current declarations and implementations; no source or CI behavior changed.
+
+### Files
+
+- `.agents/skills/cpp-documentation/SKILL.md`
+- `.agents/skills/cpp-documentation/references/coverage.md`
+- `.agents/skills/cpp-documentation/references/writing-examples.md`
+- `.agents/skills/cpp-documentation/references/automation.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked expected frontmatter, local reference targets, and balanced Markdown code fences.
+- The skill-creator validator could not run because the available Python runtimes lack PyYAML.
+- No project builds, tests, documentation generation, benchmarks, installs, or solver jobs were run because they were not requested.
+
+### Limitations
+
+- Generator rendering and documentation deployment were not evaluated.
+
+## TexasSolver guide skill
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added a project-wide agent skill with focused architecture, CMake, tooling, and task-example references.
+- Routed repository work to the skill in `AGENTS.md` while retaining specialized skill instructions and execution boundaries.
+
+### Files
+
+- `AGENTS.md`
+- `.agents/skills/texas-guide/SKILL.md`
+- `.agents/skills/texas-guide/references/architecture.md`
+- `.agents/skills/texas-guide/references/cmake.md`
+- `.agents/skills/texas-guide/references/tools.md`
+- `.agents/skills/texas-guide/references/examples.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Skill creator `quick_validate.py` passed using the installed Python runtime.
+- Checked skill reference links and cited project and example paths.
+- No project builds, tests, benchmarks, installs, or solver jobs were run because they were not requested.
+
+### Limitations
+
+- Project paths and build options must be rechecked as the repository evolves.
+
+## Project guidance report
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Prepared a detailed external guide to the current architecture, CMake configuration, scripts, workflows, and project practices using static repository inspection.
+- Identified outdated navigation and source-discovery guidance against the current checkout.
+
+### Files
+
+- `docs/PLURIBUS_LOG.md`
+- External workspace artifact: `TexasSolver-project-guide.md`
+
+### Validation
+
+- Inspected repository configuration, guidance, selected source locations, CI, scripts, and local commit history.
+- Builds, tests, benchmarks, and solver jobs were not run because they were not requested.
+
+### Limitations
+
+- The linked GitHub pull request pages and the evaluator submodule worktree could not be inspected in this environment.
+
 ## CMake build structure refactor
 
 **Status:** Complete

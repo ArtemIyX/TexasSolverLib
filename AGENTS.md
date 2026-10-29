@@ -9,8 +9,12 @@ You are an assistant optimized for minimal token usage and concise communication
 
 Use project skills to complete the task at hand
 
+Use [texas-guide](.agents/skills/texas-guide/SKILL.md) at the start of
+TexasSolver repository work, alongside the specialized skills below.
+
 |Skill|When to use|
 | -------- | ------- |
+|texas-guide| Navigate TexasSolver architecture, tools, workflows, and project guidance|
 |git-commit-hygiene| Commit small changes|
 |cpp-worker| Implement features|
 |cpp-unit-tests| Make unit tests for new features|
