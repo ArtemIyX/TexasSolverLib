@@ -722,6 +722,7 @@ namespace texas::solver::multiway
 			config.compaction_scratch_bytes = external.compaction_scratch_bytes;
 			config.disk_reserve_bytes = external.disk_reserve_bytes;
 			config.synchronous_durability = external.synchronous_durability;
+			config.disk_amplification_limit = external.disk_amplification_limit;
 			return config;
 		}
 
@@ -2154,7 +2155,7 @@ namespace texas::solver::multiway
 			if (external_pinned.owner != nullptr)
 			{
 				external_storage_->compact_storage().unpin_bucket(external_pinned);
-				external_storage_->compact_storage().flush_page_batch_and_continue();
+				external_storage_->compact_storage().flush_page_batch_if_full();
 			}
 			auto pinned = external_storage_->compact_storage().pin_bucket(row, bucket, true);
 			external_pinned.owner = pinned.owner;
@@ -2466,6 +2467,15 @@ namespace texas::solver::multiway
 			return compact_storage_->scale_and_prune_regrets(factor, threshold, regret_floor);
 		}
 		return storage_.scale_and_prune_regrets(factor, threshold, regret_floor);
+	}
+
+	void MultiwaySolverCoordinator::set_external_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context)
+	{
+		std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (external_storage_ == nullptr)
+			throw std::logic_error("publication observer requires external storage");
+		external_storage_->set_publication_observer(observer, context);
 	}
 
 	MultiwaySolverCoordinator::~MultiwaySolverCoordinator() = default;

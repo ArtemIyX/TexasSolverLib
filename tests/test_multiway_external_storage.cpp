@@ -102,6 +102,15 @@ namespace
 			{ start + 2U, { static_cast<std::uint8_t>(start + 2U), 0xa5U, 0x5aU, 0xffU } } };
 	}
 
+	std::uint64_t external_tree_bytes(const std::filesystem::path& root)
+	{
+		std::uint64_t result = 0U;
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+			if (entry.is_regular_file())
+				result += entry.file_size();
+		return result;
+	}
+
 	struct OrderedRecordCapture
 	{
 		std::vector<std::uint64_t> keys;
@@ -137,6 +146,32 @@ namespace
 	}
 } // namespace
 
+TEST_CASE(multiway_external_publication_observer_reports_exact_run_size)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 4U);
+	struct Capture
+	{
+		MultiwayExternalRecordStore* store;
+		std::array<std::uint64_t, 4U> values{};
+	} capture{ &store, {} };
+	store.set_publication_observer([](void* context, std::uint32_t component,
+									   std::uint64_t generation, std::uint64_t batch, std::uint64_t count) {
+		auto& result = *static_cast<Capture*>(context);
+		result.values = { component, generation, batch, count };
+		if (result.store->generation() != generation)
+			throw std::runtime_error("observer saw the wrong published generation");
+	},
+		&capture, 2U);
+	store.append_batch(1U, 0x123U, records(10U));
+	EXPECT_EQ(capture.values, (std::array<std::uint64_t, 4U>{ 2U, 1U, 1U, 2U }));
+	const auto stats = store.stats();
+	EXPECT_EQ(stats.publications, 1U);
+	EXPECT_EQ(stats.published_records, 2U);
+	EXPECT_EQ(stats.run_count, 1U);
+}
+
 TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 {
 	using namespace texas::solver::multiway;
@@ -156,6 +191,7 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 		EXPECT_TRUE(stats.cache_hits >= 1U);
 		EXPECT_TRUE(stats.cache_misses >= 2U);
 		EXPECT_TRUE(stats.disk_reads >= 2U);
+		EXPECT_TRUE(stats.run_checks >= 2U);
 	}
 	{
 		MultiwayExternalRecordStore reopened(config(directory.path()), 4U);
@@ -1115,6 +1151,345 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 	}
 }
 
+TEST_CASE(multiway_external_catalog_splits_a_batch_to_respect_the_disk_amplification_bound)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto catalog_config = config(directory.path() / "catalog");
+	auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 1U;
+	std::vector<MultiwayPublicStateDescriptor> baseline_states;
+	for (std::uint64_t id = 2U; id <= 4U; ++id)
+	{
+		MultiwayPublicStateDescriptor state{};
+		state.id.value = id;
+		baseline_states.push_back(state);
+	}
+	{
+		MultiwayExternalTrainingStorage seed(directory.path(), catalog_config, row_config,
+			page_config, 16U, 65536U, 8U, false);
+		seed.initialize_root(root);
+		seed.begin_batch(2U);
+		seed.append_discovered_catalog(0x201U, baseline_states,
+			std::vector<std::uint8_t>(baseline_states.size(), 1U));
+		seed.begin_page_batch();
+		seed.commit_batch(0x202U, 0U, 0U);
+	}
+	catalog_config.disk_amplification_limit = 3U;
+	row_config.disk_amplification_limit = 3U;
+	page_config.disk_amplification_limit = 3U;
+	MultiwayExternalTrainingStorage storage(directory.path(), catalog_config, row_config,
+		page_config, 16U, 65536U, 8U, false);
+	std::vector<MultiwayPublicStateDescriptor> appended_states;
+	for (std::uint64_t id = 5U; id <= 12U; ++id)
+	{
+		MultiwayPublicStateDescriptor state{};
+		state.id.value = id;
+		appended_states.push_back(state);
+	}
+	storage.begin_batch(3U);
+	storage.append_discovered_catalog(0x301U, appended_states,
+		std::vector<std::uint8_t>(appended_states.size(), 1U));
+	const auto publications = storage.catalog().stats().publications;
+	EXPECT_TRUE(publications > 1U);
+	storage.begin_page_batch();
+	storage.commit_batch(0x302U, 0U, 0U);
+	EXPECT_TRUE(external_tree_bytes(directory.path()) <= 3U * storage.telemetry().disk_usage.live_segment_bytes);
+}
+
+TEST_CASE(multiway_external_training_admits_first_catalog_record_within_three_x_bound)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto catalog_config = config(directory.path() / "catalog");
+	auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	for (auto* component : { &catalog_config, &row_config, &page_config })
+	{
+		component->disk_amplification_limit = 3U;
+		component->synchronous_durability = true;
+	}
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 1U;
+	MultiwayPublicStateDescriptor child{};
+	child.id.value = 2U;
+	child.parent_id = root.id;
+
+	MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
+		row_config, page_config, 16U, 65536U, 8U, true);
+	storage.initialize_root(root);
+	EXPECT_THROW(storage.catalog().append_discovered_batch(2U, 0x201U,
+					 { child }, { 1U }),
+		std::logic_error);
+	storage.begin_batch(2U);
+	// This is the one-record boundary: only segment/index and component-manifest
+	// staging remain after the durable aggregate journal is counted once.
+	storage.append_discovered_catalog(0x201U, { child }, { 1U });
+	EXPECT_TRUE(std::filesystem::exists(directory.path() / "TRAINING_BATCH.wal"));
+	EXPECT_TRUE(!std::filesystem::exists(directory.path() / "catalog" / "BATCH.wal"));
+	EXPECT_TRUE(external_tree_bytes(directory.path()) <= 3U * storage.telemetry().disk_usage.live_segment_bytes);
+	storage.begin_page_batch();
+	storage.commit_batch(0x202U, 0U, 0U);
+	EXPECT_TRUE(storage.catalog().contains(child.id));
+	EXPECT_TRUE(external_tree_bytes(directory.path()) <= 3U * storage.telemetry().disk_usage.live_segment_bytes);
+}
+
+TEST_CASE(multiway_external_training_journal_recovers_bounded_append_without_component_wal)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto catalog_config = config(directory.path() / "catalog");
+	auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	for (auto* component : { &catalog_config, &row_config, &page_config })
+	{
+		component->disk_amplification_limit = 3U;
+		component->synchronous_durability = true;
+	}
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 1U;
+	MultiwayPublicStateDescriptor child{};
+	child.id.value = 2U;
+	child.parent_id = root.id;
+	{
+		MultiwayExternalTrainingStorage interrupted(directory.path(), catalog_config,
+			row_config, page_config, 16U, 65536U, 8U, true);
+		interrupted.initialize_root(root);
+		interrupted.begin_batch(2U);
+		interrupted.append_discovered_catalog(0x201U, { child }, { 1U });
+		EXPECT_TRUE(!std::filesystem::exists(directory.path() / "catalog" / "BATCH.wal"));
+	}
+	MultiwayExternalTrainingStorage recovered(directory.path(), catalog_config,
+		row_config, page_config, 16U, 65536U, 8U, true);
+	EXPECT_EQ(recovered.current_manifest().committed_batch_number, 1U);
+	EXPECT_TRUE(!recovered.catalog().contains(child.id));
+	EXPECT_TRUE(!std::filesystem::exists(directory.path() / "TRAINING_BATCH.wal"));
+	EXPECT_TRUE(external_tree_bytes(directory.path()) <= 3U * recovered.telemetry().disk_usage.live_segment_bytes);
+}
+
+TEST_CASE(multiway_external_training_rejects_aggregate_manifest_peak_over_three_x)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto catalog_config = config(directory.path() / "catalog");
+	auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	for (auto* component : { &catalog_config, &row_config, &page_config })
+	{
+		component->disk_amplification_limit = 3U;
+		component->synchronous_durability = true;
+	}
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 1U;
+	MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
+		row_config, page_config, 16U, 65536U, 8U, true);
+	storage.initialize_root(root);
+	std::array<char, 450U> padding{};
+	std::ofstream padding_file(directory.path() / "budget_fill.bin", std::ios::binary);
+	padding_file.write(padding.data(), static_cast<std::streamsize>(padding.size()));
+	padding_file.close();
+	EXPECT_TRUE(padding_file.good());
+	storage.begin_batch(2U);
+	storage.begin_page_batch();
+	EXPECT_THROW(storage.commit_batch(0x202U, 0U, 0U), std::length_error);
+	EXPECT_TRUE(std::filesystem::exists(directory.path() / "TRAINING_BATCH.wal"));
+	EXPECT_TRUE(!std::filesystem::exists(directory.path() / "TRAINING_BATCH.tmp"));
+	storage.abort_batch();
+	EXPECT_EQ(storage.current_manifest().committed_batch_number, 1U);
+	EXPECT_TRUE(!std::filesystem::exists(directory.path() / "TRAINING_BATCH.wal"));
+}
+
+TEST_CASE(multiway_external_training_bounds_staged_bytes_and_recovers_chunked_catalog_runs)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto catalog_config = config(directory.path() / "catalog");
+	catalog_config.cache_bytes = 65536U;
+	catalog_config.maximum_wal_bytes = 65536U;
+	catalog_config.segment_target_bytes = 65536U;
+	catalog_config.compaction_scratch_bytes = 65536U;
+	auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	catalog_config.synchronous_durability = true;
+	row_config.synchronous_durability = true;
+	page_config.synchronous_durability = true;
+	page_config.compaction_scratch_bytes = 65536U;
+
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 1U;
+	std::vector<MultiwayPublicStateDescriptor> baseline_states;
+	for (std::uint64_t id = 2U; id <= 4U; ++id)
+	{
+		MultiwayPublicStateDescriptor state{};
+		state.id.value = id;
+		baseline_states.push_back(state);
+	}
+	{
+		MultiwayExternalTrainingStorage seed(directory.path(), catalog_config, row_config,
+			page_config, 16U, 65536U, 8U, true);
+		seed.initialize_root(root);
+		seed.begin_batch(2U);
+		seed.append_discovered_catalog(0x201U, baseline_states,
+			std::vector<std::uint8_t>(baseline_states.size(), 1U));
+		seed.begin_page_batch();
+		seed.commit_batch(0x202U, 0U, 0U);
+	}
+
+	auto bounded_catalog_config = catalog_config;
+	auto bounded_row_config = row_config;
+	auto bounded_page_config = page_config;
+	bounded_catalog_config.disk_amplification_limit = 3U;
+	bounded_row_config.disk_amplification_limit = 3U;
+	bounded_page_config.disk_amplification_limit = 3U;
+	std::vector<MultiwayPublicStateDescriptor> appended_states;
+	for (std::uint64_t id = 5U; id < 133U; ++id)
+	{
+		MultiwayPublicStateDescriptor state{};
+		state.id.value = id;
+		appended_states.push_back(state);
+	}
+	const auto appended_flags = std::vector<std::uint8_t>(appended_states.size(), 1U);
+	std::uint64_t committed_hash = 0U;
+
+	{
+		MultiwayExternalTrainingStorage interrupted(directory.path(), bounded_catalog_config,
+			bounded_row_config, bounded_page_config, 16U, 65536U, 8U, true);
+		interrupted.begin_batch(3U);
+		interrupted.append_discovered_catalog(0x301U, appended_states, appended_flags);
+		interrupted.compact_components();
+		std::size_t catalog_run_files = 0U;
+		for (const auto& entry : std::filesystem::directory_iterator(directory.path() / "catalog"))
+			if (entry.is_regular_file() && entry.path().extension() == ".dat" && entry.path().filename().string().rfind("run_", 0U) == 0U)
+				++catalog_run_files;
+		// The final all-store merge retains its two rollback inputs. Earlier
+		// uncommitted suffix intermediates must already have been removed.
+		EXPECT_EQ(catalog_run_files, interrupted.catalog().stats().run_count + bounded_catalog_config.compaction_fan_in);
+		const auto interrupted_telemetry = interrupted.telemetry();
+		EXPECT_TRUE(external_tree_bytes(directory.path()) <= 3U * interrupted_telemetry.disk_usage.live_segment_bytes);
+	}
+	{
+		MultiwayExternalTrainingStorage recovered(directory.path(), bounded_catalog_config,
+			bounded_row_config, bounded_page_config, 16U, 65536U, 8U, true);
+		EXPECT_EQ(recovered.current_manifest().committed_batch_number, 2U);
+		EXPECT_EQ(recovered.catalog().record_count(), 4U);
+		MultiwayPackedPublicNode absent{};
+		EXPECT_TRUE(!recovered.catalog().lookup({ 5U }, absent));
+
+		const auto prior_publications = recovered.catalog().stats().publications;
+		recovered.begin_batch(3U);
+		recovered.append_discovered_catalog(0x301U, appended_states, appended_flags);
+		recovered.compact_components();
+		recovered.begin_page_batch();
+		recovered.commit_batch(0x302U, 0U, 0U);
+		const auto telemetry = recovered.telemetry();
+		EXPECT_EQ(recovered.catalog().record_count(), 132U);
+		EXPECT_TRUE(telemetry.catalog.publications - prior_publications > 1U);
+		EXPECT_TRUE(telemetry.catalog.run_count <= bounded_catalog_config.compaction_fan_in);
+		EXPECT_TRUE(telemetry.disk_usage.live_segment_bytes > 0U);
+		EXPECT_TRUE(external_tree_bytes(directory.path()) <= 3U * telemetry.disk_usage.live_segment_bytes);
+		committed_hash = recovered.catalog().content_hash();
+		MultiwayPackedPublicNode last{};
+		EXPECT_TRUE(recovered.catalog().lookup({ 132U }, last));
+		EXPECT_EQ(last.id.value, 132U);
+	}
+	MultiwayExternalTrainingStorage reopened(directory.path(), bounded_catalog_config,
+		bounded_row_config, bounded_page_config, 16U, 65536U, 8U, true);
+	EXPECT_EQ(reopened.catalog().record_count(), 132U);
+	EXPECT_EQ(reopened.catalog().content_hash(), committed_hash);
+	MultiwayPackedPublicNode reopened_last{};
+	EXPECT_TRUE(reopened.catalog().lookup({ 132U }, reopened_last));
+	EXPECT_EQ(reopened_last.id.value, 132U);
+}
+
+TEST_CASE(multiway_external_batched_pages_recover_uncommitted_flush_and_checkpoint)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto catalog_config = config(directory.path() / "catalog");
+	const auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	page_config.compaction_scratch_bytes = 32768U;
+	const MultiwaySparseRowShape shape{ { { 0x1234U }, 0 }, 2U, 2U };
+	const auto checkpoint_path = directory.path() / "checkpoint.bin";
+	{
+		MultiwayExternalTrainingStorage storage(directory.path(), catalog_config, row_config,
+			page_config, 1U, 65536U, 8U, false);
+		MultiwayPublicStateDescriptor root{};
+		root.id = shape.infoset.public_state;
+		root.canonical_history_id = 0x5678U;
+		storage.initialize_root(root);
+		storage.begin_batch(storage.next_batch_number());
+		storage.admit_rows(0x10U, { shape });
+		storage.begin_page_batch();
+		MultiwayExternalRowBinding row;
+		EXPECT_TRUE(storage.compact_storage().lookup_row(shape.infoset, row));
+		for (std::uint32_t bucket = 0U; bucket < 2U; ++bucket)
+			storage.compact_storage().apply_delta(row, bucket, 0U, 1.0 + bucket, 1.0);
+		storage.commit_batch(0x11U, 1U, 4U);
+		const auto checkpoint = make_multiway_external_checkpoint_manifest(
+			directory.path(), 11U, 12U, 13U, 14U, 1U);
+		EXPECT_EQ(checkpoint.segments[2].size(), 1U);
+		EXPECT_EQ(checkpoint.segments[2][0].record_count, 2U);
+		save_multiway_external_checkpoint_manifest(checkpoint_path, directory.path(), checkpoint, false);
+		storage.begin_batch(storage.next_batch_number());
+		storage.begin_page_batch();
+		for (std::uint32_t bucket = 0U; bucket < 2U; ++bucket)
+			storage.compact_storage().apply_delta(row, bucket, 1U, 4.0, 1.0);
+		storage.compact_storage().flush_page_batch_and_continue();
+		// Leave the aggregate transaction open to exercise restart recovery.
+	}
+	MultiwayExternalTrainingStorage recovered(directory.path(), catalog_config, row_config,
+		page_config, 1U, 65536U, 8U, false);
+	EXPECT_EQ(recovered.current_manifest().generation, 2U);
+	MultiwayExternalRowBinding row;
+	EXPECT_TRUE(recovered.compact_storage().lookup_row(shape.infoset, row));
+	for (std::uint32_t bucket = 0U; bucket < 2U; ++bucket)
+	{
+		auto page = recovered.compact_storage().pin_bucket(row, bucket, false);
+		EXPECT_EQ(page.page.regrets[0], static_cast<std::int32_t>((1U + bucket) * 1024U));
+		EXPECT_EQ(page.page.regrets[page.page.action_stride], 0);
+		recovered.compact_storage().unpin_bucket(page);
+	}
+	const auto checkpoint = load_multiway_external_checkpoint_manifest(
+		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U);
+	EXPECT_EQ(checkpoint.generation.generation, 2U);
+	EXPECT_EQ(checkpoint.segments[2].size(), 1U);
+	EXPECT_EQ(checkpoint.segments[2][0].record_count, 2U);
+}
+
+TEST_CASE(multiway_external_training_rolls_back_when_publication_observer_fails)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path() / "pages");
+	page_config.compaction_scratch_bytes = 32768U;
+	MultiwayExternalTrainingStorage storage(directory.path(), config(directory.path() / "catalog"),
+		config(directory.path() / "rows"), page_config, 16U, 65536U, 8U, false);
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 0x1234U;
+	root.canonical_history_id = 0x5678U;
+	storage.initialize_root(root);
+	storage.set_publication_observer([](void*, std::uint32_t component,
+										 std::uint64_t, std::uint64_t, std::uint64_t) {
+		if (component == 2U)
+			throw std::runtime_error("injected observer failure");
+	},
+		nullptr);
+	const MultiwaySparseRowShape shape{ { root.id, 0 }, 1U, 2U };
+	storage.begin_batch(storage.next_batch_number());
+	storage.admit_rows(0x10U, { shape });
+	storage.begin_page_batch();
+	MultiwayExternalRowBinding binding;
+	EXPECT_TRUE(storage.compact_storage().lookup_row(shape.infoset, binding));
+	storage.compact_storage().apply_delta(binding, 0U, 0U, 1.0, 1.0);
+	EXPECT_THROW(storage.commit_batch(0x11U, 1U, 2U), std::runtime_error);
+	storage.abort_batch();
+	EXPECT_EQ(storage.current_manifest().generation, 1U);
+	EXPECT_TRUE(!storage.compact_storage().lookup_row(shape.infoset, binding));
+}
+
 TEST_CASE(multiway_external_training_storage_seeds_root_as_a_durable_generation)
 {
 	using namespace texas::solver::multiway;
@@ -1510,12 +1885,118 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 	EXPECT_EQ(ordered_rows.rows[1].bucket_count, 17U);
 }
 
+TEST_CASE(multiway_external_compact_pages_batch_capacity_and_abort)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	MultiwayExternalCompactPages pages(page_config, 16U, 32000U);
+	EXPECT_TRUE(pages.page_capacity() > 1U);
+	EXPECT_TRUE(pages.memory_bytes() <= 32000U);
+	pages.begin_batch(1U, 17U);
+	for (std::size_t i = 0; i < pages.page_capacity(); ++i)
+	{
+		const auto id = static_cast<std::uint64_t>(i + 1U);
+		auto view = pages.pin(id, { id }, 0, 0U, 1U, 2U);
+		pages.mark_dirty(id);
+		view.regrets[0] = 123;
+		pages.unpin(id);
+		EXPECT_EQ(pages.batch_full(), i + 1U == pages.page_capacity());
+	}
+	pages.abort_batch();
+	EXPECT_TRUE(!pages.batch_full());
+	auto view = pages.pin(1U, { 1U }, 0, 0U, 1U, 2U);
+	EXPECT_EQ(view.regrets[0], 0);
+	pages.unpin(1U);
+}
+
+TEST_CASE(multiway_external_compact_pages_obey_wal_and_segment_record_limits)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	// A width-one page record has a 144-byte payload and an 8-byte key.
+	page_config.maximum_wal_bytes = 48U + 2U * 152U;
+	page_config.segment_target_bytes = 2U * 152U;
+	MultiwayExternalCompactPages pages(page_config, 1U, 32000U);
+	EXPECT_EQ(pages.page_capacity(), 2U);
+	pages.begin_batch(1U, 17U);
+	for (std::uint64_t id : { 1U, 2U })
+	{
+		auto page = pages.pin(id, { id }, 0, 0U, 1U, 2U);
+		pages.mark_dirty(id);
+		page.regrets[0] = static_cast<std::int32_t>(id);
+		pages.unpin(id);
+	}
+	EXPECT_TRUE(pages.batch_full());
+	EXPECT_THROW(pages.pin(3U, { 3U }, 0, 0U, 1U, 2U), std::length_error);
+	pages.commit_batch();
+	EXPECT_EQ(pages.stats().published_records, 2U);
+}
+
+TEST_CASE(multiway_external_compact_pages_publish_multiple_pages_and_reopen)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	{
+		MultiwayExternalCompactPages pages(page_config, 16U, 32000U);
+		pages.begin_batch(1U, 17U);
+		for (std::uint64_t id : { 2U, 1U })
+		{
+			auto view = pages.pin(id, { id }, 0, 0U, 1U, 2U);
+			pages.mark_dirty(id);
+			view.regrets[0] = static_cast<std::int32_t>(id * 100U);
+			pages.unpin(id);
+		}
+		pages.commit_batch();
+		EXPECT_EQ(pages.generation(), 1U);
+		const auto stats = pages.stats();
+		EXPECT_EQ(stats.run_count, 1U);
+		EXPECT_EQ(stats.publications, 1U);
+		EXPECT_EQ(stats.published_records, 2U);
+		EXPECT_TRUE(stats.manifest_bytes_written > 0U);
+	}
+	MultiwayExternalCompactPages pages(page_config, 16U, 32000U);
+	for (std::uint64_t id : { 1U, 2U })
+	{
+		auto view = pages.pin(id, { id }, 0, 0U, 1U, 2U);
+		EXPECT_EQ(view.regrets[0], static_cast<std::int32_t>(id * 100U));
+		pages.unpin(id);
+	}
+}
+
+TEST_CASE(multiway_external_compact_pages_failed_publication_restores_dirty_pages)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	MultiwayExternalCompactPages pages(page_config, 16U, 32000U);
+	pages.begin_batch(1U, 17U);
+	auto view = pages.pin(1U, { 1U }, 0, 0U, 1U, 2U);
+	pages.mark_dirty(1U);
+	view.regrets[0] = 123;
+	EXPECT_THROW(pages.commit_batch(), std::logic_error);
+	pages.unpin(1U);
+	std::ofstream(directory.path() / "CURRENT.tmp", std::ios::binary).put('x');
+	EXPECT_THROW(pages.commit_batch(), std::runtime_error);
+	view = pages.pin(1U, { 1U }, 0, 0U, 1U, 2U);
+	EXPECT_EQ(view.regrets[0], 0);
+	pages.unpin(1U);
+}
+
 TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)
 {
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	auto page_config = config(directory.path());
-	page_config.cache_bytes = 10000U;
+	page_config.cache_bytes = 12000U;
 	page_config.maximum_wal_bytes = 65536U;
 	page_config.segment_target_bytes = 65536U;
 	{
@@ -1576,7 +2057,7 @@ TEST_CASE(multiway_external_sparse_page_lookup_fixture)
 			pages.commit_batch();
 		}
 	}
-	MultiwayExternalCompactPages pages(page_config, 16U, 10000U);
+	MultiwayExternalCompactPages pages(page_config, 16U, 12000U);
 	const bool filter_enabled = std::getenv("TEXASSOLVER_PB12_FILTER") != nullptr;
 	const auto fixture_started = std::chrono::steady_clock::now();
 	if (filter_enabled)
@@ -1661,7 +2142,7 @@ TEST_CASE(multiway_external_compact_pages_match_reference_cell_encoding)
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	auto page_config = config(directory.path());
-	page_config.cache_bytes = 10000U;
+	page_config.cache_bytes = 12000U;
 	page_config.maximum_wal_bytes = 65536U;
 	page_config.segment_target_bytes = 65536U;
 	const MultiwaySparseRowShape shape{ { { 42U }, 3 }, 16U, 4U };
@@ -2012,6 +2493,11 @@ TEST_CASE(multiway_external_record_store_compacts_deterministically)
 		store.compact();
 		EXPECT_EQ(store.record_count(), 4U);
 		EXPECT_EQ(store.generation(), 3U);
+		const auto stats = store.stats();
+		EXPECT_EQ(stats.run_count, 1U);
+		EXPECT_EQ(stats.compactions, 1U);
+		EXPECT_TRUE(stats.compaction_read_bytes > 0U);
+		EXPECT_TRUE(stats.compaction_written_bytes > 0U);
 	}
 	const auto left = std::filesystem::file_size(left_directory.path() / "run_3.dat");
 	const auto right = std::filesystem::file_size(right_directory.path() / "run_3.dat");
@@ -2024,6 +2510,19 @@ TEST_CASE(multiway_external_record_store_compacts_deterministically)
 	right_data.read(right_bytes.data(), right_bytes.size());
 	EXPECT_EQ(left_data.gcount(), right_data.gcount());
 	EXPECT_TRUE(std::equal(left_bytes.begin(), left_bytes.begin() + left_data.gcount(), right_bytes.begin()));
+}
+
+TEST_CASE(multiway_external_compaction_reduces_only_one_bounded_fan_in)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 4U);
+	for (std::uint64_t batch = 1U; batch <= 5U; ++batch)
+		store.append_batch(batch, batch, records(batch * 10U));
+	EXPECT_EQ(store.stats().run_count, 5U);
+	store.compact();
+	EXPECT_EQ(store.stats().run_count, 4U);
+	EXPECT_EQ(store.stats().compactions, 1U);
 }
 
 TEST_CASE(multiway_external_record_store_fails_closed_after_compaction_read_failure)

@@ -78,6 +78,7 @@ namespace texas::solver::multiway
 		constexpr std::array<std::uint8_t, 8U> kManifestMagic = { 'T', 'X', 'M', 'W', 'E', 'X', 'T', '1' };
 		constexpr std::array<std::uint8_t, 8U> kWalMagic = { 'T', 'X', 'M', 'W', 'W', 'A', 'L', '1' };
 		constexpr std::uint32_t kSchema = 1U;
+		constexpr std::uint64_t kGenerationManifestBytes = 8U + 2U * 4U + 11U * 8U + 8U;
 		constexpr std::uint64_t kHashOffset = texas::core::fingerprint::FNV1A_OFFSET;
 		constexpr std::uint32_t kCheckpointTrainingExtensionMagic = 0x31544d57U;
 		constexpr std::uint32_t kNodeRecordMagic = 0x314e574dU;
@@ -257,6 +258,14 @@ namespace texas::solver::multiway
 				source.compaction_read_bytes);
 			target.compaction_written_bytes = checked_add(target.compaction_written_bytes,
 				source.compaction_written_bytes);
+			target.run_checks = multiway_memory_saturating_add(target.run_checks, source.run_checks);
+			target.run_count = multiway_memory_saturating_add(target.run_count, source.run_count);
+			target.publications = multiway_memory_saturating_add(target.publications, source.publications);
+			target.published_records = multiway_memory_saturating_add(target.published_records, source.published_records);
+			target.manifest_bytes_written = multiway_memory_saturating_add(target.manifest_bytes_written, source.manifest_bytes_written);
+			target.commit_nanoseconds = multiway_memory_saturating_add(target.commit_nanoseconds, source.commit_nanoseconds);
+			target.compactions = multiway_memory_saturating_add(target.compactions, source.compactions);
+			target.compaction_nanoseconds = multiway_memory_saturating_add(target.compaction_nanoseconds, source.compaction_nanoseconds);
 		}
 		std::size_t external_cache_slot(std::uint64_t key, std::size_t capacity) noexcept
 		{
@@ -477,6 +486,88 @@ namespace texas::solver::multiway
 			if (!input || texas::core::fingerprint::finish(checksum) != read_u64(checksum_bytes.data()))
 				throw std::invalid_argument("external component manifest checksum is invalid");
 			return { generation, last_batch_number, true };
+		}
+		struct ExternalDiskBudgetSnapshot
+		{
+			std::uint64_t stored_bytes = 0U;
+			std::uint64_t live_segment_bytes = 0U;
+		};
+		ExternalDiskBudgetSnapshot read_external_disk_budget_snapshot(
+			const std::filesystem::path& root)
+		{
+			ExternalDiskBudgetSnapshot result{};
+			std::error_code error;
+			for (std::filesystem::recursive_directory_iterator it(root, error), end;
+				!error && it != end; it.increment(error))
+			{
+				if (it->is_directory(error))
+					continue;
+				if (error || !it->is_regular_file(error) || error)
+					throw std::runtime_error("external disk budget encountered a non-file entry");
+				const auto bytes = it->file_size(error);
+				if (error)
+					throw std::runtime_error("external disk budget file size is unavailable");
+				result.stored_bytes = checked_add(result.stored_bytes, bytes);
+			}
+			if (error)
+				throw std::runtime_error("external disk budget directory scan failed");
+
+			for (const auto* component : kComponentNames)
+			{
+				const auto component_directory = root / component;
+				const auto info = read_component_manifest(component_directory);
+				if (!info.exists)
+					continue;
+				const auto manifest_path = component_directory / "CURRENT";
+				std::ifstream input(manifest_path, std::ios::binary);
+				std::array<std::uint8_t, 40U> header{};
+				input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+				if (!input || !std::equal(kManifestMagic.begin(), kManifestMagic.end(), header.begin()))
+					throw std::invalid_argument("external disk budget manifest header is invalid");
+				const auto payload_bytes = static_cast<std::size_t>(read_u32(header.data() + 12U));
+				const auto run_count = read_u64(header.data() + 24U);
+				if (run_count > 1000000U)
+					throw std::length_error("external disk budget manifest run count exceeds its bound");
+				for (std::uint64_t index = 0U; index < run_count; ++index)
+				{
+					std::array<std::uint8_t, 24U> reference{};
+					input.read(reinterpret_cast<char*>(reference.data()), static_cast<std::streamsize>(reference.size()));
+					if (!input)
+						throw std::invalid_argument("external disk budget manifest reference is truncated");
+					const auto generation = read_u64(reference.data());
+					const auto records = read_u64(reference.data() + 8U);
+					const auto expected_data = record_bytes(records, payload_bytes);
+					const auto expected_index = record_bytes(records, 0U);
+					std::error_code file_error;
+					if (std::filesystem::file_size(run_path(component_directory, generation, ".dat"), file_error) != expected_data || file_error || std::filesystem::file_size(run_path(component_directory, generation, ".idx"), file_error) != expected_index || file_error)
+						throw std::invalid_argument("external disk budget referenced run length is invalid");
+					result.live_segment_bytes = checked_add(result.live_segment_bytes,
+						checked_add(expected_data, expected_index));
+				}
+			}
+			return result;
+		}
+		std::uint64_t disk_amplification_limit_bytes(
+			const ExternalDiskBudgetSnapshot& snapshot, std::uint32_t amplification_limit)
+		{
+			if (amplification_limit == 0U)
+				return std::numeric_limits<std::uint64_t>::max();
+			if (snapshot.live_segment_bytes == 0U || snapshot.live_segment_bytes > std::numeric_limits<std::uint64_t>::max() / amplification_limit)
+				throw std::length_error("external disk amplification bound is unavailable or overflows");
+			return snapshot.live_segment_bytes * amplification_limit;
+		}
+		void check_aggregate_commit_disk_budget(const std::filesystem::path& root,
+			std::uint32_t amplification_limit, std::uint64_t disk_reserve_bytes,
+			std::uint64_t additional_bytes)
+		{
+			const auto snapshot = read_external_disk_budget_snapshot(root);
+			const auto disk_limit = disk_amplification_limit_bytes(snapshot, amplification_limit);
+			if (snapshot.stored_bytes > disk_limit || additional_bytes > disk_limit - snapshot.stored_bytes)
+				throw std::length_error("external training commit exceeds the disk amplification bound while staging");
+			std::error_code error;
+			const auto space = std::filesystem::space(root, error);
+			if (error || checked_add(additional_bytes, disk_reserve_bytes) > space.available)
+				throw std::runtime_error("external training commit would violate the disk reserve");
 		}
 		void write_transaction_wal(const std::filesystem::path& directory,
 			const TransactionWal& transaction, bool synchronous_durability,
@@ -1907,6 +1998,10 @@ namespace texas::solver::multiway
 	{
 		if (directory.empty() || payload_bytes == 0U || payload_bytes > std::numeric_limits<std::uint32_t>::max() || cache_bytes < payload_bytes + 8U || maximum_wal_bytes < payload_bytes + 56U || segment_target_bytes < payload_bytes + 8U || compaction_fan_in < 2U || compaction_scratch_bytes == 0U || disk_reserve_bytes == 0U)
 			throw std::invalid_argument("external storage requires a directory and positive bounded resources");
+		if (disk_amplification_limit != 0U && disk_accounting_root.empty())
+			throw std::invalid_argument("external disk amplification accounting root is missing");
+		if (aggregate_transaction_covers_append_recovery && (disk_amplification_limit == 0U || !synchronous_durability))
+			throw std::invalid_argument("aggregate append recovery requires a synchronous bounded transaction");
 		constexpr std::uint64_t kCompactionCursorBytes = 2048U;
 		const auto per_cursor = checked_add(payload_bytes, kCompactionCursorBytes);
 		if (compaction_fan_in != 0U && per_cursor > std::numeric_limits<std::uint64_t>::max() / compaction_fan_in)
@@ -2052,10 +2147,11 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalRecordStore::write_wal(
 		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
-		const std::vector<MultiwayExternalRecord>& records) const
+		const std::vector<MultiwayExternalRecord>& records, std::size_t first,
+		std::size_t count) const
 	{
 		const auto wal = config_.directory / "BATCH.wal";
-		const auto bytes = checked_add(48U, record_bytes(records.size(), payload_bytes_));
+		const auto bytes = checked_add(48U, record_bytes(count, payload_bytes_));
 		if (bytes > config_.maximum_wal_bytes)
 			throw std::length_error("external storage batch exceeds the WAL limit");
 		check_disk_reserve(bytes);
@@ -2074,12 +2170,13 @@ namespace texas::solver::multiway
 		};
 		hash_u64(batch_number);
 		hash_u64(merge_fingerprint);
-		hash_u64(records.size());
+		hash_u64(count);
 		write_u64(output, batch_number);
 		write_u64(output, merge_fingerprint);
-		write_u64(output, records.size());
-		for (const auto& record : records)
+		write_u64(output, count);
+		for (std::size_t record_index = first; record_index < first + count; ++record_index)
 		{
+			const auto& record = records[record_index];
 			write_u64(output, record.key);
 			output.write(reinterpret_cast<const char*>(record.payload.data()), static_cast<std::streamsize>(record.payload.size()));
 			hash_u64(record.key);
@@ -2114,92 +2211,185 @@ namespace texas::solver::multiway
 		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 		const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch)
 	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		if (failed_)
-			throw std::runtime_error("external storage is unavailable after a failed batch");
-		if (export_filter_)
-			throw std::logic_error("external storage cannot mutate during export filter session");
-		if ((allow_same_batch ? batch_number < last_batch_number_ : batch_number <= last_batch_number_) || records.empty())
+		if (records.empty())
 			throw std::invalid_argument("external storage batch number must increase and contain records");
 		for (std::size_t index = 0U; index < records.size(); ++index)
 		{
 			if (records[index].payload.size() != payload_bytes_ || (index != 0U && records[index - 1U].key >= records[index].key))
 				throw std::invalid_argument("external storage batch records must be fixed-width and strictly sorted");
 		}
-		if (generation_ == std::numeric_limits<std::uint64_t>::max())
-			throw std::overflow_error("external storage generation overflows");
-		const auto next_generation = generation_ + 1U;
-		const auto data_path = run_path(config_.directory, next_generation, ".dat");
-		auto data_temp = data_path;
-		data_temp += ".tmp";
-		const auto index_path = run_path(config_.directory, next_generation, ".idx");
-		auto index_temp = index_path;
-		index_temp += ".tmp";
-		const auto batch_bytes = record_bytes(records.size(), payload_bytes_);
-		if (batch_bytes > config_.segment_target_bytes)
-			throw std::length_error("external storage batch exceeds the segment target");
-		if (records.size() > std::numeric_limits<std::uint64_t>::max() / 8U)
-			throw std::length_error("external storage index bytes overflow uint64");
-		const auto index_bytes = checked_add(0U, static_cast<std::uint64_t>(records.size()) * 8U);
-		check_disk_reserve(checked_add(checked_add(batch_bytes, index_bytes), config_.maximum_wal_bytes));
-		try
+		if (config_.aggregate_transaction_covers_append_recovery)
 		{
-			write_wal(batch_number, merge_fingerprint, records);
-			std::ofstream data(data_temp, std::ios::binary | std::ios::trunc);
-			std::ofstream index(index_temp, std::ios::binary | std::ios::trunc);
-			if (!data || !index)
-				throw std::runtime_error("external storage segment cannot be opened");
-			for (const auto& record : records)
-			{
-				write_u64(data, record.key);
-				data.write(reinterpret_cast<const char*>(record.payload.data()), static_cast<std::streamsize>(record.payload.size()));
-				write_u64(index, record.key);
-			}
-			data.flush();
-			index.flush();
-			if (!data || !index)
-				throw std::runtime_error("external storage segment write failed");
-			data.close();
-			index.close();
-			flush_file(data_temp);
-			flush_file(index_temp);
-			if (std::filesystem::exists(data_path) || std::filesystem::exists(index_path))
-				throw std::runtime_error("external storage generation file already exists");
-			texas::core::publish_atomic_replace(data_temp, data_path, "external data segment publish failed",
-				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-			texas::core::publish_atomic_replace(index_temp, index_path, "external index run publish failed",
-				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
-			flush_directory();
-			Run run{ next_generation, records.size(), 0U, data_path, index_path };
-			run.minimum_key = records.front().key;
-			run.maximum_key = records.back().key;
-			run.content_hash = run_hash(run);
-			auto next_runs = runs_;
-			next_runs.push_back(run);
-			publish_manifest(next_runs, next_generation, batch_number);
-			runs_.swap(next_runs);
-			generation_ = next_generation;
-			record_count_ = checked_add(record_count_, records.size());
-			last_batch_number_ = batch_number;
-			for (const auto& record : records)
-			{
-				auto& cached = cache_[external_cache_slot(record.key, cache_.size())];
-				if (cached.valid && cached.key == record.key)
-					cached.valid = false;
-			}
-			flush_directory();
-			std::error_code ignored;
-			std::filesystem::remove(config_.directory / "BATCH.wal", ignored);
+			const auto transaction_wal = config_.disk_accounting_root / "TRAINING_BATCH.wal";
+			if (!std::filesystem::exists(transaction_wal) || read_transaction_wal(transaction_wal).batch_number > batch_number)
+				throw std::logic_error("bounded aggregate append requires its active transaction journal");
 		}
-		catch (...)
+		const auto record_width = checked_add(payload_bytes_, 8U);
+		const auto maximum_wal_records = (config_.maximum_wal_bytes - 48U) / record_width;
+		const auto maximum_segment_records = config_.segment_target_bytes / record_width;
+		const auto maximum_static_records = std::min(maximum_wal_records, maximum_segment_records);
+		if (maximum_static_records == 0U || (config_.disk_amplification_limit == 0U && records.size() > maximum_static_records))
+			throw std::length_error("external storage batch exceeds its WAL or segment bound");
+
+		std::size_t first = 0U;
+		while (first < records.size())
 		{
-			failed_ = true;
-			std::error_code ignored;
-			std::filesystem::remove(data_temp, ignored);
-			std::filesystem::remove(index_temp, ignored);
-			throw;
+			const auto publication_started = std::chrono::steady_clock::now();
+			std::unique_lock<std::mutex> lock(mutex_);
+			if (failed_)
+				throw std::runtime_error("external storage is unavailable after a failed batch");
+			if (export_filter_)
+				throw std::logic_error("external storage cannot mutate during export filter session");
+			if ((allow_same_batch || first != 0U) ? batch_number < last_batch_number_ : batch_number <= last_batch_number_)
+				throw std::invalid_argument("external storage batch number must increase");
+			if (generation_ == std::numeric_limits<std::uint64_t>::max())
+				throw std::overflow_error("external storage generation overflows");
+
+			const auto remaining = records.size() - first;
+			auto count = static_cast<std::size_t>(std::min<std::uint64_t>(maximum_static_records, remaining));
+			if (config_.disk_amplification_limit != 0U)
+			{
+				const auto snapshot = read_external_disk_budget_snapshot(config_.disk_accounting_root);
+				if (snapshot.live_segment_bytes == 0U && generation_ == 0U && batch_number == 1U && runs_.empty() && first == 0U && remaining == 1U)
+				{
+					// The one-record root bootstrap precedes the first meaningful live-byte denominator.
+				}
+				else
+				{
+					const auto disk_limit = disk_amplification_limit_bytes(snapshot, config_.disk_amplification_limit);
+					const auto manifest_run_count = checked_add(static_cast<std::uint64_t>(runs_.size()), 1U);
+					if (manifest_run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U)
+						throw std::length_error("external storage manifest bound overflows");
+					const auto manifest_bytes = checked_add(48U, manifest_run_count * 24U);
+					const auto aggregate_recovery = config_.aggregate_transaction_covers_append_recovery;
+					const auto fixed_bytes = aggregate_recovery
+						? manifest_bytes
+						: checked_add(checked_add(48U, manifest_bytes), kGenerationManifestBytes);
+					const auto per_record_peak_bytes = aggregate_recovery
+						? checked_add(record_width, 8U)
+						: checked_add(checked_add(record_width, record_width), 8U);
+					if (snapshot.stored_bytes > disk_limit || disk_limit - snapshot.stored_bytes <= fixed_bytes)
+						throw std::length_error("external storage disk amplification budget cannot admit a run");
+					const auto budget_records = (disk_limit - snapshot.stored_bytes - fixed_bytes) / per_record_peak_bytes;
+					if (budget_records == 0U)
+						throw std::length_error("external storage disk amplification budget cannot admit a record");
+					count = static_cast<std::size_t>(std::min<std::uint64_t>(count, budget_records));
+				}
+			}
+
+			const auto next_generation = generation_ + 1U;
+			const auto data_path = run_path(config_.directory, next_generation, ".dat");
+			auto data_temp = data_path;
+			data_temp += ".tmp";
+			const auto index_path = run_path(config_.directory, next_generation, ".idx");
+			auto index_temp = index_path;
+			index_temp += ".tmp";
+			const auto batch_bytes = record_bytes(count, payload_bytes_);
+			const auto index_bytes = record_bytes(count, 0U);
+			const auto manifest_run_count = checked_add(static_cast<std::uint64_t>(runs_.size()), 1U);
+			if (manifest_run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U)
+				throw std::length_error("external storage manifest bound overflows");
+			const auto next_manifest_bytes = checked_add(48U, manifest_run_count * 24U);
+			const auto wal_bytes = checked_add(48U, batch_bytes);
+			if (config_.disk_amplification_limit != 0U)
+			{
+				const auto staged_segment_bytes = checked_add(batch_bytes, index_bytes);
+				const auto staged_manifest_bytes = config_.aggregate_transaction_covers_append_recovery
+					? next_manifest_bytes
+					: checked_add(next_manifest_bytes, kGenerationManifestBytes);
+				const auto physical_peak_bytes = config_.aggregate_transaction_covers_append_recovery
+					? checked_add(staged_segment_bytes, staged_manifest_bytes)
+					: checked_add(wal_bytes,
+						  checked_add(staged_segment_bytes, staged_manifest_bytes));
+				check_disk_reserve(physical_peak_bytes);
+			}
+			else
+				check_disk_reserve(checked_add(checked_add(batch_bytes, index_bytes),
+					config_.maximum_wal_bytes));
+			try
+			{
+				// The aggregate journal restores the previous CURRENT before component
+				// recovery runs; any published but uncommitted runs then become orphans.
+				if (!config_.aggregate_transaction_covers_append_recovery)
+					write_wal(batch_number, merge_fingerprint, records, first, count);
+				std::ofstream data(data_temp, std::ios::binary | std::ios::trunc);
+				std::ofstream index(index_temp, std::ios::binary | std::ios::trunc);
+				if (!data || !index)
+					throw std::runtime_error("external storage segment cannot be opened");
+				const auto end = first + count;
+				for (std::size_t record_index = first; record_index < end; ++record_index)
+				{
+					const auto& record = records[record_index];
+					write_u64(data, record.key);
+					data.write(reinterpret_cast<const char*>(record.payload.data()), static_cast<std::streamsize>(record.payload.size()));
+					write_u64(index, record.key);
+				}
+				data.flush();
+				index.flush();
+				if (!data || !index)
+					throw std::runtime_error("external storage segment write failed");
+				data.close();
+				index.close();
+				flush_file(data_temp);
+				flush_file(index_temp);
+				if (std::filesystem::exists(data_path) || std::filesystem::exists(index_path))
+					throw std::runtime_error("external storage generation file already exists");
+				texas::core::publish_atomic_replace(data_temp, data_path, "external data segment publish failed",
+					texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+				texas::core::publish_atomic_replace(index_temp, index_path, "external index run publish failed",
+					texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+				flush_directory();
+				Run run{ next_generation, count, 0U, data_path, index_path };
+				run.minimum_key = records[first].key;
+				run.maximum_key = records[first + count - 1U].key;
+				run.content_hash = run_hash(run);
+				auto next_runs = runs_;
+				next_runs.push_back(run);
+				publish_manifest(next_runs, next_generation, batch_number);
+				runs_.swap(next_runs);
+				generation_ = next_generation;
+				record_count_ = checked_add(record_count_, count);
+				last_batch_number_ = batch_number;
+				stats_.publications = multiway_memory_saturating_add(stats_.publications, 1U);
+				stats_.published_records = multiway_memory_saturating_add(stats_.published_records, count);
+				for (std::size_t record_index = first; record_index < first + count; ++record_index)
+				{
+					const auto key = records[record_index].key;
+					auto& cached = cache_[external_cache_slot(key, cache_.size())];
+					if (cached.valid && cached.key == key)
+						cached.valid = false;
+				}
+				flush_directory();
+				std::error_code ignored;
+				std::filesystem::remove(config_.directory / "BATCH.wal", ignored);
+				stats_.commit_nanoseconds = multiway_memory_saturating_add(stats_.commit_nanoseconds,
+					static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - publication_started).count()));
+			}
+			catch (...)
+			{
+				failed_ = true;
+				std::error_code ignored;
+				std::filesystem::remove(data_temp, ignored);
+				std::filesystem::remove(index_temp, ignored);
+				throw;
+			}
+			const auto observer = config_.publication_observer;
+			const auto observer_context = config_.publication_observer_context;
+			const auto component = config_.publication_component;
+			lock.unlock();
+			if (observer != nullptr)
+				observer(observer_context, component, next_generation, batch_number, count);
+			first += count;
 		}
-		lock.unlock();
+	}
+
+	void MultiwayExternalRecordStore::set_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context, std::uint32_t component)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		config_.publication_observer = observer;
+		config_.publication_observer_context = context;
+		config_.publication_component = component;
 	}
 
 	bool MultiwayExternalRecordStore::lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const
@@ -2258,11 +2448,14 @@ namespace texas::solver::multiway
 			entry.key = key;
 			entry.valid = true;
 			std::copy_n(payload.data(), payload_bytes_, entry.payload.data());
+			stats_.run_checks = multiway_memory_saturating_add(stats_.run_checks,
+				static_cast<std::uint64_t>(run - runs_.rbegin() + 1));
 			stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - started)
 					.count());
 			return true;
 		}
+		stats_.run_checks = multiway_memory_saturating_add(stats_.run_checks, runs_.size());
 		stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
 			std::chrono::steady_clock::now() - started)
 				.count());
@@ -2398,9 +2591,12 @@ namespace texas::solver::multiway
 			entry.key = key;
 			entry.valid = true;
 			std::copy_n(payload, payload_size, entry.payload.data());
+			stats_.run_checks = multiway_memory_saturating_add(stats_.run_checks,
+				static_cast<std::uint64_t>(run - runs_.rbegin() + 1));
 			stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 			return true;
 		}
+		stats_.run_checks = multiway_memory_saturating_add(stats_.run_checks, runs_.size());
 		stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 		return false;
 	}
@@ -2578,6 +2774,7 @@ namespace texas::solver::multiway
 		texas::core::publish_atomic_replace(temp, destination, "external manifest publish failed",
 			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		flush_directory();
+		stats_.manifest_bytes_written = multiway_memory_saturating_add(stats_.manifest_bytes_written, bytes.size());
 	}
 
 	void MultiwayExternalRecordStore::load_manifest()
@@ -2842,29 +3039,90 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalRecordStore::compact(bool retain_input_runs)
 	{
+		compact_impl(retain_input_runs, 0U, false, true);
+	}
+
+	void MultiwayExternalRecordStore::compact_batch_runs(std::uint64_t base_generation)
+	{
+		for (;;)
+		{
+			std::size_t suffix_count = 0U;
+			std::size_t run_count = 0U;
+			{
+				std::lock_guard<std::mutex> lock(mutex_);
+				const auto suffix = std::upper_bound(runs_.begin(), runs_.end(), base_generation,
+					[](std::uint64_t generation, const Run& run) { return generation < run.generation; });
+				suffix_count = static_cast<std::size_t>(runs_.end() - suffix);
+				run_count = runs_.size();
+			}
+			if (suffix_count > 1U)
+			{
+				compact_impl(false, base_generation, true, false);
+				continue;
+			}
+			if (run_count <= config_.compaction_fan_in)
+				return;
+			const auto rollback_safe_run_bound =
+				2ULL * static_cast<std::uint64_t>(config_.compaction_fan_in) - 1U;
+			if (run_count > rollback_safe_run_bound)
+				throw std::length_error("external storage run count exceeds the rollback-safe compaction bound");
+			compact_impl(true, 0U, false, false);
+			{
+				std::lock_guard<std::mutex> lock(mutex_);
+				if (runs_.size() > config_.compaction_fan_in)
+					throw std::length_error("external storage run count remains above the configured fan-in");
+			}
+			return;
+		}
+	}
+
+	void MultiwayExternalRecordStore::reclaim_orphans()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		cleanup_orphans();
+	}
+
+	void MultiwayExternalRecordStore::compact_impl(
+		bool retain_input_runs, std::uint64_t base_generation, bool batch_suffix_only,
+		bool cleanup_orphans_before)
+	{
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (export_filter_)
 			throw std::logic_error("external storage cannot mutate during export filter session");
-		if (runs_.size() < config_.compaction_fan_in)
+		const auto suffix = std::upper_bound(runs_.begin(), runs_.end(), base_generation,
+			[](std::uint64_t generation, const Run& run) { return generation < run.generation; });
+		const auto suffix_count = static_cast<std::size_t>(runs_.end() - suffix);
+		if (batch_suffix_only ? suffix_count < 2U : runs_.size() < config_.compaction_fan_in)
 			return;
+		const auto compaction_started = std::chrono::steady_clock::now();
 		if (generation_ == std::numeric_limits<std::uint64_t>::max())
 			throw std::overflow_error("external storage generation overflows");
-		cleanup_orphans();
-		const auto input_count = static_cast<std::size_t>(config_.compaction_fan_in);
+		if (cleanup_orphans_before)
+			cleanup_orphans();
+		const auto input_count = batch_suffix_only
+			? std::min<std::size_t>(config_.compaction_fan_in, suffix_count)
+			: static_cast<std::size_t>(config_.compaction_fan_in);
 		const auto input_start = runs_.size() - input_count;
 		std::uint64_t total_records = 0U;
-		std::uint64_t output_bytes = 0U;
 		std::uint64_t input_bytes = 0U;
+		std::uint64_t input_index_bytes = 0U;
 		for (std::size_t index = 0U; index < input_count; ++index)
 		{
 			const auto& run = runs_[input_start + index];
 			total_records = checked_add(total_records, run.record_count);
-			output_bytes = checked_add(output_bytes, record_bytes(run.record_count, payload_bytes_));
+			input_index_bytes = checked_add(input_index_bytes,
+				record_bytes(run.record_count, 0U));
 			input_bytes = checked_add(input_bytes,
 				checked_add(record_bytes(run.record_count, payload_bytes_),
 					record_bytes(run.record_count, 0U)));
 		}
-		check_disk_reserve(checked_add(output_bytes, record_bytes(total_records, 0U)));
+		const auto next_run_count = checked_add(runs_.size() - input_count, 1U);
+		if (next_run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U)
+			throw std::length_error("external compaction manifest bound overflows");
+		const auto manifest_bytes = checked_add(48U, next_run_count * 24U);
+		ExternalDiskBudgetSnapshot disk_snapshot{};
+		if (config_.disk_amplification_limit != 0U)
+			disk_snapshot = read_external_disk_budget_snapshot(config_.disk_accounting_root);
 		struct CompactionFailureLatch
 		{
 			bool& failed;
@@ -2929,11 +3187,105 @@ namespace texas::solver::multiway
 			cursors[index].generation = runs_[input_start + index].generation;
 			cursors[index].count = runs_[input_start + index].record_count;
 			cursors[index].payload.resize(payload_bytes_);
-			if (!cursors[index].index || !cursors[index].data || !read_next(index))
+			if (!cursors[index].index || !cursors[index].data)
 				throw std::runtime_error("external compaction input cannot be read");
-			queue.push({ cursors[index].key, cursors[index].generation, index });
 		}
-		check_disk_reserve(checked_add(output_bytes, record_bytes(total_records, 0U)));
+		std::uint64_t output_records_bound = total_records;
+		if (config_.disk_amplification_limit != 0U)
+		{
+			const auto read_next_index = [&](std::size_t cursor_index) {
+				auto& cursor = cursors[cursor_index];
+				std::array<std::uint8_t, 8U> bytes{};
+				cursor.index.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+				if (!cursor.index)
+					return false;
+				cursor.key = read_u64(bytes.data());
+				return true;
+			};
+			for (std::size_t index = 0U; index < input_count; ++index)
+			{
+				if (!read_next_index(index))
+					throw std::runtime_error("external compaction index run is truncated");
+				queue.push({ cursors[index].key, cursors[index].generation, index });
+			}
+			std::uint64_t distinct_keys = 0U;
+			while (!queue.empty())
+			{
+				const auto key = queue.top().key;
+				consumed.clear();
+				while (!queue.empty() && queue.top().key == key)
+				{
+					consumed.push_back(queue.top().cursor);
+					queue.pop();
+				}
+				distinct_keys = checked_add(distinct_keys, 1U);
+				for (const auto cursor_index : consumed)
+				{
+					auto& cursor = cursors[cursor_index];
+					++cursor.position;
+					if (cursor.position < cursor.count)
+					{
+						if (!read_next_index(cursor_index))
+							throw std::runtime_error("external compaction index run ended early");
+						queue.push({ cursor.key, cursor.generation, cursor_index });
+					}
+				}
+			}
+			if (distinct_keys == 0U)
+				throw std::logic_error("external compaction produced an empty run");
+			output_records_bound = distinct_keys;
+			for (std::size_t index = 0U; index < input_count; ++index)
+			{
+				auto& cursor = cursors[index];
+				cursor.position = 0U;
+				cursor.index.clear();
+				cursor.index.seekg(0);
+				if (!cursor.index || !read_next(index))
+					throw std::runtime_error("external compaction input cannot be rewound");
+				queue.push({ cursor.key, cursor.generation, index });
+			}
+			const auto output_bytes = checked_add(record_bytes(output_records_bound, payload_bytes_),
+				record_bytes(output_records_bound, 0U));
+			const auto staged_bytes = checked_add(
+				checked_add(output_bytes, manifest_bytes), kGenerationManifestBytes);
+			check_disk_reserve(staged_bytes);
+			const auto disk_limit = disk_amplification_limit_bytes(disk_snapshot,
+				config_.disk_amplification_limit);
+			if (disk_snapshot.stored_bytes > disk_limit || staged_bytes > disk_limit - disk_snapshot.stored_bytes)
+				throw std::length_error("external compaction exceeds the disk amplification bound while staging");
+			const auto old_run_count = static_cast<std::uint64_t>(runs_.size());
+			if (old_run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U)
+				throw std::length_error("external compaction current manifest bound overflows");
+			const auto old_manifest_bytes = checked_add(48U, old_run_count * 24U);
+			if (disk_snapshot.stored_bytes < old_manifest_bytes || disk_snapshot.live_segment_bytes < input_bytes)
+				throw std::logic_error("external compaction disk snapshot is inconsistent");
+			const auto post_publish_bytes = checked_add(
+				checked_add(checked_add(disk_snapshot.stored_bytes - old_manifest_bytes,
+								output_bytes),
+					manifest_bytes),
+				kGenerationManifestBytes);
+			const auto post_publish_live_bytes = checked_add(
+				disk_snapshot.live_segment_bytes - input_bytes, output_bytes);
+			const ExternalDiskBudgetSnapshot post_publish_snapshot{ post_publish_bytes, post_publish_live_bytes };
+			const auto post_publish_limit = disk_amplification_limit_bytes(post_publish_snapshot,
+				config_.disk_amplification_limit);
+			if (post_publish_bytes > post_publish_limit)
+				throw std::length_error("external compaction exceeds the disk amplification bound after publication");
+		}
+		else
+		{
+			for (std::size_t index = 0U; index < input_count; ++index)
+			{
+				if (!read_next(index))
+					throw std::runtime_error("external compaction input cannot be read");
+				queue.push({ cursors[index].key, cursors[index].generation, index });
+			}
+			const auto output_peak_bytes = checked_add(
+				checked_add(record_bytes(total_records, payload_bytes_),
+					record_bytes(total_records, 0U)),
+				manifest_bytes);
+			check_disk_reserve(output_peak_bytes);
+		}
 		std::ofstream data(data_temp, std::ios::binary | std::ios::trunc);
 		std::ofstream index(index_temp, std::ios::binary | std::ios::trunc);
 		if (!data || !index)
@@ -2976,6 +3328,8 @@ namespace texas::solver::multiway
 				}
 			}
 		}
+		if (config_.disk_amplification_limit != 0U && compacted_count != output_records_bound)
+			throw std::logic_error("external compaction output count changed after disk preflight");
 		data.flush();
 		index.flush();
 		if (!data || !index)
@@ -2986,6 +3340,17 @@ namespace texas::solver::multiway
 		flush_file(index_temp);
 		texas::core::publish_atomic_replace(data_temp, data_path, "external compacted segment publish failed", texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		texas::core::publish_atomic_replace(index_temp, index_path, "external compacted index publish failed", texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		flush_directory();
+		// Close sources before unlinking them; Windows rejects deletion with open handles.
+		for (auto& cursor : cursors)
+		{
+			cursor.index.clear();
+			cursor.index.close();
+			cursor.data.clear();
+			cursor.data.close();
+			if (cursor.index.fail() || cursor.data.fail())
+				throw std::runtime_error("external compaction input cannot be closed");
+		}
 		Run merged{ next_generation, compacted_count, 0U, data_path, index_path };
 		if (!has_key_range)
 			throw std::logic_error("external compaction produced an empty run");
@@ -3005,19 +3370,28 @@ namespace texas::solver::multiway
 				const auto run_generation = runs_[input_start + index].generation;
 				if (std::binary_search(pinned_generations.begin(), pinned_generations.end(), run_generation))
 					continue;
-				std::error_code ignored;
-				std::filesystem::remove(runs_[input_start + index].data_path, ignored);
-				std::filesystem::remove(runs_[input_start + index].index_path, ignored);
+				for (const auto* path : { &runs_[input_start + index].data_path,
+						 &runs_[input_start + index].index_path })
+				{
+					std::error_code remove_error;
+					const auto removed = std::filesystem::remove(*path, remove_error);
+					if (config_.disk_amplification_limit != 0U && (remove_error || !removed))
+						throw std::runtime_error("external compaction input cleanup failed within the disk amplification bound");
+				}
 			}
 		}
 		runs_.swap(next_runs);
 		generation_ = next_generation;
 		record_count_ = record_count_ - total_records + compacted_count;
-		stats_.compaction_read_bytes = checked_add(stats_.compaction_read_bytes, input_bytes);
+		stats_.compaction_read_bytes = checked_add(stats_.compaction_read_bytes,
+			checked_add(input_bytes, config_.disk_amplification_limit != 0U ? input_index_bytes : 0U));
 		stats_.compaction_written_bytes = checked_add(stats_.compaction_written_bytes,
 			checked_add(record_bytes(compacted_count, payload_bytes_),
 				record_bytes(compacted_count, 0U)));
 		flush_directory();
+		stats_.compactions = multiway_memory_saturating_add(stats_.compactions, 1U);
+		stats_.compaction_nanoseconds = multiway_memory_saturating_add(stats_.compaction_nanoseconds,
+			static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - compaction_started).count()));
 		failure_latch.complete = true;
 	}
 
@@ -3641,11 +4015,16 @@ namespace texas::solver::multiway
 		if (cells > (std::numeric_limits<std::size_t>::max() - sizeof(Page)) / bytes_per_cell)
 			throw std::length_error("external compact page cache cell arena overflows size_t");
 		const auto page_memory = sizeof(Page) + cells * bytes_per_cell;
+		// Publication temporarily holds a pointer, record metadata and encoded copy
+		// for every dirty page. Reserve that worst case within the same budget.
+		const auto publication_memory = sizeof(Page*) + sizeof(MultiwayExternalRecord) + payload;
+		if (publication_memory > std::numeric_limits<std::size_t>::max() - page_memory)
+			throw std::length_error("external compact page publication budget overflows size_t");
 		const auto scratch_bytes = lookup_scratch_.capacity() + encode_scratch_.capacity();
 		if (cache_bytes <= store_cache_bytes + scratch_bytes)
 			throw std::invalid_argument("external compact page cache cannot hold fixed scratch");
 		const auto page_budget = cache_bytes - store_cache_bytes - scratch_bytes;
-		auto capacity = page_budget / page_memory;
+		auto capacity = page_budget / (page_memory + publication_memory);
 		const auto record_width = payload + 8U;
 		capacity = std::min<std::uint64_t>(capacity, (config.maximum_wal_bytes - 48U) / record_width);
 		capacity = std::min<std::uint64_t>(capacity, config.segment_target_bytes / record_width);
@@ -3991,7 +4370,14 @@ namespace texas::solver::multiway
 			std::copy(page->regrets.begin(), page->regrets.end(), page->before_regrets.begin());
 			std::copy(page->strategy_masses.begin(), page->strategy_masses.end(), page->before_strategy_masses.begin());
 			page->dirty = true;
+			++dirty_count_;
 		}
+	}
+
+	bool MultiwayExternalCompactPages::batch_full() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		return dirty_count_ == pages_.size();
 	}
 
 	void MultiwayExternalCompactPages::commit_batch()
@@ -4035,11 +4421,21 @@ namespace texas::solver::multiway
 				batch_open_ = false;
 			}
 			else
-				abort_batch();
+			{
+				for (auto* page : dirty)
+				{
+					std::copy(page->before_regrets.begin(), page->before_regrets.end(), page->regrets.begin());
+					std::copy(page->before_strategy_masses.begin(), page->before_strategy_masses.end(), page->strategy_masses.begin());
+					page->dirty = false;
+				}
+				batch_open_ = false;
+			}
+			dirty_count_ = 0U;
 			throw;
 		}
 		for (auto* page : dirty)
 			page->dirty = false;
+		dirty_count_ = 0U;
 		batch_open_ = false;
 	}
 
@@ -4065,6 +4461,7 @@ namespace texas::solver::multiway
 				page.dirty = false;
 			}
 		}
+		dirty_count_ = 0U;
 		batch_open_ = false;
 	}
 
@@ -4073,7 +4470,7 @@ namespace texas::solver::multiway
 		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) + lookup_scratch_.capacity() + encode_scratch_.capacity() + pages_.capacity() * sizeof(Page);
 		for (const auto& page : pages_)
 			result += page.regrets.capacity() * sizeof(std::int32_t) + page.strategy_masses.capacity() * sizeof(std::uint64_t) + page.before_regrets.capacity() * sizeof(std::int32_t) + page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
-		return result;
+		return result + pages_.size() * (sizeof(Page*) + sizeof(MultiwayExternalRecord) + page_payload_size());
 	}
 
 	MultiwayExternalStorageStats MultiwayExternalCompactPages::stats() const
@@ -4093,6 +4490,24 @@ namespace texas::solver::multiway
 			if (page.pin_count != 0U || page.dirty)
 				throw std::logic_error("external compact page compaction requires a clean cache");
 		store_->compact(retain_input_runs);
+	}
+
+	void MultiwayExternalCompactPages::compact_batch_runs(std::uint64_t base_generation)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const auto& page : pages_)
+			if (page.pin_count != 0U || page.dirty)
+				throw std::logic_error("external compact page compaction requires a clean cache");
+		store_->compact_batch_runs(base_generation);
+	}
+
+	void MultiwayExternalCompactPages::reclaim_orphans()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const auto& page : pages_)
+			if (page.pin_count != 0U || page.dirty)
+				throw std::logic_error("external compact page cleanup requires a clean cache");
+		store_->reclaim_orphans();
 	}
 
 	MultiwayExternalCompactStorage::MultiwayExternalCompactStorage(
@@ -4140,6 +4555,12 @@ namespace texas::solver::multiway
 			throw std::overflow_error("external compact page batch number overflows");
 		++page_batch_number_;
 		pages_.begin_batch(page_batch_number_, page_batch_fingerprint_);
+	}
+
+	void MultiwayExternalCompactStorage::flush_page_batch_if_full()
+	{
+		if (pages_.batch_full())
+			flush_page_batch_and_continue();
 	}
 
 	bool MultiwayExternalCompactStorage::lookup_row(MultiwayInfosetId infoset,
@@ -4467,6 +4888,19 @@ namespace texas::solver::multiway
 		pages_.compact(retain_input_runs);
 	}
 
+	void MultiwayExternalCompactStorage::compact_batch_runs(
+		std::uint64_t base_row_generation, std::uint64_t base_page_generation)
+	{
+		rows_.compact_batch_runs(base_row_generation);
+		pages_.compact_batch_runs(base_page_generation);
+	}
+
+	void MultiwayExternalCompactStorage::reclaim_orphans()
+	{
+		rows_.reclaim_orphans();
+		pages_.reclaim_orphans();
+	}
+
 	MultiwayExternalStorageStats MultiwayExternalCompactStorage::stats() const
 	{
 		auto result = rows_.stats();
@@ -4501,6 +4935,20 @@ namespace texas::solver::multiway
 	{
 		if (directory_.empty() || page_width_ == 0U || row_page_cache_bytes_ == 0U || maximum_ancestry_depth_ == 0U || catalog_config_.directory.lexically_normal() != (directory_ / "catalog").lexically_normal() || row_config_.directory.lexically_normal() != (directory_ / "rows").lexically_normal() || page_config_.directory.lexically_normal() != (directory_ / "pages").lexically_normal() || catalog_config_.synchronous_durability != synchronous_durability_ || row_config_.synchronous_durability != synchronous_durability_ || page_config_.synchronous_durability != synchronous_durability_)
 			throw std::invalid_argument("external training storage component paths or bounds are invalid");
+		if (catalog_config_.disk_amplification_limit != row_config_.disk_amplification_limit || catalog_config_.disk_amplification_limit != page_config_.disk_amplification_limit)
+			throw std::invalid_argument("external training components have different disk amplification limits");
+		if (catalog_config_.disk_amplification_limit != 0U)
+		{
+			catalog_config_.disk_accounting_root = directory_;
+			row_config_.disk_accounting_root = directory_;
+			page_config_.disk_accounting_root = directory_;
+			if (synchronous_durability_)
+			{
+				catalog_config_.aggregate_transaction_covers_append_recovery = true;
+				row_config_.aggregate_transaction_covers_append_recovery = true;
+				page_config_.aggregate_transaction_covers_append_recovery = true;
+			}
+		}
 		open_components();
 	}
 
@@ -4512,10 +4960,29 @@ namespace texas::solver::multiway
 			row_config_, page_config_, page_width_, row_page_cache_bytes_);
 	}
 
+	void MultiwayExternalTrainingStorage::set_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context)
+	{
+		if (batch_number_ != 0U)
+			throw std::logic_error("publication observer requires a clean training boundary");
+		catalog_config_.publication_observer = observer;
+		catalog_config_.publication_observer_context = context;
+		catalog_config_.publication_component = 0U;
+		row_config_.publication_observer = observer;
+		row_config_.publication_observer_context = context;
+		row_config_.publication_component = 1U;
+		page_config_.publication_observer = observer;
+		page_config_.publication_observer_context = context;
+		page_config_.publication_component = 2U;
+		catalog_->set_publication_observer(observer, context);
+		compact_->set_publication_observer(observer, context);
+	}
+
 	void MultiwayExternalTrainingStorage::begin_batch(std::uint64_t batch_number)
 	{
 		if (batch_number_ != 0U || batch_number == 0U)
 			throw std::logic_error("external training storage batch state is invalid");
+		batch_base_generations_ = { catalog_->generation(), compact_->row_generation(), compact_->page_generation() };
 		transaction_.begin_batch(batch_number, 0U);
 		batch_number_ = batch_number;
 	}
@@ -4606,18 +5073,42 @@ namespace texas::solver::multiway
 	{
 		if (batch_number_ == 0U || page_batch_open_)
 			throw std::logic_error("external training compaction requires a clean pre-page batch boundary");
-		catalog_->compact(true);
-		compact_->compact(true);
+		if (catalog_config_.disk_amplification_limit != 0U)
+		{
+			catalog_->compact_batch_runs(batch_base_generations_[0]);
+			compact_->compact_batch_runs(batch_base_generations_[1], batch_base_generations_[2]);
+		}
+		else
+		{
+			catalog_->compact(true);
+			compact_->compact(true);
+		}
 	}
 
 	void MultiwayExternalTrainingStorage::commit_batch(
 		std::uint64_t merge_fingerprint, std::uint64_t row_count,
 		std::uint64_t logical_value_count)
 	{
+		const auto commit_started = std::chrono::steady_clock::now();
 		if (batch_number_ == 0U || !page_batch_open_ || merge_fingerprint == 0U)
 			throw std::logic_error("external training batch is not ready to commit");
 		compact_->set_merge_fingerprint(merge_fingerprint);
 		compact_->commit_batch();
+		if (catalog_config_.disk_amplification_limit != 0U)
+		{
+			catalog_->compact_batch_runs(batch_base_generations_[0]);
+			compact_->compact_batch_runs(batch_base_generations_[1], batch_base_generations_[2]);
+		}
+		if (catalog_config_.disk_amplification_limit != 0U)
+		{
+			const auto disk_reserve_bytes = std::max({ catalog_config_.disk_reserve_bytes,
+				row_config_.disk_reserve_bytes, page_config_.disk_reserve_bytes });
+			// The batch WAL rewrite and aggregate manifest publication are separate
+			// phases; the 112-byte manifest temporary is their larger overlap.
+			check_aggregate_commit_disk_budget(directory_,
+				catalog_config_.disk_amplification_limit, disk_reserve_bytes,
+				kGenerationManifestBytes);
+		}
 		transaction_.set_merge_fingerprint(merge_fingerprint);
 		const auto& current = transaction_.current_manifest();
 		if (current.generation == std::numeric_limits<std::uint64_t>::max())
@@ -4639,8 +5130,15 @@ namespace texas::solver::multiway
 		next.logical_value_count = logical_value_count;
 		next.content_hash = content_hash();
 		transaction_.commit_batch(next);
+		aggregate_commit_nanoseconds_ = multiway_memory_saturating_add(
+			aggregate_commit_nanoseconds_, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - commit_started).count()));
 		batch_number_ = 0U;
 		page_batch_open_ = false;
+		if (catalog_config_.disk_amplification_limit != 0U)
+		{
+			catalog_->reclaim_orphans();
+			compact_->reclaim_orphans();
+		}
 	}
 
 	std::uint64_t MultiwayExternalTrainingStorage::content_hash() const
@@ -4651,11 +5149,20 @@ namespace texas::solver::multiway
 		return texas::core::fingerprint::finish(hash);
 	}
 
-	MultiwayExternalStorageTelemetry MultiwayExternalTrainingStorage::telemetry() const
+	MultiwayExternalStorageTelemetry MultiwayExternalTrainingStorage::telemetry(bool include_disk_usage) const
 	{
 		MultiwayExternalStorageTelemetry result{};
-		add_storage_stats(result.stats, catalog_->stats());
-		add_storage_stats(result.stats, compact_->stats());
+		result.catalog = catalog_->stats();
+		result.rows = compact_->row_index_stats();
+		result.pages = compact_->page_store_stats();
+		result.training_generation = transaction_.current_manifest().generation;
+		result.committed_batch = transaction_.current_manifest().committed_batch_number;
+		result.aggregate_commit_nanoseconds = aggregate_commit_nanoseconds_;
+		add_storage_stats(result.stats, result.catalog);
+		add_storage_stats(result.stats, result.rows);
+		add_storage_stats(result.stats, result.pages);
+		if (!include_disk_usage)
+			return result;
 		const auto catalog_usage = catalog_->disk_usage();
 		const auto compact_usage = compact_->disk_usage();
 		result.disk_usage.live_segment_bytes = checked_add(catalog_usage.live_segment_bytes,
@@ -4881,7 +5388,9 @@ namespace texas::solver::multiway
 	MultiwayExternalStorageStats MultiwayExternalRecordStore::stats() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		return stats_;
+		auto result = stats_;
+		result.run_count = runs_.size();
+		return result;
 	}
 
 	MultiwayExternalDiskUsage MultiwayExternalRecordStore::disk_usage() const

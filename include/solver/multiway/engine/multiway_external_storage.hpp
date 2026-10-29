@@ -1,5 +1,7 @@
 #pragma once
 
+#include "solver/multiway/engine/multiway_external_observer.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <array>
@@ -38,6 +40,14 @@ namespace texas::solver::multiway
 		std::uint64_t compaction_scratch_bytes = 0U;
 		std::uint64_t disk_reserve_bytes = 0U;
 		bool synchronous_durability = true;
+		std::uint32_t disk_amplification_limit = 0U;
+		std::filesystem::path disk_accounting_root;
+		MultiwayExternalPublicationObserver publication_observer = nullptr;
+		void* publication_observer_context = nullptr;
+		std::uint32_t publication_component = 0U;
+		// Set only when a synchronous aggregate training journal owns recovery for
+		// every append made through this component store.
+		bool aggregate_transaction_covers_append_recovery = false;
 
 		void validate(std::size_t payload_bytes) const;
 	};
@@ -61,6 +71,14 @@ namespace texas::solver::multiway
 		std::uint64_t page_cache_evictions = 0U;
 		std::uint64_t compaction_read_bytes = 0U;
 		std::uint64_t compaction_written_bytes = 0U;
+		std::uint64_t run_checks = 0U;
+		std::uint64_t run_count = 0U;
+		std::uint64_t publications = 0U;
+		std::uint64_t published_records = 0U;
+		std::uint64_t manifest_bytes_written = 0U;
+		std::uint64_t commit_nanoseconds = 0U;
+		std::uint64_t compactions = 0U;
+		std::uint64_t compaction_nanoseconds = 0U;
 	};
 
 	struct MultiwayExternalRecordLookupProfile
@@ -87,6 +105,12 @@ namespace texas::solver::multiway
 	struct MultiwayExternalStorageTelemetry
 	{
 		MultiwayExternalStorageStats stats{};
+		MultiwayExternalStorageStats catalog{};
+		MultiwayExternalStorageStats rows{};
+		MultiwayExternalStorageStats pages{};
+		std::uint64_t training_generation = 0U;
+		std::uint64_t committed_batch = 0U;
+		std::uint64_t aggregate_commit_nanoseconds = 0U;
 		MultiwayExternalDiskUsage disk_usage{};
 	};
 
@@ -266,6 +290,8 @@ namespace texas::solver::multiway
 		// During a multi-store transaction, retain old input runs until the
 		// aggregate manifest commits. Call compact(false) afterward to reclaim them.
 		void compact(bool retain_input_runs = false);
+		void compact_batch_runs(std::uint64_t base_generation);
+		void reclaim_orphans();
 		[[nodiscard]] std::uint64_t generation() const;
 		[[nodiscard]] std::uint64_t record_count() const;
 		[[nodiscard]] std::uint64_t last_batch_number() const;
@@ -277,6 +303,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const;
 		[[nodiscard]] std::uint64_t maximum_batch_bytes() const noexcept { return config_.maximum_wal_bytes; }
 		[[nodiscard]] std::uint64_t segment_target_bytes() const noexcept { return config_.segment_target_bytes; }
+		void set_publication_observer(MultiwayExternalPublicationObserver observer, void* context,
+			std::uint32_t component);
 
 	private:
 		struct Run
@@ -299,6 +327,8 @@ namespace texas::solver::multiway
 		void load_manifest();
 		void append_batch_impl(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch);
+		void compact_impl(bool retain_input_runs, std::uint64_t base_generation,
+			bool batch_suffix_only, bool cleanup_orphans_before);
 		void cleanup_orphans();
 		void recover_wal();
 		void publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number);
@@ -312,7 +342,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t run_hash(const Run& run) const;
 		void check_disk_reserve(std::uint64_t additional_bytes) const;
 		void write_wal(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
-			const std::vector<MultiwayExternalRecord>& records) const;
+			const std::vector<MultiwayExternalRecord>& records, std::size_t first, std::size_t count) const;
 		void flush_file(const std::filesystem::path& path) const;
 		void flush_directory() const;
 
@@ -365,11 +395,17 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id,
 			MultiwayPublicStateDescriptor& output) const;
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
+		void compact_batch_runs(std::uint64_t base_generation) { store_.compact_batch_runs(base_generation); }
+		void reclaim_orphans() { store_.reclaim_orphans(); }
 		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
 		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
 		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const { return store_.disk_usage(); }
 		[[nodiscard]] std::uint64_t content_hash() const { return store_.content_hash(); }
+		void set_publication_observer(MultiwayExternalPublicationObserver observer, void* context)
+		{
+			store_.set_publication_observer(observer, context, 0U);
+		}
 
 	private:
 		void append_discovered_batch_impl(std::uint64_t batch_number,
@@ -439,10 +475,16 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
 		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const { return store_.disk_usage(); }
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
+		void compact_batch_runs(std::uint64_t base_generation) { store_.compact_batch_runs(base_generation); }
+		void reclaim_orphans() { store_.reclaim_orphans(); }
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
 		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
 		[[nodiscard]] std::uint64_t content_hash() const { return store_.content_hash(); }
+		void set_publication_observer(MultiwayExternalPublicationObserver observer, void* context)
+		{
+			store_.set_publication_observer(observer, context, 1U);
+		}
 
 	private:
 		MultiwayExternalRecordStore store_;
@@ -492,10 +534,13 @@ namespace texas::solver::multiway
 			std::uint8_t action_count, MultiwayExternalPageProfile* profile);
 		void unpin(std::uint64_t page_id);
 		void mark_dirty(std::uint64_t page_id);
+		[[nodiscard]] bool batch_full() const;
 		void commit_batch();
 		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		void abort_batch();
 		void compact(bool retain_input_runs = false);
+		void compact_batch_runs(std::uint64_t base_generation);
+		void reclaim_orphans();
 		void begin_export_filter() const { store_->begin_export_filter(); }
 		void end_export_filter() const noexcept { store_->end_export_filter(); }
 		[[nodiscard]] std::uint64_t generation() const { return store_->generation(); }
@@ -504,6 +549,10 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
 		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const { return store_->disk_usage(); }
+		void set_publication_observer(MultiwayExternalPublicationObserver observer, void* context)
+		{
+			store_->set_publication_observer(observer, context, 2U);
+		}
 
 	private:
 		struct Page
@@ -538,6 +587,7 @@ namespace texas::solver::multiway
 		std::uint64_t page_cache_hits_ = 0U;
 		std::uint64_t page_cache_misses_ = 0U;
 		std::uint64_t page_cache_evictions_ = 0U;
+		std::size_t dirty_count_ = 0U;
 		bool batch_open_ = false;
 		mutable std::mutex mutex_;
 	};
@@ -568,6 +618,7 @@ namespace texas::solver::multiway
 			const std::vector<MultiwaySparseRowShape>& rows);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
 		void flush_page_batch_and_continue();
+		void flush_page_batch_if_full();
 		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
 			MultiwayExternalRowBinding& output) const;
@@ -602,6 +653,9 @@ namespace texas::solver::multiway
 		void commit_batch();
 		void abort_batch();
 		void compact(bool retain_input_runs = false);
+		void compact_batch_runs(std::uint64_t base_row_generation,
+			std::uint64_t base_page_generation);
+		void reclaim_orphans();
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
 		[[nodiscard]] std::uint64_t row_generation() const { return rows_.generation(); }
 		[[nodiscard]] std::uint64_t page_generation() const { return pages_.generation(); }
@@ -609,6 +663,11 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
 		[[nodiscard]] MultiwayExternalStorageStats row_index_stats() const { return rows_.stats(); }
 		[[nodiscard]] MultiwayExternalStorageStats page_store_stats() const { return pages_.stats(); }
+		void set_publication_observer(MultiwayExternalPublicationObserver observer, void* context)
+		{
+			rows_.set_publication_observer(observer, context);
+			pages_.set_publication_observer(observer, context);
+		}
 		void begin_export_filter() const { pages_.begin_export_filter(); }
 		void end_export_filter() const noexcept { pages_.end_export_filter(); }
 		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const;
@@ -659,7 +718,8 @@ namespace texas::solver::multiway
 			return transaction_.current_manifest();
 		}
 		[[nodiscard]] std::uint64_t content_hash() const;
-		[[nodiscard]] MultiwayExternalStorageTelemetry telemetry() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry telemetry(bool include_disk_usage = true) const;
+		void set_publication_observer(MultiwayExternalPublicationObserver observer, void* context);
 
 	private:
 		void open_components();
@@ -671,7 +731,9 @@ namespace texas::solver::multiway
 		std::uint64_t row_page_cache_bytes_ = 0U;
 		std::size_t maximum_ancestry_depth_ = 0U;
 		std::uint64_t batch_number_ = 0U;
+		std::array<std::uint64_t, 3U> batch_base_generations_{};
 		bool page_batch_open_ = false;
+		std::uint64_t aggregate_commit_nanoseconds_ = 0U;
 		bool synchronous_durability_ = true;
 		MultiwayExternalBatchTransaction transaction_;
 		std::unique_ptr<MultiwayExternalPublicCatalog> catalog_;

@@ -1,5 +1,202 @@
 # Pluribus Roadmap Progress Log
 
+## Stage 9.4 post-stop: Correct the first bounded append admission
+
+**Status:** Complete, bounded diagnostic verified; P99 inconclusive
+**Completed:** 2026-10-29
+
+- The prepared PB-12 run failed on its first catalog append with `external storage disk amplification budget cannot admit a record`; its two scans recorded 397 live bytes and 581 stored bytes, below the 3x hard stop. The run produced no batch/checkpoint and is not a completed-run result.
+- Synchronous bounded aggregate training now relies on its existing durable transaction WAL and manifest backups for append rollback/recovery, avoiding a duplicate component payload WAL. Append preflight counts only the component's segment/index and manifest staging; aggregate-manifest staging is checked at commit against the updated live-byte denominator and disk reserve. Generic stores retain component WAL behavior.
+- The monitor now preserves trainer failure as the primary completion reason instead of overwriting it with missing-observation status. Added first-record admission, outer-journal rollback/recovery, commit-peak rejection, and monitor reason-precedence regressions.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `scripts/run/pb12_diagnostic_process.ps1`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/pb12_poststop_diagnostic_procedure.md`
+- `docs/PLURIBUS_LOG.md`
+- `tmp/pb12_diagnostic_20261029_aggregatewalfix/training.conf`
+- `tmp/pb12_diagnostic_20261029_aggregatewalfix/plan.json`
+- `tmp/pb12_diagnostic_20261029_aggregatewalfix/preparation_evidence.json`
+- `tmp/pb12_diagnostic_20261029_verifiedprep/training.conf`
+- `tmp/pb12_diagnostic_20261029_verifiedprep/plan.json`
+- `tmp/pb12_diagnostic_20261029_verifiedprep/preparation_evidence.json`
+- `tmp/pb12_diagnostic_20261029_verifiedprep/monitor.jsonl`
+- `tmp/pb12_diagnostic_20261029_verifiedprep/training.log`
+- `tmp/pb12_diagnostic_20261029_memretry/training.conf`
+- `tmp/pb12_diagnostic_20261029_memretry/plan.json`
+- `tmp/pb12_diagnostic_20261029_memretry/preparation_evidence.json`
+- `tmp/pb12_diagnostic_20261029_memretry/monitor.jsonl`
+- `tmp/pb12_diagnostic_20261029_memretry/training.log`
+- `tmp/pb12_diagnostic_20261029_memretry/training.log.diagnostics.17932886830030567.jsonl`
+- `tmp/pb12_diagnostic_20261029_memretry/report.json`
+- `tmp/pb12_diagnostic_20261029_memretry/policy.mwfb`
+
+### Validation
+
+- An earlier post-fix Debug build attempt failed in `test_multiway_phase4`'s `vcpkg z-applocal` step (exit 32); the subsequent user-reported Debug build passed. The trainer hash is `6520FB95D63B013CDF54527EA902DCB09D29ECD83E6800B82CF716F9E2262A61`.
+- User-reported compact CTest passed all 128 tests (`tmp/ctest_debug.log`). `LastTest.log` confirms all 61 storage cases passed, including first-record admission, aggregate-journal rollback recovery, and commit-peak rejection.
+- User-reported focused PowerShell monitor checks passed.
+- `verifiedprep` stopped when available physical memory reached 3,000,545,280 bytes, below the 3 GiB monitor floor. Its training log had reached batch 3/3, but the process ended with exit -1 and no final report; this attempt remains incomplete.
+- The fresh `memretry` run completed with exit 0: 3/3 batches, 3,000 accepted trajectories, zero discarded, `failed=false`, and successful policy export. The monitor recorded 3 batches and checkpoints, no stop reason, and a minimum sampled available-memory value of 21.82 GiB.
+- The monitor made 178 disk scans; the largest reported amplification was 1.6458x, with no disk stop. Each scan spans sequential filesystem reads, so its live/store/temporary component values are not an instantaneous breakdown. Compaction read/write amplification was 1.20128x/1.17755x.
+- The journal recorded catalog run counts 3, 4, then 2; row run counts 2, 3, then 4; and page run counts 1, 2, then 3. This three-batch observation does not prove run-count growth is bounded.
+- The fresh preparation evidence matches the trainer binary and Stage 9.4 bucket size/timestamp; `bucket_hash_measured=false`. The earlier `postfix`, `aggregatewalfix`, and `verifiedprep` artifacts remain preserved.
+- `git diff --check` and PowerShell syntax parsing passed. No build or test was run by the assistant.
+
+### Limitations
+
+- The bucket content hash remains unmeasured. The P99 gate is inconclusive because three batches provide only two checkpoint cycles, short of the required three two-cycle cohorts. This diagnostic does not qualify Stage 9.4 or Stage 9.5.
+
+## Stage 9.4 post-stop: Bound PB-12 external-store publication amplification
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added an opt-in fixed 3x bound for the PB-12 diagnostic. Append publications include WAL, segment/index temporaries, component-manifest publication, the aggregate-manifest temporary reserve, and all existing store files.
+- Added exact index-only output counting and pre-publication/post-publication amplification checks for compaction. Batch suffix runs are consolidated within configured fan-in; rollback inputs remain until aggregate commit and cleanup.
+- Closed compaction source streams before deleting intermediate suffix runs. Bounded cleanup errors now fail closed instead of silently leaving old run files in the disk-accounting root. The aggregate transaction still retains its rollback inputs.
+- Kept the monitor's hard stop and generic external-storage defaults unchanged. Added regression cases for cap-driven chunking, rollback recovery, run-count limits, and reopen integrity.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/pb12_poststop_diagnostic_procedure.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- User-reported Debug build passed after the source and test edits.
+- User-reported compact CTest passed all 128 tests (`tmp/ctest_debug.log`); `LastTest.log` records the staged-byte recovery regression as passed.
+- User reported the focused monitor checks passed. Prepared `tmp/pb12_diagnostic_20261029_postfix`; its evidence SHA-256 matches the rebuilt trainer binary and the preserved bucket size/timestamp baseline.
+- No solver diagnostic job was started.
+
+### Limitations
+
+- The bucket content hash was not measured. The first bounded run later stopped before a completed batch; its scans do not establish workload memory or disk amplification. The exact compaction preflight adds an index-read pass; any diagnostic launch needs separate authorization.
+
+## Stage 9.4 post-stop: Correct diagnostic startup guard
+
+**Status:** Complete, implementation only
+**Completed:** 2026-10-29
+
+- Corrected the diagnostic monitor to allow an empty store directory during bucket-artifact loading, while retaining fail-closed checks for storage files without a training manifest.
+- Preserved the stopped diagnostic and its monitor evidence.
+
+### Files
+
+- `scripts/run/pb12_diagnostic_process.ps1`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/pb12_poststop_diagnostic_procedure.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the stopped run's training and monitor logs; they show bucket loading when the guard fired.
+- PowerShell syntax parsing and `git diff --check` passed. Tests were not run.
+
+### Limitations
+
+- The revised guard requires the focused monitor checks and integration validation.
+
+## Stage 9.4 post-stop: Refresh diagnostic binary evidence
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Preserved the original prepared diagnostic after its binary hash changed and prepared a separate directory with the current binary hash.
+- Made the launcher identify a changed binary separately from a configuration mismatch.
+
+### Files
+
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `docs/pb12_poststop_diagnostic_procedure.md`
+- `tmp/pb12_diagnostic_20261029_rebuilt/training.conf`
+- `tmp/pb12_diagnostic_20261029_rebuilt/plan.json`
+- `tmp/pb12_diagnostic_20261029_rebuilt/preparation_evidence.json`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked the new configuration and binary hashes, launcher syntax, and `git diff --check`.
+- No build, test, benchmark, or solver job was run.
+
+### Limitations
+
+- The complete monitor and trainer integration remains unverified.
+
+## Stage 9.4 post-stop: Classify diagnostic headers
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added the observer and journal headers to the public CMake header list so the classification check can find them.
+
+### Files
+
+- `CMakeLists.txt`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- A read-only classification scan found every `include/*.hpp` in exactly one header list.
+- CMake configuration, builds, and tests were not run; the user requested separate authorization.
+
+### Limitations
+
+- CMake configuration and linking still require verification.
+
+## Stage 9.4 post-stop: Bounded page publication and diagnostics
+
+**Status:** Complete, implementation only
+**Completed:** 2026-10-29
+
+- Grouped dirty page updates within cache, WAL, segment, and publication-buffer bounds; aggregate transactions remain the commit boundary.
+- Added an exclusive, synchronously flushed diagnostic journal for component publications, clean batches, and checkpoints, with timings, counters, and memory samples.
+- Documented the compaction and pilot-validation limits. The Stage 9.4 hard stops are unchanged.
+
+### Files
+
+- `CMakeLists.txt`
+- `docs/pb12_50m_memory_scaling_plan.md`
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/engine/multiway_external_observer.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/workflow/multiway_diagnostic_journal.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_diagnostic_journal.cpp`
+- `tests/test_multiway_diagnostic_journal.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed during implementation.
+- Builds, tests, benchmarks, and solver jobs were not run, as requested.
+
+### Limitations
+
+- The patch and journal overhead require authorized build, test, and bounded-run validation.
+- A compaction call removes at most fan-in minus one active runs; run growth and pilot gates are not proven bounded.
+- Smaller page-cache configurations can now be rejected because publication buffers are included in the cache budget.
+
 ## Stage 9.1 and 9.2: Pre-pilot validation gates
 
 **Status:** Complete

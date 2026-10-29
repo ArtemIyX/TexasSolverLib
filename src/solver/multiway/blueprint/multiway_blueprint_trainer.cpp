@@ -1798,7 +1798,7 @@ namespace texas::solver::multiway
 		return result;
 	}
 
-	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainer::external_storage_telemetry() const
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainer::external_storage_telemetry(bool include_disk_usage) const
 	{
 		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 			throw std::logic_error("external storage telemetry requires ExternalCompactInt32");
@@ -1806,7 +1806,13 @@ namespace texas::solver::multiway
 		const auto* external = lease.external_storage();
 		if (external == nullptr)
 			throw std::logic_error("external storage telemetry has no external storage");
-		return external->telemetry();
+		return external->telemetry(include_disk_usage);
+	}
+
+	void MultiwayBlueprintTrainer::set_external_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context)
+	{
+		coordinator_->set_external_publication_observer(observer, context);
 	}
 
 	MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPolicyKind policy_kind) const
@@ -2084,9 +2090,15 @@ namespace texas::solver::multiway
 		return result;
 	}
 
-	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainingSession::external_storage_telemetry() const
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainingSession::external_storage_telemetry(bool include_disk_usage) const
 	{
-		return trainer_->external_storage_telemetry();
+		return trainer_->external_storage_telemetry(include_disk_usage);
+	}
+
+	void MultiwayBlueprintTrainingSession::set_external_publication_observer(
+		MultiwayExternalPublicationObserver observer, void* context)
+	{
+		trainer_->set_external_publication_observer(observer, context);
 	}
 
 	void MultiwayBlueprintTrainingSession::record_process_memory_snapshot(MultiwayMemoryPhase phase)

@@ -18,6 +18,7 @@
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
 #include "solver/multiway/workflow/multiway_workflow_path_policy.hpp"
+#include "solver/multiway/workflow/multiway_diagnostic_journal.hpp"
 #include "solver/multiway/workflow/multiway_pb12_coverage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
@@ -37,6 +38,7 @@
 #include <vector>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include "core/atomic_publish.hpp"
 
 namespace
@@ -170,6 +172,7 @@ namespace
 			std::cout << "  --batches <integer>    Bounded training batches (0 requires --resume or --pb12-coverage-only)\n"
 					  << "  --profile-external-export  Collect bounded External export timings\n"
 					  << "  --pb12-targeted-coverage  Admit the captured PB-12 rows before training\n"
+					  << "  --pb12-disk-amplification-bound Enforce the PB-12 fixed 3x external-store bound\n"
 					  << "  --pb12-coverage-only  Admit, export, and replay those rows without random batches\n"
 					  << "  --input <path>         Verified bucket artifact\n"
 					  << "  --output <path>        Full blueprint artifact\n"
@@ -628,6 +631,119 @@ namespace
 		return EXIT_SUCCESS;
 	}
 
+	struct MultiwayDiagnosticProgress
+	{
+		texas::solver::multiway::MultiwayDiagnosticJournal* journal = nullptr;
+		texas::solver::multiway::MultiwayBlueprintTrainingSession* session = nullptr;
+		texas::solver::multiway::MultiwayExternalStorageTelemetry previous{};
+		std::uint64_t starting_batch = 0U;
+		std::uint64_t worker_active = 0U;
+		std::uint64_t admission = 0U;
+		std::uint64_t merge = 0U;
+		std::uint64_t elapsed = 0U;
+		std::uint64_t previous_monitor_nanoseconds = 0U;
+		std::uint64_t publication_monitor_nanoseconds = 0U;
+		std::uint64_t next_workflow_batch = 0U;
+	};
+
+	void record_component_publication(void* context, std::uint32_t component,
+		std::uint64_t generation, std::uint64_t component_batch, std::uint64_t records)
+	{
+		auto& diagnostic = *static_cast<MultiwayDiagnosticProgress*>(context);
+		const auto started = std::chrono::steady_clock::now();
+		std::ostringstream out;
+		out << "{\"event\":\"component_publication\",\"workflow_batch\":" << diagnostic.next_workflow_batch
+			<< ",\"component\":" << component << ",\"component_generation\":" << generation
+			<< ",\"component_batch\":" << component_batch << ",\"records\":" << records
+			<< ",\"aggregate_committed\":false}";
+		diagnostic.journal->append(out.str());
+		diagnostic.publication_monitor_nanoseconds = texas::solver::multiway::multiway_memory_saturating_add(
+			diagnostic.publication_monitor_nanoseconds, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count()));
+	}
+
+	std::uint64_t diagnostic_delta(std::uint64_t value, std::uint64_t previous)
+	{
+		return value >= previous ? value - previous : value;
+	}
+
+	void write_component_diagnostics(std::ostream& out,
+		const texas::solver::multiway::MultiwayExternalStorageStats& now,
+		const texas::solver::multiway::MultiwayExternalStorageStats& previous)
+	{
+		out << "{\"runs\":" << now.run_count
+			<< ",\"publications\":" << diagnostic_delta(now.publications, previous.publications)
+			<< ",\"published_records\":" << diagnostic_delta(now.published_records, previous.published_records)
+			<< ",\"manifest_bytes\":" << diagnostic_delta(now.manifest_bytes_written, previous.manifest_bytes_written)
+			<< ",\"commit_ns\":" << diagnostic_delta(now.commit_nanoseconds, previous.commit_nanoseconds)
+			<< ",\"compactions\":" << diagnostic_delta(now.compactions, previous.compactions)
+			<< ",\"compaction_ns\":" << diagnostic_delta(now.compaction_nanoseconds, previous.compaction_nanoseconds)
+			<< ",\"compaction_read_bytes\":" << diagnostic_delta(now.compaction_read_bytes, previous.compaction_read_bytes)
+			<< ",\"compaction_written_bytes\":" << diagnostic_delta(now.compaction_written_bytes, previous.compaction_written_bytes)
+			<< ",\"cache_hits\":" << diagnostic_delta(now.cache_hits, previous.cache_hits)
+			<< ",\"cache_misses\":" << diagnostic_delta(now.cache_misses, previous.cache_misses)
+			<< ",\"cache_evictions\":" << diagnostic_delta(now.cache_evictions, previous.cache_evictions)
+			<< ",\"page_cache_hits\":" << diagnostic_delta(now.page_cache_hits, previous.page_cache_hits)
+			<< ",\"page_cache_misses\":" << diagnostic_delta(now.page_cache_misses, previous.page_cache_misses)
+			<< ",\"page_cache_evictions\":" << diagnostic_delta(now.page_cache_evictions, previous.page_cache_evictions)
+			<< ",\"run_checks\":" << diagnostic_delta(now.run_checks, previous.run_checks)
+			<< ",\"read_ns\":" << diagnostic_delta(now.read_nanoseconds, previous.read_nanoseconds) << '}';
+	}
+
+	void record_batch_diagnostics(const texas::solver::multiway::MultiwayBlueprintTrainingStatus& status,
+		MultiwayDiagnosticProgress& diagnostic)
+	{
+		using namespace texas::solver::multiway;
+		const auto started = std::chrono::steady_clock::now();
+		const auto storage = diagnostic.session->external_storage_telemetry(false);
+		const auto memory = capture_multiway_process_memory_snapshot();
+		std::ostringstream out;
+		out << "{\"event\":\"batch\",\"workflow_batch\":" << status.batches
+			<< ",\"invocation_batch\":" << status.batches - diagnostic.starting_batch
+			<< ",\"storage_generation\":" << storage.training_generation
+			<< ",\"store_committed_batch\":" << storage.committed_batch
+			<< ",\"aggregate_commit_ns\":" << diagnostic_delta(storage.aggregate_commit_nanoseconds, diagnostic.previous.aggregate_commit_nanoseconds)
+			<< ",\"worker_active_ns\":" << diagnostic_delta(status.worker_active_nanoseconds, diagnostic.worker_active)
+			<< ",\"admission_ns\":" << diagnostic_delta(status.coordinator_admission_nanoseconds, diagnostic.admission)
+			<< ",\"merge_ns\":" << diagnostic_delta(status.merge_nanoseconds, diagnostic.merge)
+			<< ",\"elapsed_since_previous_batch_ns\":" << diagnostic_delta(status.elapsed_wall_nanoseconds, diagnostic.elapsed)
+			<< ",\"estimated_working_set_peak_bytes\":" << status.memory_ledger.estimated_working_set_peak_bytes
+			<< ",\"estimated_private_peak_bytes\":" << status.memory_ledger.estimated_private_peak_bytes
+			<< ",\"working_set_bytes\":";
+		if (memory.current_working_set_available)
+			out << memory.current_working_set_bytes;
+		else
+			out << "null";
+		out << ",\"peak_working_set_bytes\":";
+		if (memory.peak_working_set_available)
+			out << memory.peak_working_set_bytes;
+		else
+			out << "null";
+		out << ",\"private_committed_bytes\":";
+		if (memory.private_committed_available)
+			out << memory.private_committed_bytes;
+		else
+			out << "null";
+		out << ",\"previous_monitor_ns\":" << diagnostic.previous_monitor_nanoseconds
+			<< ",\"publication_monitor_ns\":" << diagnostic.publication_monitor_nanoseconds
+			<< ",\"catalog\":";
+		write_component_diagnostics(out, storage.catalog, diagnostic.previous.catalog);
+		out << ",\"rows\":";
+		write_component_diagnostics(out, storage.rows, diagnostic.previous.rows);
+		out << ",\"pages\":";
+		write_component_diagnostics(out, storage.pages, diagnostic.previous.pages);
+		out << '}';
+		diagnostic.journal->append(out.str());
+		diagnostic.previous = storage;
+		diagnostic.worker_active = status.worker_active_nanoseconds;
+		diagnostic.admission = status.coordinator_admission_nanoseconds;
+		diagnostic.merge = status.merge_nanoseconds;
+		diagnostic.elapsed = status.elapsed_wall_nanoseconds;
+		diagnostic.publication_monitor_nanoseconds = 0U;
+		diagnostic.next_workflow_batch = texas::solver::multiway::multiway_memory_saturating_add(status.batches, 1U);
+		diagnostic.previous_monitor_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+	}
+
 	struct MultiwayTrainingProgressContext
 	{
 		bool enabled = true;
@@ -642,6 +758,7 @@ namespace
 		std::uint64_t last_reported_trajectories = 0U;
 		std::chrono::steady_clock::time_point started_at{};
 		std::chrono::steady_clock::time_point last_reported_at{};
+		MultiwayDiagnosticProgress* diagnostic = nullptr;
 	};
 
 	void report_multiway_training_progress(
@@ -649,6 +766,8 @@ namespace
 		void* context)
 	{
 		auto& progress = *static_cast<MultiwayTrainingProgressContext*>(context);
+		if (progress.diagnostic != nullptr)
+			record_batch_diagnostics(status, *progress.diagnostic);
 		if (!progress.enabled || progress.interval == 0U || status.batches < progress.starting_batches)
 			return;
 		const auto completed_batches = status.batches - progress.starting_batches;
@@ -716,7 +835,8 @@ namespace
 		bool authorize_50m_stage,
 		bool profile_external_export,
 		bool pb12_targeted_coverage,
-		bool pb12_coverage_only)
+		bool pb12_coverage_only,
+		bool enforce_pb12_disk_amplification_bound)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -737,6 +857,8 @@ namespace
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
 		auto workflow = load_multiway_workflow_config(config_path);
+		if (enforce_pb12_disk_amplification_bound && workflow.storage_backend != "ExternalCompactInt32")
+			throw std::invalid_argument("--pb12-disk-amplification-bound requires external storage");
 		if (pb12_coverage_only)
 		{
 			if (batches_specified && batches != 0U)
@@ -1032,6 +1154,8 @@ namespace
 			config.limits.external_storage.compaction_scratch_bytes = workflow.compaction_scratch_bytes;
 			config.limits.external_storage.disk_reserve_bytes = workflow.disk_reserve_bytes;
 			config.limits.external_storage.synchronous_durability = workflow.synchronous_durability;
+			if (enforce_pb12_disk_amplification_bound)
+				config.limits.external_storage.disk_amplification_limit = 3U;
 		}
 		if (workflow.process_memory_limit_bytes < 3U)
 		{
@@ -1241,6 +1365,51 @@ namespace
 		}
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
+		std::unique_ptr<MultiwayDiagnosticJournal> diagnostic_journal;
+		MultiwayDiagnosticProgress diagnostic{};
+		if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			auto candidate = log_path;
+			candidate += ".diagnostics." + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".jsonl";
+			const auto diagnostic_path = authorize_multiway_workflow_path(
+				path_policy, candidate, MultiwayWorkflowPathKind::OutputFile);
+			diagnostic_journal = std::make_unique<MultiwayDiagnosticJournal>(diagnostic_path);
+			std::cerr << "external diagnostic journal: " << diagnostic_path.string() << '\n';
+			diagnostic.journal = diagnostic_journal.get();
+			diagnostic.session = &session;
+			diagnostic.previous = session.external_storage_telemetry(false);
+			diagnostic.starting_batch = session.status().batches;
+			diagnostic.worker_active = session.status().worker_active_nanoseconds;
+			diagnostic.admission = session.status().coordinator_admission_nanoseconds;
+			diagnostic.merge = session.status().merge_nanoseconds;
+			diagnostic.elapsed = session.status().elapsed_wall_nanoseconds;
+			diagnostic.next_workflow_batch = multiway_memory_saturating_add(session.status().batches, 1U);
+			session.set_external_publication_observer(record_component_publication, &diagnostic);
+			const auto started = std::chrono::steady_clock::now();
+			std::ostringstream out;
+			out << "{\"event\":\"start\",\"schema\":1,\"workflow_batch\":" << session.status().batches
+				<< ",\"storage_generation\":" << diagnostic.previous.training_generation
+				<< ",\"store_committed_batch\":" << diagnostic.previous.committed_batch << '}';
+			diagnostic_journal->append(out.str());
+			diagnostic.previous_monitor_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+		}
+		const auto record_checkpoint_diagnostics = [&](std::uint64_t duration, std::uint64_t bytes) {
+			if (!diagnostic_journal)
+				return;
+			const auto started = std::chrono::steady_clock::now();
+			const auto& generation = external_resume->generation;
+			std::ostringstream out;
+			out << "{\"event\":\"checkpoint\",\"workflow_batch\":" << session.status().batches
+				<< ",\"invocation_batch\":" << session.status().batches - diagnostic.starting_batch
+				<< ",\"storage_generation\":" << generation.generation
+				<< ",\"store_committed_batch\":" << generation.committed_batch_number
+				<< ",\"checkpoint_ns\":" << duration << ",\"checkpoint_bytes\":" << bytes
+				<< ",\"previous_monitor_ns\":" << diagnostic.previous_monitor_nanoseconds << '}';
+			diagnostic_journal->append(out.str());
+			diagnostic.previous_monitor_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+		};
 		const auto progress_started_at = std::chrono::steady_clock::now();
 		auto live_progress = progress_enabled && batches != 0U
 			? texas::logging::Progress::start("training progress", batches)
@@ -1257,7 +1426,8 @@ namespace
 			session.status().trajectories,
 			session.status().trajectories,
 			progress_started_at,
-			progress_started_at
+			progress_started_at,
+			diagnostic_journal ? &diagnostic : nullptr
 		};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
@@ -1301,10 +1471,12 @@ namespace
 					checkpoint_telemetry.accumulate(last_checkpoint_write.telemetry);
 					checkpoint_bytes = last_checkpoint_write.serialized_bytes;
 				}
-				checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
+				const auto checkpoint_elapsed = static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - checkpoint_start)
 						.count());
+				checkpoint_write_nanoseconds += checkpoint_elapsed;
+				record_checkpoint_diagnostics(checkpoint_elapsed, checkpoint_bytes);
 				session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
 				checkpoint_snapshots_recorded = true;
 			}
@@ -1343,10 +1515,14 @@ namespace
 							throw std::runtime_error("cannot measure training checkpoint");
 						checkpoint_bytes = std::max(checkpoint_bytes, checkpoint.serialized_bytes);
 					}
-					checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
+					const auto checkpoint_elapsed = static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - checkpoint_start)
 							.count());
+					checkpoint_write_nanoseconds += checkpoint_elapsed;
+					if (diagnostic_journal)
+						record_checkpoint_diagnostics(checkpoint_elapsed,
+							static_cast<std::uint64_t>(std::filesystem::file_size(checkpoint_path)));
 					if (capture_checkpoint_phases)
 					{
 						session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
@@ -1622,6 +1798,7 @@ namespace
 		bool profile_external_export = false;
 		bool pb12_targeted_coverage = false;
 		bool pb12_coverage_only = false;
+		bool enforce_pb12_disk_amplification_bound = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
 		bool scheduler_specified = false;
 		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
@@ -1670,6 +1847,11 @@ namespace
 			if (argument == "--pb12-targeted-coverage")
 			{
 				pb12_targeted_coverage = true;
+				continue;
+			}
+			if (argument == "--pb12-disk-amplification-bound")
+			{
+				enforce_pb12_disk_amplification_bound = true;
 				continue;
 			}
 			if (argument == "--pb12-coverage-only")
@@ -1843,6 +2025,8 @@ namespace
 			throw std::invalid_argument("--external-storage-snapshot-dir requires train and --config");
 		if ((pb12_targeted_coverage || pb12_coverage_only) && workflow != Workflow::Train)
 			throw std::invalid_argument("PB-12 targeted coverage options require the train workflow");
+		if (enforce_pb12_disk_amplification_bound && workflow != Workflow::Train)
+			throw std::invalid_argument("--pb12-disk-amplification-bound requires the train workflow");
 		if (workflow != Workflow::Finalize && !config_path.empty())
 		{
 			const auto path_policy = texas::solver::multiway::make_default_multiway_workflow_path_policy();
@@ -1874,7 +2058,8 @@ namespace
 				threads_specified ? threads : 0U, pin_workers, progress_enabled,
 				training_progress_interval, progress_memory, progress_speed, scheduler_mode, scheduler_specified,
 				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage,
-				profile_external_export, pb12_targeted_coverage, pb12_coverage_only);
+				profile_external_export, pb12_targeted_coverage, pb12_coverage_only,
+				enforce_pb12_disk_amplification_bound);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{

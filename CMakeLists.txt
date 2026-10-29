@@ -124,6 +124,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_bucket_generation.hpp
     include/solver/multiway/workflow/multiway_workflow_config.hpp
     include/solver/multiway/workflow/multiway_workflow_path_policy.hpp
+    include/solver/multiway/workflow/multiway_diagnostic_journal.hpp
     include/solver/multiway/workflow/multiway_evidence.hpp
     include/solver/multiway/workflow/multiway_binary_provenance.hpp
     include/solver/multiway/workflow/multiway_artifact_preflight.hpp
@@ -166,6 +167,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/engine/multiway_solver.hpp
     include/solver/multiway/engine/multiway_compact_storage.hpp
     include/solver/multiway/engine/multiway_external_storage.hpp
+    include/solver/multiway/engine/multiway_external_observer.hpp
     include/solver/multiway/abstraction/multiway_terminal_adapter.hpp
     include/solver/multiway/engine/multiway_traversal.hpp
     include/solver/generic/parallel_dcfr.hpp
@@ -256,6 +258,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
     src/solver/multiway/workflow/multiway_workflow_config.cpp
     src/solver/multiway/workflow/multiway_workflow_path_policy.cpp
+    src/solver/multiway/workflow/multiway_diagnostic_journal.cpp
     src/solver/multiway/workflow/multiway_evidence.cpp
     src/solver/multiway/workflow/multiway_artifact_preflight.cpp
     src/solver/multiway/workflow/multiway_checkpoint_equivalence.cpp
