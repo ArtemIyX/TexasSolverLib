@@ -6,7 +6,7 @@
 **Completed:** 2026-10-29
 
 - User-reported Linux CTest failure: `multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatches` observed no page publication before the intentionally invalid delta.
-- The test's 3,000-byte cache did not guarantee a flush before the invalid delta because only the root and first child page were dirtied before that delta was rejected. A 2,048-byte attempt was rejected because its remaining page-cache budget could not hold one committable page. The fixture now keeps the valid 3,000-byte cache, admits four child buckets, and updates the root plus four distinct child pages before the invalid delta; this exceeds the cache's two-page capacity and forces a subbatch publication. Production code is unchanged.
+- A 2,048-byte attempt was rejected because its remaining page-cache budget could not hold one committable page. The initial 3,000-byte fixture update still failed on Linux: `MultiwayWorkerDelta` aggregate fields are bucket then action, but the attempted updates varied action while keeping bucket zero, so only the root and one child page were dirtied. The fixture now keeps the valid 3,000-byte cache and updates child buckets 0 through 3 at action 0 before the invalid action 255. This dirties five distinct pages, exceeding the two-page cache capacity and forcing a subbatch publication. Production code is unchanged.
 
 ### Files
 
@@ -15,7 +15,7 @@
 
 ### Validation
 
-- User-provided CI results confirm the original no-publication failure and that the 2,048-byte attempt failed with `external compact page cache cannot hold a committable page`.
+- User-provided CI results confirm the original no-publication failure, the 2,048-byte attempt failed with `external compact page cache cannot hold a committable page`, and the first 3,000-byte attempt still had no page publication because its aggregate delta initializers addressed one child bucket.
 - `git diff --check` passed after the change. Builds and tests were not run by the assistant, per repository instructions.
 
 ### Limitations

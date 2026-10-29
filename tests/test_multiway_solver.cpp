@@ -900,11 +900,11 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	MultiwayWorkerDeltaStream later(1U, 3U);
 	EXPECT_TRUE(valid.try_append(delta(1U, 1.0, 1.0, 2U)));
 	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 0U, 1.0, 1.0, 3U }));
-	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 1U, 1.0, 1.0, 4U }));
-	EXPECT_TRUE(later.try_append({ child_row.infoset, 0U, 2U, 1.0, 1.0, 5U }));
-	EXPECT_TRUE(later.try_append({ child_row.infoset, 0U, 3U, 1.0, 1.0, 6U }));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 1U, 0U, 1.0, 1.0, 4U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 2U, 0U, 1.0, 1.0, 5U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 3U, 0U, 1.0, 1.0, 6U }));
 	// Action 255 sorts after the valid action-0 pages, so rejection follows the forced flush.
-	EXPECT_TRUE(later.try_append({ child_row.infoset, 1U, 255U, 1.0, 1.0, 2U }));
+	EXPECT_TRUE(later.try_append({ child_row.infoset, 0U, 255U, 1.0, 1.0, 2U }));
 	valid.sort_fixed_order();
 	later.sort_fixed_order();
 	EXPECT_THROW(coordinator.merge_worker_streams({ valid, later }), std::invalid_argument);
