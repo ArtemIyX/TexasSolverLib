@@ -29,11 +29,6 @@ namespace texas::solver::multiway
 		{
 			core::fingerprint::append_u8(hash, value);
 		}
-		void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept
-		{
-			for (std::size_t i = 0; i < 4U; ++i)
-				hash_byte(hash, static_cast<std::uint8_t>(value >> (i * 8U)));
-		}
 		void append_u32(std::vector<char>& bytes, std::uint32_t value)
 		{
 			for (std::size_t i = 0; i < 4U; ++i)

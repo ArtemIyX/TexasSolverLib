@@ -122,17 +122,6 @@ namespace texas::solver::multiway
 			}
 		}
 
-		std::uint64_t street_start(core::Street street)
-		{
-			const auto flop = multiway_bucket_board_count(core::Street::Flop);
-			const auto turn = multiway_bucket_board_count(core::Street::Turn);
-			if (street == core::Street::Flop)
-				return 0U;
-			if (street == core::Street::Turn)
-				return flop;
-			return flop + turn;
-		}
-
 		struct Header
 		{
 			MultiwayModelIdentity identity{};

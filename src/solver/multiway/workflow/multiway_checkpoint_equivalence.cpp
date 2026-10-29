@@ -45,13 +45,6 @@ namespace texas::solver::multiway
 			return result;
 		}
 
-		bool equal_run_configuration(
-			const MultiwayEquivalenceRunEvidence& first,
-			const MultiwayEquivalenceRunEvidence& second) noexcept
-		{
-			return first.deterministic_seed == second.deterministic_seed && first.schedule_fingerprint == second.schedule_fingerprint;
-		}
-
 	} // namespace
 
 	void MultiwayEquivalenceRunEvidence::validate() const

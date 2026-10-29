@@ -104,6 +104,7 @@ namespace texas::solver::multiway
 				case Street::Turn:
 					return 4U;
 				case Street::River:
+				case Street::Showdown:
 					return 5U;
 			}
 			return 0U;
@@ -183,20 +184,6 @@ namespace texas::solver::multiway
 				throw std::logic_error("multiway resolver has no static legal policy");
 			}
 			return result;
-		}
-
-		bool same_menu(
-			const std::vector<MultiwayResolverActionProbability>& policy,
-			const std::vector<MultiwayActionDescriptor>& menu) noexcept
-		{
-			if (policy.size() != menu.size())
-				return false;
-			for (std::size_t index = 0; index < menu.size(); ++index)
-			{
-				if (policy[index].action != menu[index])
-					return false;
-			}
-			return true;
 		}
 
 		bool apply_blueprint_policy(
@@ -409,7 +396,6 @@ namespace texas::solver::multiway
 			const MultiwayState& state,
 			const std::vector<std::uint8_t>& board,
 			const std::vector<MultiwayActionDescriptor>& menu,
-			std::uint32_t bucket,
 			MultiwayRootSnapshot* root)
 		{
 			const auto seat_count = state.stacks().size();
@@ -600,7 +586,7 @@ namespace texas::solver::multiway
 					throw std::invalid_argument("multiway future bucket artifact identity does not match the request");
 				}
 				MultiwayRootSnapshot root;
-				if (!make_search_root(request, state, board, menu, bucket, &root))
+				if (!make_search_root(request, state, board, menu, &root))
 				{
 					return RuntimeSearchOutcome::NoRoot;
 				}
@@ -926,7 +912,7 @@ namespace texas::solver::multiway
 			throw std::length_error("multiway decision session memory preflight rejected the request");
 		}
 		MultiwayRootSnapshot root;
-		if (!make_search_root(request, state, board, menu, bucket, &root))
+		if (!make_search_root(request, state, board, menu, &root))
 		{
 			throw std::invalid_argument("multiway decision session could not construct a search root");
 		}

@@ -24,7 +24,7 @@ namespace texas::util
 			return a >= b ? a : b;
 		}
 
-		bool is_aligned_32(const void* ptr) noexcept
+		[[maybe_unused]] bool is_aligned_32(const void* ptr) noexcept
 		{
 			return (reinterpret_cast<std::uintptr_t>(ptr) & 31U) == 0;
 		}

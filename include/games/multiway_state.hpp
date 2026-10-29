@@ -77,7 +77,9 @@ namespace texas::games::multiway
 		int big_blind = 0;						  ///< Big-blind amount used to reset the minimum raise size.
 		core::Street street = core::Street::Flop; ///< Street represented by this state.
 
-		void validate() const;
+		/** @brief Validates snapshot vector sizes and betting metadata.
+		 * @throws std::invalid_argument If the snapshot fields are inconsistent.
+		 */
 		void validate() const;
 	};
 

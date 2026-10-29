@@ -146,12 +146,20 @@ namespace texas::games::multiway
 		config.validate();
 
 		std::array<std::size_t, 6> order = {};
-		for (std::size_t seat = 0; seat < config.ranges.size(); ++seat)
+		const auto seat_count = config.ranges.size();
+		for (std::size_t seat = 0; seat < seat_count; ++seat)
 			order[seat] = seat;
-		std::sort(order.begin(), order.begin() + config.ranges.size(),
-			[&config](std::size_t lhs, std::size_t rhs) {
-				return config.ranges[lhs].size() < config.ranges[rhs].size();
-			});
+		for (std::size_t index = 1U; index < seat_count; ++index)
+		{
+			const auto seat = order[index];
+			std::size_t position = index;
+			while (position > 0U && config.ranges[seat].size() < config.ranges[order[position - 1U]].size())
+			{
+				order[position] = order[position - 1U];
+				--position;
+			}
+			order[position] = seat;
+		}
 		std::array<bool, 64> used = {};
 		for (const auto card : config.board)
 			used[card] = true;

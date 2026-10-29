@@ -1,5 +1,40 @@
 # Pluribus Roadmap Progress Log
 
+## Linux Debug compiler diagnostics
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Removed the duplicate multiway snapshot validation declaration that stopped Linux Debug compilation.
+- Addressed the reported dangling-reference and compiler warnings with explicit initialization, bounded insertion sorting, unused-code cleanup, and warning-safe expressions.
+- Added the missing showdown case and removed an unused resolver parameter.
+
+### Files
+
+- `include/games/multiway_state.hpp`
+- `include/solver/generic/solver.hpp`
+- `src/games/hunl_flat_builder.cpp`
+- `src/games/multiway_private.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/resolver/multiway_resolver.cpp`
+- `src/solver/multiway/workflow/multiway_checkpoint_equivalence.cpp`
+- `src/util/pcs.cpp`
+- `src/util/simd.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- The Linux build was not rerun because the repository's C++ implementation and review skills prohibit builds and tests unless explicitly requested.
+
+### Limitations
+
+- A successful Linux Debug build has not yet confirmed these fixes.
+
 ## Doxygen GitHub Pages workflow
 
 **Status:** Complete

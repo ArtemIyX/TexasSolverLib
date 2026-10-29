@@ -103,7 +103,7 @@ namespace texas::solver
 			return strategy;
 		}
 
-		inline const std::vector<Probability>& strategy_for_infoset(
+		inline const std::vector<Probability>* strategy_for_infoset(
 			const StrategyMap& strategy,
 			const InfosetKey& key,
 			std::size_t action_count,
@@ -112,7 +112,7 @@ namespace texas::solver
 			const auto it = strategy.find(key);
 			if (it != strategy.end() && it->second.size() == action_count)
 			{
-				return it->second;
+				return &it->second;
 			}
 
 			fallback_buffer.assign(action_count, 0.0);
@@ -121,7 +121,7 @@ namespace texas::solver
 				const auto uniform = 1.0 / static_cast<double>(action_count);
 				std::fill(fallback_buffer.begin(), fallback_buffer.end(), uniform);
 			}
-			return fallback_buffer;
+			return &fallback_buffer;
 		}
 
 		template <class G>
@@ -148,15 +148,15 @@ namespace texas::solver
 
 			const auto actions = state.legal_actions();
 			std::vector<Probability> fallback;
-			const auto& probs =
+			const auto* probs =
 				strategy_for_infoset(strategy, state.infoset_key(player), actions.size(), fallback);
 
 			std::array<Value, 2> value = { 0.0, 0.0 };
 			for (std::size_t idx = 0; idx < actions.size(); ++idx)
 			{
 				const auto child = expected_value(state.next_state(actions[idx]), strategy);
-				value[0] += probs[idx] * child[0];
-				value[1] += probs[idx] * child[1];
+				value[0] += (*probs)[idx] * child[0];
+				value[1] += (*probs)[idx] * child[1];
 			}
 			return value;
 		}
@@ -194,12 +194,12 @@ namespace texas::solver
 			}
 
 			std::vector<Probability> fallback;
-			const auto& probs =
+			const auto* probs =
 				strategy_for_infoset(strategy, state.infoset_key(player), actions.size(), fallback);
 			Value value = 0.0;
 			for (std::size_t idx = 0; idx < actions.size(); ++idx)
 			{
-				value += probs[idx] * br_state_value(state.next_state(actions[idx]), br_player, best_action, strategy);
+				value += (*probs)[idx] * br_state_value(state.next_state(actions[idx]), br_player, best_action, strategy);
 			}
 			return value;
 		}
@@ -245,13 +245,13 @@ namespace texas::solver
 			}
 
 			std::vector<Probability> fallback;
-			const auto& probs =
+			const auto* probs =
 				strategy_for_infoset(strategy, state.infoset_key(player), actions.size(), fallback);
 			for (std::size_t idx = 0; idx < actions.size(); ++idx)
 			{
 				collect_infosets(
 					state.next_state(actions[idx]),
-					counterfactual_reach * probs[idx],
+					counterfactual_reach * (*probs)[idx],
 					br_player,
 					strategy,
 					groups);

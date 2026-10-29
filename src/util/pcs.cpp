@@ -20,7 +20,8 @@ namespace texas::util
 			(void)_umul128(lhs, rhs, &high);
 			return high;
 #elif defined(__SIZEOF_INT128__)
-			const auto product = static_cast<unsigned __int128>(lhs) * static_cast<unsigned __int128>(rhs);
+			__extension__ typedef unsigned __int128 uint128_t;
+			const auto product = static_cast<uint128_t>(lhs) * static_cast<uint128_t>(rhs);
 			return static_cast<std::uint64_t>(product >> 64U);
 #else
 			const std::uint64_t lhs_lo = static_cast<std::uint32_t>(lhs);
