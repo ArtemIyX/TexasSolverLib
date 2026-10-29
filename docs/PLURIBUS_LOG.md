@@ -1,5 +1,71 @@
 # Pluribus Roadmap Progress Log
 
+## CMake build structure refactor
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Kept project setup, options, and source/header classification in the root; moved target and package rules to `cmake/TexasSolverTargets.cmake`, examples to `examples/CMakeLists.txt`, and test declarations to `tests/CMakeLists.txt`.
+- Preserved target names, C++17 and CMake 3.20 requirements, dependency visibility, platform source selection, test gates, and independent optional components.
+- Corrected the parent install rule to install the vendored evaluator's public headers from their actual source paths without editing vendored files.
+- Added a CMake structure contract and updated boundary checks for the new ownership files.
+
+### Files
+
+- `CMakeLists.txt`
+- `cmake/TexasSolverTargets.cmake`
+- `examples/CMakeLists.txt`
+- `tests/CMakeLists.txt`
+- `tests/cmake/test_cmake_structure.cmake`
+- `tests/cmake/test_example_boundary.cmake`
+- `tests/cmake/test_legacy_vector_boundary.cmake`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/cmake/test_tracy_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Configured six independent Windows/MSVC variants: defaults, research examples, legacy research, fixed HUNL research, logging, and Tracy diagnostics.
+- `scripts/python/full_build.py` passed the full build and test suite before the final install-path adjustment. After that adjustment, `compact_build.py --target texas`, all CTest tests, and seven focused CMake boundary tests passed.
+- The first post-adjustment parallel CTest run hit an MSVC program-database mismatch in `test_public_header_boundary`; that test passed alone and the subsequent full CTest run passed.
+- Installed the package, then configured and linked a separate `TexasSolver::texas` consumer before and after relocating the install prefix.
+- `git diff --check` passed for the task changes.
+
+### Limitations
+
+- Verification used Windows/MSVC with CMake 4.4.0-rc2; exact CMake 3.20, Linux, and macOS runs were unavailable.
+
+## Project skill - CMake maintenance
+
+**Status:** Complete
+**Completed:** 2026-10-29
+
+- Added a project-local CMake skill with implicit invocation enabled and an AGENTS.md requirement to read it before every CMakeLists.txt edit or related CMake change.
+- Added five focused guides covering targets/modules, dependencies/packages, tests/verification, platforms/presets, and authoritative CMake plus LLVM/VTK/curl references. Included C++17, package-config, test-registration, and CMake 3.20 preset examples.
+- Preserved execution authorization boundaries. No CMake files, build behavior, or solver code changed.
+
+### Files
+
+- `AGENTS.md`
+- `.agents/skills/cmake-maintenance/SKILL.md`
+- `.agents/skills/cmake-maintenance/agents/openai.yaml`
+- `.agents/skills/cmake-maintenance/references/targets-and-modules.md`
+- `.agents/skills/cmake-maintenance/references/dependencies-and-packages.md`
+- `.agents/skills/cmake-maintenance/references/testing-and-verification.md`
+- `.agents/skills/cmake-maintenance/references/platforms-and-presets.md`
+- `.agents/skills/cmake-maintenance/references/sources-and-projects.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static checks passed for required frontmatter, all five local reference links, the JSON preset example, implicit invocation metadata, and AGENTS.md routing.
+- `git diff --check` passed. No project builds or tests ran for this instruction-only change.
+- Attempted the bundled skill-creator `quick_validate.py` through the project Python wrapper using both available runtime paths; both lacked the required PyYAML module.
+
+### Limitations
+
+- Full skill-creator validation remains unavailable without PyYAML. Automatic use is instructed through skill metadata and AGENTS.md; this is not a filesystem hook or proof of future agent behavior.
+
 ## PB-11 CI follow-up: Force page-sub-batch rollback coverage
 
 **Status:** Test fixture corrected; CI rerun pending

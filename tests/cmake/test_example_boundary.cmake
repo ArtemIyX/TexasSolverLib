@@ -3,6 +3,8 @@ if(NOT DEFINED SOURCE_DIR)
 endif()
 
 file(READ "${SOURCE_DIR}/CMakeLists.txt" cmake_text)
+file(READ "${SOURCE_DIR}/examples/CMakeLists.txt" example_cmake)
+string(APPEND cmake_text "\n${example_cmake}")
 
 function(require_present needle label)
     string(FIND "${cmake_text}" "${needle}" position)
