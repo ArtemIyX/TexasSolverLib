@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Bounded rollout evaluator for fixed multiway continuation policies.
+ */
+
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/continuation/multiway_continuation_policy.hpp"
 
@@ -20,6 +24,7 @@ namespace texas::solver::multiway
 	inline constexpr std::size_t MULTIWAY_ROLLOUT_MAX_BOARD_CARDS = 5U;
 	inline constexpr std::size_t MULTIWAY_ROLLOUT_DECK_CARDS = 52U;
 
+	/** Outcome class for one bounded rollout evaluation. */
 	enum class MultiwayRolloutStatus : std::uint8_t
 	{
 		Complete,
@@ -27,6 +32,7 @@ namespace texas::solver::multiway
 		InvalidContext,
 	};
 
+	/** Runout sampling mode used to evaluate a continuation profile. */
 	enum class MultiwayRolloutRunoutMode : std::uint8_t
 	{
 		None,
@@ -35,6 +41,7 @@ namespace texas::solver::multiway
 		Mixed,
 	};
 
+	/** Limits on betting expansion and exact all-in enumeration. */
 	struct MultiwayRolloutLimits
 	{
 		std::uint32_t max_betting_actions = 64U;
@@ -43,6 +50,7 @@ namespace texas::solver::multiway
 		std::uint32_t max_exact_runouts = 1'200U;
 	};
 
+	/** Fixed-capacity action and blueprint-probability output from a provider. */
 	struct MultiwayRolloutActionMenu
 	{
 		std::array<MultiwayActionDescriptor, MULTIWAY_ROLLOUT_MAX_ACTIONS> actions{};
@@ -52,6 +60,7 @@ namespace texas::solver::multiway
 
 	// The provider returns the blueprint menu at one exact betting state. It must
 	// only return legal, unique actions and must not retain `board`.
+	/** Callback that supplies legal actions and their blueprint probabilities. */
 	using MultiwayRolloutActionProviderFn = bool (*)(
 		const MultiwayFixedState& state,
 		const std::uint8_t* board,
@@ -61,6 +70,7 @@ namespace texas::solver::multiway
 
 	// Converts the existing dynamic leaf request to a fixed continuation state.
 	// Holes are ordered by seat and include folded seats to preserve settlement.
+	/** Fixed-state cards, board, and settlement settings for one rollout. */
 	struct MultiwayRolloutInput
 	{
 		const MultiwayFixedState* state = nullptr;
@@ -74,11 +84,13 @@ namespace texas::solver::multiway
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
 	};
 
+	/** Converts a leaf request into the fixed rollout input representation. */
 	using MultiwayRolloutInputProviderFn = bool (*)(
 		const MultiwayLeafEvaluationRequest& request,
 		MultiwayRolloutInput* output,
 		const void* context) noexcept;
 
+	/** Caller-owned fixed-state buffers reused during a rollout evaluation. */
 	struct MultiwayRolloutScratch
 	{
 		MultiwayFixedState state{};
@@ -90,6 +102,7 @@ namespace texas::solver::multiway
 		std::array<Probability, MULTIWAY_ROLLOUT_MAX_ACTIONS> policy{};
 	};
 
+	/** Values and runout counters for every fixed continuation policy. */
 	struct MultiwayRolloutProfileResult
 	{
 		std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
@@ -103,6 +116,7 @@ namespace texas::solver::multiway
 	// Internal cache keys remain request-local and contain opaque identities, not
 	// private cards or range rows. Public-state identity already binds the exact
 	// betting history and legal action menu.
+	/** Request identity for safely reusing one rollout profile from a local cache. */
 	struct MultiwayContinuationCacheKey
 	{
 		MultiwayPublicStateId public_state{};
@@ -119,11 +133,15 @@ namespace texas::solver::multiway
 		std::uint32_t max_betting_actions = 0;
 		std::uint32_t max_exact_runouts = 0;
 
+		/** Returns whether the key contains all required identities and limits. */
 		[[nodiscard]] bool valid() const noexcept;
+		/** Tests equality of model and request context, excluding result state. */
 		[[nodiscard]] bool same_context(const MultiwayContinuationCacheKey& other) const noexcept;
+		/** Orders keys deterministically for sorted cache storage. */
 		[[nodiscard]] bool operator<(const MultiwayContinuationCacheKey& other) const noexcept;
 	};
 
+	/** Counters and repeated-seed measurements collected for rollout calls. */
 	struct MultiwayContinuationDiagnostics
 	{
 		std::uint64_t seed = 0;
@@ -144,28 +162,38 @@ namespace texas::solver::multiway
 
 	// Fixed-capacity, request-local cache. Construction performs the only reserve;
 	// lookup and admission never grow storage beyond the configured byte cap.
+	/** Bounded cache for rollout profiles keyed by complete request identity. */
 	class MultiwayContinuationCache
 	{
 	public:
+		/** Reserves up to max_entries within the configured byte limit. */
 		explicit MultiwayContinuationCache(
 			std::size_t max_entries,
 			std::uint64_t max_bytes = std::numeric_limits<std::uint64_t>::max());
 
+		/** Copies a cached profile to output when the complete key matches. */
 		[[nodiscard]] bool find(
 			const MultiwayContinuationCacheKey& key,
 			MultiwayRolloutProfileResult* output) const noexcept;
+		/** Inserts a profile if the key is valid and capacity remains. */
 		[[nodiscard]] bool try_insert(
 			const MultiwayContinuationCacheKey& key,
 			const MultiwayRolloutProfileResult& value) noexcept;
+		/** Updates repeated-seed variance diagnostics for a matching entry. */
 		void record_repeated_seed_variance(
 			const MultiwayContinuationCacheKey& key,
 			const MultiwayRolloutProfileResult& value,
 			MultiwayContinuationDiagnostics* diagnostics) const noexcept;
 
+		/** Returns the number of retained cache entries. */
 		[[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
+		/** Returns the fixed maximum entry count. */
 		[[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
+		/** Returns the cache's allocated memory estimate. */
 		[[nodiscard]] std::uint64_t memory_bytes() const noexcept;
+		/** Returns a categorized memory-use snapshot. */
 		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
+		/** Returns the storage size of one cache entry. */
 		[[nodiscard]] static constexpr std::uint64_t entry_bytes() noexcept;
 
 	private:
@@ -184,6 +212,7 @@ namespace texas::solver::multiway
 		return sizeof(Entry);
 	}
 
+	/** Providers, seed batch, bounds, cache, diagnostics, and scratch for rollout. */
 	struct MultiwayRolloutLeafContext
 	{
 		MultiwayRolloutInputProviderFn provide_input = nullptr;
@@ -208,6 +237,7 @@ namespace texas::solver::multiway
 
 	// Evaluates every fixed policy with the same seed batch. Complete all-in
 	// runouts are exactly enumerated whenever their bounded space fits the cap.
+	/** Evaluates all fixed policies using shared seeds or bounded exact runouts. */
 	[[nodiscard]] bool evaluate_multiway_rollout_profiles(
 		const MultiwayLeafEvaluationRequest& request,
 		const MultiwayRolloutLeafContext& context,
@@ -216,9 +246,11 @@ namespace texas::solver::multiway
 	// Adapter retaining the existing MultiwayLeafEvaluator callback boundary.
 	// It returns NaN for invalid contexts and otherwise selects the request's
 	// information-set-consistent policy from the common-random-number profile.
+	/** Adapts rollout profiles to the traversal leaf-evaluator callback. */
 	[[nodiscard]] Value evaluate_multiway_rollout_leaf(
 		const MultiwayLeafEvaluationRequest& request,
 		const void* context) noexcept;
+	/** Creates a leaf-evaluator callback over caller-owned rollout context. */
 	[[nodiscard]] MultiwayLeafEvaluator make_multiway_rollout_leaf_evaluator(
 		const MultiwayRolloutLeafContext* context) noexcept;
 

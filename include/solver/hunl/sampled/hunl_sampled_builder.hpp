@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Lazily builds and memoizes sampled HUNL state graphs under memory limits.
+ */
+
 #include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl.hpp"
@@ -19,12 +23,14 @@
 namespace texas::solver::hunl
 {
 
+	/** @brief Bounds public-state cache and builder memory growth. */
 	struct HUNLSampledBuilderConfig
 	{
-		std::size_t max_cached_public_states = 0;
-		std::uint64_t memory_limit_bytes = 0;
+		std::size_t max_cached_public_states = 0; ///< Maximum cached states; zero means no count limit.
+		std::uint64_t memory_limit_bytes = 0;	  ///< Maximum estimated bytes; zero means no byte limit.
 	};
 
+	/** @brief Fixed-capacity canonical public-state key for sampled graph lookup. */
 	struct HUNLSampledStateKey
 	{
 		std::array<int, HUNL_MAX_HISTORY_CODES> history_codes = {};
@@ -42,17 +48,21 @@ namespace texas::solver::hunl
 		std::array<bool, 2> folded = { false, false };
 		std::array<bool, 2> all_in = { false, false };
 
+		/** @brief Compares all state fields used by builder memoization. */
 		bool operator==(const HUNLSampledStateKey& other) const noexcept
 		{
 			return history_codes == other.history_codes && street_lengths == other.street_lengths && board.cards == other.board.cards && board.count == other.board.count && contributions == other.contributions && stacks == other.stacks && to_call == other.to_call && cur_player == other.cur_player && street_aggressor == other.street_aggressor && street == other.street && street_num_raises == other.street_num_raises && pending_board_deals == other.pending_board_deals && history_count == other.history_count && folded == other.folded && all_in == other.all_in;
 		}
 	};
 
+	/** @brief Hashes a sampled state key consistently with equality. */
 	struct HUNLSampledStateKeyHash
 	{
+		/** @brief Computes the state-key hash. */
 		std::size_t operator()(const HUNLSampledStateKey& key) const noexcept;
 	};
 
+	/** @brief One action or chance edge in the sampled public graph. */
 	struct HUNLSampledEdge
 	{
 		ActionId action = 0;
@@ -61,6 +71,7 @@ namespace texas::solver::hunl
 		std::uint32_t multiplicity = 1;
 	};
 
+	/** @brief Memoized node metadata and edge range for a sampled game state. */
 	struct HUNLSampledNode
 	{
 		HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
@@ -77,6 +88,7 @@ namespace texas::solver::hunl
 		bool expanded = false;
 	};
 
+	/** @brief Memory and graph-size estimate for a sampled builder. */
 	struct HUNLSampledBuilderMemoryEstimate
 	{
 		std::uint64_t nodes_bytes = 0;
@@ -87,6 +99,7 @@ namespace texas::solver::hunl
 		std::uint64_t nodes = 0;
 		std::uint64_t edges = 0;
 
+		/** @brief Sums byte components with saturation on overflow. */
 		[[nodiscard]] std::uint64_t total_bytes() const noexcept
 		{
 			std::uint64_t total = 0;
@@ -103,28 +116,46 @@ namespace texas::solver::hunl
 		}
 	};
 
+	/** @brief Lazily expands and deduplicates public HUNL states for sampled traversal. */
 	class HUNLSampledBuilder
 	{
 	public:
+		/** @brief Creates a builder with optional cache and memory limits. */
 		explicit HUNLSampledBuilder(HUNLSampledBuilderConfig config = {});
 
+		/** @brief Sets root_state as the root and returns its node ID. */
 		[[nodiscard]] std::uint32_t initialize(const HUNLState& root_state);
+		/** @brief Expands node_id and memoizes its outgoing branches. */
 		void ensure_expanded(std::uint32_t node_id);
 
+		/** @brief Returns a node by ID. */
 		[[nodiscard]] const HUNLSampledNode& node(std::uint32_t node_id) const;
+		/** @brief Returns mutable access to a node by ID. */
 		[[nodiscard]] HUNLSampledNode& node_mut(std::uint32_t node_id);
+		/** @brief Returns an edge by ID. */
 		[[nodiscard]] const HUNLSampledEdge& edge(std::uint32_t edge_id) const;
+		/** @brief Returns the game state represented by a node. */
 		[[nodiscard]] const HUNLState& state(std::uint32_t node_id) const;
+		/** @brief Returns the root node ID. */
 		[[nodiscard]] std::uint32_t root_id() const noexcept;
+		/** @brief Returns the number of memoized nodes. */
 		[[nodiscard]] std::size_t node_count() const noexcept;
+		/** @brief Returns the number of stored edges. */
 		[[nodiscard]] std::size_t edge_count() const noexcept;
+		/** @brief Returns the number of registered information sets. */
 		[[nodiscard]] std::size_t infoset_count() const noexcept;
+		/** @brief Estimates memory currently owned by the builder. */
 		[[nodiscard]] HUNLSampledBuilderMemoryEstimate memory_estimate() const noexcept;
+		/** @brief Returns active builder limits. */
 		[[nodiscard]] const HUNLSampledBuilderConfig& config() const noexcept;
+		/** @brief Sets the maximum number of cached public states. */
 		void set_max_cached_public_states(std::size_t maximum) noexcept;
+		/** @brief Sets the estimated memory growth limit in bytes. */
 		void set_memory_limit_bytes(std::uint64_t limit) noexcept;
+		/** @brief Clears cached states and edges while retaining vector capacity. */
 		void clear() noexcept;
 
+		/** @brief Builds the canonical key for one public HUNL state. */
 		[[nodiscard]] static HUNLSampledStateKey make_key(const HUNLState& state);
 
 	private:

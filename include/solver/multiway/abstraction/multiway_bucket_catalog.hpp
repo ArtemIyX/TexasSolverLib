@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Enumerates canonical flop, turn and river boards by stable index.
+ */
+
 #include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
 
 #include <cstddef>
@@ -10,24 +14,35 @@
 namespace texas::solver::multiway
 {
 
+	/** @brief Indexed catalog of all canonical boards on one postflop street. */
 	class MultiwayBucketBoardCatalog
 	{
 	public:
+		/** @brief Creates a catalog for a postflop street. */
 		explicit MultiwayBucketBoardCatalog(core::Street street);
 
+		/** @brief Returns the catalog street. */
 		[[nodiscard]] core::Street street() const noexcept { return street_; }
+		/** @brief Returns the number of canonical boards on the street. */
 		[[nodiscard]] std::uint64_t size() const noexcept;
+		/** @brief Returns a stable fingerprint of the catalog ordering. */
 		[[nodiscard]] std::uint64_t fingerprint() const noexcept;
 
 		// Calls callback once for each board in [begin_index, end_index).
 		// The callback receives a temporary request valid for the duration of the call.
 		template <typename Callback>
+		/** @brief Calls callback for each owned board request in [begin_index, end_index).
+		 * @throws std::out_of_range If the range lies outside this catalog.
+		 */
 		void for_each(std::uint64_t begin_index, std::uint64_t end_index, Callback&& callback) const
 		{
 			enumerate(begin_index, end_index, callback);
 		}
 
 		template <typename Callback>
+		/** @brief Calls callback with fixed-capacity board storage for each index.
+		 * @throws std::out_of_range If the range lies outside this catalog.
+		 */
 		void for_each_fixed_board(std::uint64_t begin_index, std::uint64_t end_index, Callback&& callback) const
 		{
 			enumerate_fixed(begin_index, end_index, callback);
@@ -124,6 +139,7 @@ namespace texas::solver::multiway
 		}
 	};
 
+	/** @brief Returns the number of canonical boards for a street. */
 	[[nodiscard]] std::uint64_t multiway_bucket_board_count(core::Street street);
 
 } // namespace texas::solver::multiway

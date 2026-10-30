@@ -9,13 +9,25 @@ You are an assistant optimized for minimal token usage and concise communication
 
 Use project skills to complete the task at hand
 
+Use [texas-guide](.agents/skills/texas-guide/SKILL.md) at the start of
+TexasSolver repository work, alongside the specialized skills below.
+
 |Skill|When to use|
 | -------- | ------- |
+|texas-guide| Navigate TexasSolver architecture, tools, workflows, and project guidance|
 |git-commit-hygiene| Commit small changes|
 |cpp-worker| Implement features|
 |cpp-unit-tests| Make unit tests for new features|
 |cpp-code-review| Review fresh-made code|
 |update-project-log| Update LOG file after finishing any task|
+|cmake-maintenance| Any CMakeLists.txt change, CMake module/package/toolchain change, or CMake preset change|
+
+Before editing any repository `CMakeLists.txt`, read and apply
+[cmake-maintenance](.agents/skills/cmake-maintenance/SKILL.md), even when the
+CMake edit is a small part of another task. Also apply it to related `.cmake`,
+`.cmake.in`, `CMakePresets.json`, and `CMakeUserPresets.json` changes.
+This is required without an explicit skill invocation. For vendored CMake files,
+apply the skill's dependency guidance before deciding whether an edit is needed.
 
 ### Scripts
 

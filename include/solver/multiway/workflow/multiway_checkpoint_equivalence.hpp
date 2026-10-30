@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Evidence and report types for comparing continuous and resumed training.
+ */
+
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 
 #include <array>
@@ -9,6 +13,7 @@
 namespace texas::solver::multiway
 {
 
+	/** Deterministic settings and coverage from one training run. */
 	struct MultiwayEquivalenceRunEvidence
 	{
 		MultiwayProducerIdentity producer{};
@@ -22,9 +27,11 @@ namespace texas::solver::multiway
 		std::uint64_t merge_fingerprint = 0U;
 		std::uint64_t completed_trajectories = 0U;
 
+		/** Checks producer identity, completed work, and run fingerprints. */
 		void validate() const;
 	};
 
+	/** Blueprint files and run evidence to compare after checkpoint resume. */
 	struct MultiwayCheckpointEquivalenceRequest
 	{
 		std::filesystem::path continuous_blueprint;
@@ -33,6 +40,7 @@ namespace texas::solver::multiway
 		MultiwayEquivalenceRunEvidence resumed{};
 	};
 
+	/** Per-property equality results and artifact bytes/hashes for a comparison. */
 	struct MultiwayCheckpointEquivalenceReport
 	{
 		std::uint32_t schema_version = MULTIWAY_CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION;
@@ -57,13 +65,17 @@ namespace texas::solver::multiway
 		std::uint64_t continuous_blueprint_hash = 0U;
 		std::uint64_t resumed_blueprint_hash = 0U;
 
+		/** Returns true only when every equivalence predicate passed. */
 		[[nodiscard]] bool passed() const noexcept;
+		/** Checks schema, evidence identity, and predicate consistency. */
 		void validate() const;
 	};
 
+	/** Compares bytes, hashes, metadata, coverage, and deterministic run state. */
 	[[nodiscard]] MultiwayCheckpointEquivalenceReport compare_multiway_checkpoints(
 		const MultiwayCheckpointEquivalenceRequest& request);
 
+	/** Validates and atomically writes a checkpoint equivalence report. */
 	void save_multiway_checkpoint_equivalence_atomic(
 		const std::filesystem::path& path,
 		const MultiwayCheckpointEquivalenceReport& report);

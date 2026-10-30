@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Suit-canonical abstraction metadata, loading, and bucket lookup helpers.
+ */
+
 #include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl.hpp"
@@ -43,6 +47,7 @@ namespace texas::util
 		{ { 3, 2, 1, 0 } },
 	} };
 
+	/** Schema, bucket dimensions, feature configuration, and build seed. */
 	struct AbstractionMetadata
 	{
 		std::uint8_t schema_version = ABSTRACTION_SCHEMA_VERSION;
@@ -52,6 +57,7 @@ namespace texas::util
 		std::uint64_t seed = 0;
 	};
 
+	/** Loaded street assignments and canonical board/hand indexes. */
 	struct AbstractionTables
 	{
 		std::vector<std::uint8_t> flop_assignments;
@@ -70,6 +76,7 @@ namespace texas::util
 		std::filesystem::path source_path;
 	};
 
+	/** Error category used while reading an abstraction artifact. */
 	enum class AbstractionErrorCode
 	{
 		Io,
@@ -79,15 +86,20 @@ namespace texas::util
 		Unsupported,
 	};
 
+	/** Category and message for an abstraction loading or lookup error. */
 	struct AbstractionError
 	{
 		AbstractionErrorCode code = AbstractionErrorCode::Unsupported;
 		std::string message;
 	};
 
+	/** Suit-canonicalizes a board and optionally returns the selected permutation index. */
 	std::string canonicalize_board(const std::vector<std::uint8_t>& board, std::size_t* perm_index = nullptr);
+	/** Canonicalizes board and hole cards together while preserving suit mapping. */
 	std::pair<std::string, std::string> canonicalize(const std::vector<std::uint8_t>& board, const std::array<std::uint8_t, 2>& hole);
+	/** Loads and validates abstraction metadata, assignments, and indexes. */
 	AbstractionTables load_abstraction(const std::filesystem::path& path);
+	/** Looks up a hole-card bucket for a canonical street and board. */
 	std::int32_t lookup_bucket(
 		const AbstractionTables& tables,
 		const std::vector<std::uint8_t>& board,

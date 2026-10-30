@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Sampled flat HUNL MCCFR solving, resumable deadlines and diagnostics.
+ */
+
 #include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl_flat_graph.hpp"
@@ -26,9 +30,11 @@
 namespace texas::solver::hunl
 {
 
+	/** @brief Sampled MCCFR solver over a flat HUNL graph. */
 	class HUNLFlatMCCFR
 	{
 	public:
+		/** @brief Exported root strategy and convergence diagnostics. */
 		struct RootStrategySnapshot
 		{
 			InfosetId infoset_id{};
@@ -43,6 +49,7 @@ namespace texas::solver::hunl
 			bool timed_out = false;
 		};
 
+		/** @brief Result of an iteration or time-budgeted sampled solve. */
 		struct DeadlineSolveResult
 		{
 			RootStrategySnapshot latest_snapshot;
@@ -53,6 +60,7 @@ namespace texas::solver::hunl
 			bool timed_out = false;
 		};
 
+		/** @brief Sparse baseline table size counters. */
 		struct BaselineStats
 		{
 			std::uint64_t infoset_rows = 0;
@@ -60,6 +68,7 @@ namespace texas::solver::hunl
 			std::uint64_t bytes = 0;
 		};
 
+		/** @brief Memory totals grouped by sampled solver subsystem. */
 		struct MemoryUsage
 		{
 			std::uint64_t graph_bytes = 0;
@@ -70,12 +79,14 @@ namespace texas::solver::hunl
 			std::uint64_t worker_scratch_bytes = 0;
 			std::uint64_t baseline_bytes = 0;
 
+			/** @brief Returns the sum of all memory components. */
 			[[nodiscard]] std::uint64_t total_bytes() const noexcept
 			{
 				return graph_bytes + infoset_metadata_bytes + central_storage_bytes + policy_cache_bytes + traversal_metadata_bytes + worker_scratch_bytes + baseline_bytes;
 			}
 		};
 
+		/** @brief Per-worker sampled traversal timings and counters. */
 		struct WorkerProfile
 		{
 			double trajectory_seconds = 0.0;
@@ -104,6 +115,7 @@ namespace texas::solver::hunl
 			std::uint64_t batch_executions = 0;
 		};
 
+		/** @brief Aggregate solver timings, traversal counters and worker profiles. */
 		struct Profile
 		{
 			double snapshot_seconds = 0.0;
@@ -145,6 +157,7 @@ namespace texas::solver::hunl
 			std::vector<WorkerProfile> workers;
 		};
 
+		/** @brief Counts and moments recorded for sampled traversal estimates. */
 		struct Counters
 		{
 			std::uint64_t nodes_visited = 0;
@@ -167,6 +180,7 @@ namespace texas::solver::hunl
 			double corrected_estimate_sq_sum = 0.0;
 		};
 
+		/** @brief Constructs a sampled solver over a graph and per-player bucket counts. */
 		explicit HUNLFlatMCCFR(
 			HUNLFlatSolveGraph graph,
 			std::array<std::size_t, 2> bucket_count_per_player,
@@ -174,44 +188,70 @@ namespace texas::solver::hunl
 			HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand,
 			std::size_t workers = 1,
 			HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
+		/** @brief Stops worker threads and releases owned graph data. */
 		~HUNLFlatMCCFR();
 
+		/** @brief Runs one complete sampled iteration. */
 		void run_iteration();
+		/** @brief Runs the requested number of additional sampled iterations. */
 		void run_iterations(std::uint32_t iterations);
 		// Runs complete trajectory subbatches using the same resumable state machine as run_until().
 		// Primarily useful when a caller needs deterministic work-based budgeting.
+		/** @brief Runs a fixed number of resumable trajectory subbatches. */
 		std::uint64_t run_batches(std::uint64_t batch_count);
+		/** @brief Runs until deadline and returns periodic root strategy snapshots. */
 		[[nodiscard]] DeadlineSolveResult run_until(
 			std::chrono::steady_clock::time_point deadline,
 			std::size_t snapshot_stride_batches = 1);
+		/** @brief Runs for a relative duration and returns periodic root snapshots. */
 		[[nodiscard]] DeadlineSolveResult solve_for(
 			std::chrono::milliseconds budget,
 			std::size_t snapshot_stride_batches = 1);
 
+		/** @brief Returns the solver's graph. */
 		[[nodiscard]] const HUNLFlatSolveGraph& graph() const noexcept;
+		/** @brief Returns its dense information-set value table. */
 		[[nodiscard]] const HUNLFlatInfosetTable& infoset_table() const noexcept;
+		/** @brief Returns mutable access to the information-set table. */
 		[[nodiscard]] HUNLFlatInfosetTable& infoset_table_mut() noexcept;
+		/** @brief Returns completed iteration count. */
 		[[nodiscard]] std::uint32_t iterations() const noexcept;
+		/** @brief Returns the sampled solver configuration. */
 		[[nodiscard]] const HUNLFlatMCCFRConfig& config() const noexcept;
 
+		/** @brief Exports average strategy by information-set key. */
 		[[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
+		/** @brief Exports average strategy in flat table layout. */
 		[[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;
+		/** @brief Exports root average strategy for one bucket. */
 		[[nodiscard]] HUNLSampledRootStrategy export_root_average_strategy(std::size_t bucket_index = 0) const;
+		/** @brief Exports the root strategy and current traversal diagnostics. */
 		[[nodiscard]] RootStrategySnapshot export_root_snapshot(
 			std::size_t bucket_index = 0,
 			double probability_delta = 0.0,
 			std::uint64_t batches_completed = 0,
 			bool timed_out = false) const;
+		/** @brief Returns counters from the most recently completed iteration. */
 		[[nodiscard]] const Counters& last_iteration_counters() const noexcept;
+		/** @brief Returns counters accumulated across completed iterations. */
 		[[nodiscard]] const Counters& total_counters() const noexcept;
+		/** @brief Returns aggregate and per-worker timing profiles. */
 		[[nodiscard]] const Profile& profile() const noexcept;
+		/** @brief Returns configured worker count. */
 		[[nodiscard]] std::size_t worker_count() const noexcept;
+		/** @brief Reports whether active rows use sampled sparse storage. */
 		[[nodiscard]] bool using_sparse_storage() const noexcept;
+		/** @brief Returns sampled sparse storage. */
 		[[nodiscard]] const HUNLSampledStorage& sparse_storage() const noexcept;
+		/** @brief Returns the average-strategy sampling ratio. */
 		[[nodiscard]] double average_strategy_sampling_ratio() const noexcept;
+		/** @brief Estimates variance of the raw traversal estimator. */
 		[[nodiscard]] double raw_estimator_variance() const noexcept;
+		/** @brief Estimates variance after baseline correction. */
 		[[nodiscard]] double corrected_estimator_variance() const noexcept;
+		/** @brief Returns sparse baseline row and byte counts. */
 		[[nodiscard]] BaselineStats baseline_stats() const noexcept;
+		/** @brief Returns memory use grouped by solver subsystem. */
 		[[nodiscard]] MemoryUsage memory_usage() const noexcept;
 
 	private:

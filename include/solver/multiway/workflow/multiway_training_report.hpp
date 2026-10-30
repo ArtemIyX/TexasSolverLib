@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Validated training telemetry reports and atomic report serialization.
+ */
+
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 
@@ -10,6 +14,7 @@
 namespace texas::solver::multiway
 {
 
+	/** Evidence header, batch metrics, memory gates, and export/checkpoint results. */
 	struct MultiwayTrainingReport
 	{
 		MultiwayEvidenceHeader evidence{
@@ -177,6 +182,7 @@ namespace texas::solver::multiway
 		bool failed_batch_available = false;
 		MultiwayRootBatchResult failed_batch{};
 		std::vector<std::uint64_t> admitted_rows_per_batch;
+		/** Computes accepted trajectories per second from recorded wall time. */
 		[[nodiscard]] double trajectories_per_second() const noexcept;
 		std::uint64_t batches = 0U;
 		std::uint64_t trajectories = 0U;
@@ -199,15 +205,18 @@ namespace texas::solver::multiway
 		std::uint64_t deterministic_merge_fingerprint = 0U;
 		bool failed = false;
 
+		/** Checks schema, training counts, instrumentation, and telemetry fields. */
 		void validate() const;
 	};
 
+	/** Builds a report from trainer status and deterministic merge metadata. */
 	[[nodiscard]] MultiwayTrainingReport make_multiway_training_report(
 		const MultiwayBlueprintTrainingStatus& status,
 		std::uint64_t deterministic_merge_fingerprint,
 		MultiwayEvidenceHeader evidence,
 		std::uint64_t process_memory_limit_bytes = 0U,
 		std::uint64_t total_wrapper_wall_nanoseconds = 0U) noexcept;
+	/** Validates and atomically writes a training report. */
 	void save_multiway_training_report_atomic(
 		const std::filesystem::path& path,
 		const MultiwayTrainingReport& report);

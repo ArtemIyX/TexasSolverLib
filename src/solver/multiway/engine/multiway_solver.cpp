@@ -487,30 +487,6 @@ namespace texas::solver::multiway
 			texas::core::fingerprint::append_u64(hash, value);
 		}
 
-		std::uint64_t delta_stream_fingerprint(
-			const std::vector<MultiwayWorkerDelta>& deltas) noexcept
-		{
-			std::uint64_t hash = 1469598103934665603ULL;
-			hash_u64(MULTIWAY_MERGE_ORDER_VERSION, hash);
-			hash_u64(deltas.size(), hash);
-			for (const auto& delta : deltas)
-			{
-				hash_u64(delta.infoset.public_state.value, hash);
-				hash_u64(static_cast<std::uint64_t>(static_cast<std::int64_t>(delta.infoset.seat)), hash);
-				hash_u64(delta.bucket, hash);
-				hash_u64(delta.action, hash);
-				hash_u64(delta.trajectory_id, hash);
-				std::uint64_t regret_bits = 0U;
-				std::uint64_t strategy_bits = 0U;
-				static_assert(sizeof(regret_bits) == sizeof(delta.regret));
-				std::memcpy(&regret_bits, &delta.regret, sizeof(regret_bits));
-				std::memcpy(&strategy_bits, &delta.strategy_sum, sizeof(strategy_bits));
-				hash_u64(regret_bits, hash);
-				hash_u64(strategy_bits, hash);
-			}
-			return hash == 0U ? 1U : hash;
-		}
-
 		std::uint64_t admission_batch_fingerprint(
 			std::uint64_t batch_number,
 			const std::vector<MultiwayPublicStateDescriptor>& states,

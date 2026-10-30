@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Compile-time binary source, compiler, dirty-state, and schema provenance.
+ */
+
 #include <cstdint>
 #include <string_view>
 
@@ -34,6 +38,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint32_t MULTIWAY_ACCEPTANCE_REPORT_SCHEMA_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_TRAINING_CHECKPOINT_ARTIFACT_SCHEMA_VERSION = 5U;
 
+	/** Build identity and evidence schema versions compiled into the binary. */
 	struct MultiwayBinaryProvenance
 	{
 		std::string_view source_commit = TEXASSOLVER_BINARY_PROVENANCE_STRINGIFY(TEXASSOLVER_BINARY_SOURCE_COMMIT_TOKEN);
@@ -45,6 +50,7 @@ namespace texas::solver::multiway
 		std::uint32_t checkpoint_artifact_schema_version = MULTIWAY_TRAINING_CHECKPOINT_ARTIFACT_SCHEMA_VERSION;
 	};
 
+	/** Returns the compiler-provided binary provenance constants. */
 	inline constexpr MultiwayBinaryProvenance multiway_binary_provenance() noexcept
 	{
 		return {};

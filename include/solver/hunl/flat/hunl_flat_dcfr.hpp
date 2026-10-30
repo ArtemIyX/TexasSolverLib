@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Flat graph DCFR solver with staged execution and diagnostics.
+ */
+
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl/bucket/hunl_bucket_map.hpp"
 #include "solver/hunl/bucket/hunl_bucket_terminal.hpp"
@@ -26,42 +30,47 @@ namespace texas::solver::hunl
 	#pragma warning(push)
 	#pragma warning(disable : 4324)
 #endif
+	/** @brief Per-worker elapsed time by flat solver stage. */
 	struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatStageProfile
 	{
-		double discount_seconds = 0.0;
-		double strategy_seconds = 0.0;
-		double reach_seconds = 0.0;
-		double terminal_seconds = 0.0;
-		double backward_seconds = 0.0;
-		double regret_seconds = 0.0;
-		double average_strategy_seconds = 0.0;
+		double discount_seconds = 0.0;		   ///< Time spent discounting accumulated values.
+		double strategy_seconds = 0.0;		   ///< Time spent deriving current strategy.
+		double reach_seconds = 0.0;			   ///< Time spent propagating and aggregating reach.
+		double terminal_seconds = 0.0;		   ///< Time spent evaluating terminal values.
+		double backward_seconds = 0.0;		   ///< Time spent propagating values backward.
+		double regret_seconds = 0.0;		   ///< Time spent updating regrets.
+		double average_strategy_seconds = 0.0; ///< Time spent accumulating average strategy.
 	};
 #if defined(_MSC_VER)
 	#pragma warning(pop)
 #endif
 
+	/** @brief Stage category used to attribute flat solver timing. */
 	enum class HUNLFlatStageKind : std::uint8_t
 	{
-		Discount = 0,
-		Strategy = 1,
-		Reach = 2,
-		Terminal = 3,
-		Backward = 4,
-		Regret = 5,
-		AverageStrategy = 6,
+		Discount = 0,		 ///< DCFR discount stage.
+		Strategy = 1,		 ///< Current strategy computation stage.
+		Reach = 2,			 ///< Reach propagation and reduction stage.
+		Terminal = 3,		 ///< Terminal utility evaluation stage.
+		Backward = 4,		 ///< Backward value stage.
+		Regret = 5,			 ///< Regret update stage.
+		AverageStrategy = 6, ///< Average strategy accumulation stage.
 	};
 
+	/** @brief Timing profiles collected for workers during flat execution. */
 	struct HUNLFlatSchedulerDiagnostics
 	{
-		std::vector<HUNLFlatStageProfile> worker_profiles;
+		std::vector<HUNLFlatStageProfile> worker_profiles; ///< One accumulated profile per worker.
 	};
 
 	static_assert(alignof(HUNLFlatStageProfile) == HUNL_CACHELINE_BYTES,
 		"HUNLFlatStageProfile should be cache-line aligned");
 
+	/** @brief DCFR solver over a compact HUNL flat graph. */
 	class HUNLFlatDCFR
 	{
 	public:
+		/** @brief Constructs a solver using explicit graph, bucket counts and storage layout. */
 		explicit HUNLFlatDCFR(
 			HUNLFlatSolveGraph graph,
 			std::array<std::size_t, 2> bucket_count_per_player,
@@ -72,6 +81,7 @@ namespace texas::solver::hunl
 			double gamma = 2.0,
 			HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
 
+		/** @brief Constructs a solver using a selected flat solve mode and storage layout. */
 		explicit HUNLFlatDCFR(
 			HUNLFlatSolveGraph graph,
 			std::array<std::size_t, 2> bucket_count_per_player,
@@ -83,6 +93,7 @@ namespace texas::solver::hunl
 			double gamma = 2.0,
 			HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
 
+		/** @brief Stops worker resources and releases owned graph storage. */
 		~HUNLFlatDCFR();
 
 		HUNLFlatDCFR(const HUNLFlatDCFR&) = delete;
@@ -90,31 +101,55 @@ namespace texas::solver::hunl
 		HUNLFlatDCFR(HUNLFlatDCFR&&) = delete;
 		HUNLFlatDCFR& operator=(HUNLFlatDCFR&&) = delete;
 
+		/** @brief Runs one DCFR iteration. */
 		void run_iteration();
+		/** @brief Runs the requested number of additional iterations. */
 		void run_iterations(std::uint32_t iterations);
 
+		/** @brief Returns the owned solve graph. */
 		[[nodiscard]] const HUNLFlatSolveGraph& graph() const noexcept;
+		/** @brief Returns the regret and strategy table. */
 		[[nodiscard]] const HUNLFlatInfosetTable& infoset_table() const noexcept;
+		/** @brief Returns mutable access to the regret and strategy table. */
 		[[nodiscard]] HUNLFlatInfosetTable& infoset_table_mut() noexcept;
+		/** @brief Returns accumulated stage timing. */
 		[[nodiscard]] const HUNLFlatStageProfile& profile() const noexcept;
+		/** @brief Returns completed iteration count. */
 		[[nodiscard]] std::uint32_t iterations() const noexcept;
+		/** @brief Returns player-zero reach values by node. */
 		[[nodiscard]] const HUNLAlignedVector<double>& player0_reach() const noexcept;
+		/** @brief Returns player-one reach values by node. */
 		[[nodiscard]] const HUNLAlignedVector<double>& player1_reach() const noexcept;
+		/** @brief Returns chance reach values by node. */
 		[[nodiscard]] const HUNLAlignedVector<double>& chance_reach() const noexcept;
+		/** @brief Returns aggregate bucket reach values. */
 		[[nodiscard]] const HUNLAlignedVector<double>& bucket_reach() const noexcept;
+		/** @brief Returns normalized bucket reach values. */
 		[[nodiscard]] const HUNLAlignedVector<double>& normalized_bucket_reach() const noexcept;
+		/** @brief Returns information-set bucket totals. */
 		[[nodiscard]] const HUNLAlignedVector<double>& infoset_bucket_totals() const noexcept;
+		/** @brief Returns terminal values prepared for the current iteration. */
 		[[nodiscard]] const HUNLAlignedVector<double>& terminal_values() const noexcept;
+		/** @brief Returns computed node values. */
 		[[nodiscard]] const HUNLAlignedVector<double>& node_values() const noexcept;
+		/** @brief Returns computed action values. */
 		[[nodiscard]] const HUNLAlignedVector<double>& action_values() const noexcept;
+		/** @brief Returns the configured worker count. */
 		[[nodiscard]] std::size_t worker_count() const noexcept;
+		/** @brief Returns per-worker scheduler diagnostics. */
 		[[nodiscard]] const HUNLFlatSchedulerDiagnostics& scheduler_diagnostics() const noexcept;
+		/** @brief Returns the bucket map, or null when no abstraction map is active. */
 		[[nodiscard]] const HUNLFlatBucketMap* bucket_map() const noexcept;
+		/** @brief Returns the pipeline plan used by this solver. */
 		[[nodiscard]] const HUNLFlatPipelinePlan& pipeline_plan() const noexcept;
+		/** @brief Estimates graph, table, solver and worker memory use. */
 		[[nodiscard]] HUNLFlatMemoryEstimate memory_estimate() const;
+		/** @brief Returns regret and strategy storage precision. */
 		[[nodiscard]] HUNLFlatStoragePrecision storage_precision() const noexcept;
 
+		/** @brief Exports average action probabilities keyed by infoset string. */
 		[[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
+		/** @brief Exports average strategy in flat table layout. */
 		[[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;
 
 	private:

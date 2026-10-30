@@ -178,10 +178,10 @@ namespace texas::games::hunl
 			std::uint32_t node_idx = 0;
 			std::uint32_t depth = 0;
 			std::size_t next_child = 0;
-			std::vector<ActionId> actions;
-			std::vector<ChanceOutcome> chance_outcomes;
-			std::vector<PublicChanceClass> public_chance_classes;
-			std::vector<std::uint32_t> child_indices;
+			std::vector<ActionId> actions{};
+			std::vector<ChanceOutcome> chance_outcomes{};
+			std::vector<PublicChanceClass> public_chance_classes{};
+			std::vector<std::uint32_t> child_indices{};
 			bool initialized = false;
 			bool is_terminal = false;
 			bool is_depth_limited = false;

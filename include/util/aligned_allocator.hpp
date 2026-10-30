@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * STL-compatible allocator that requests a compile-time aligned allocation.
+ */
+
 #include <cstddef>
 #include <limits>
 #include <memory>
@@ -9,6 +13,7 @@
 namespace texas::util
 {
 
+	/** Allocates arrays of T using the specified alignment. */
 	template <class T, std::size_t Alignment>
 	class AlignedAllocator
 	{
@@ -20,6 +25,7 @@ namespace texas::util
 		template <class U>
 		constexpr AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
 
+		/** Allocates n aligned objects or throws on size/allocation failure. */
 		[[nodiscard]] T* allocate(std::size_t n)
 		{
 			if (n > std::numeric_limits<std::size_t>::max() / sizeof(T))
@@ -30,6 +36,7 @@ namespace texas::util
 			return static_cast<T*>(ptr);
 		}
 
+		/** Releases storage returned by allocate. */
 		void deallocate(T* ptr, std::size_t) noexcept
 		{
 			::operator delete(ptr, std::align_val_t{ Alignment });
@@ -42,12 +49,14 @@ namespace texas::util
 		};
 	};
 
+	/** Aligned allocators with the same alignment compare equal. */
 	template <class T, class U, std::size_t Alignment>
 	constexpr bool operator==(const AlignedAllocator<T, Alignment>&, const AlignedAllocator<U, Alignment>&) noexcept
 	{
 		return true;
 	}
 
+	/** Aligned allocators with the same alignment are never unequal. */
 	template <class T, class U, std::size_t Alignment>
 	constexpr bool operator!=(const AlignedAllocator<T, Alignment>&, const AlignedAllocator<U, Alignment>&) noexcept
 	{

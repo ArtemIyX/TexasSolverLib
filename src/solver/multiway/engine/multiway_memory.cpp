@@ -640,7 +640,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayExportScratchEstimate::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (total_bytes == std::numeric_limits<std::uint64_t>::max() || total_bytes >= order_index_bytes && total_bytes >= sharding_metadata_bytes && total_bytes >= strategy_scratch_bytes && total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes && total_bytes >= exporter_headroom_bytes);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (total_bytes == std::numeric_limits<std::uint64_t>::max() || (total_bytes >= order_index_bytes && total_bytes >= sharding_metadata_bytes && total_bytes >= strategy_scratch_bytes && total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes && total_bytes >= exporter_headroom_bytes));
 	}
 
 	bool MultiwayExportProcessEstimate::valid() const noexcept

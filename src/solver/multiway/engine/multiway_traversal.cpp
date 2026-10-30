@@ -1857,7 +1857,7 @@ namespace texas::solver::multiway
 				stream_capacities_.discovery_rows = coordinator.limits().discovery_row_capacity() != 0U
 					? coordinator.limits().discovery_row_capacity()
 					: fallback_discovery_capacity;
-			if (stream_capacities_.discovery_public_states == 0U || stream_capacities_.discovery_rows == 0U || stream_capacities_.discovery_public_states > coordinator.limits().discovery_public_state_capacity() && coordinator.limits().discovery_public_state_capacity() != 0U || stream_capacities_.discovery_rows > coordinator.limits().discovery_row_capacity() && coordinator.limits().discovery_row_capacity() != 0U)
+			if (stream_capacities_.discovery_public_states == 0U || stream_capacities_.discovery_rows == 0U || (stream_capacities_.discovery_public_states > coordinator.limits().discovery_public_state_capacity() && coordinator.limits().discovery_public_state_capacity() != 0U) || (stream_capacities_.discovery_rows > coordinator.limits().discovery_row_capacity() && coordinator.limits().discovery_row_capacity() != 0U))
 				throw std::invalid_argument("multiway root batch runner discovery limits must fit its coordinator");
 		}
 		else
@@ -1969,7 +1969,7 @@ namespace texas::solver::multiway
 	void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index)
 	{
 		auto& worker_scratch = worker_scratch_[worker_index];
-		static constexpr const char* worker_names[] = {
+		[[maybe_unused]] static constexpr const char* worker_names[] = {
 			"mw.worker.00", "mw.worker.01", "mw.worker.02", "mw.worker.03",
 			"mw.worker.04", "mw.worker.05", "mw.worker.06", "mw.worker.07",
 			"mw.worker.08", "mw.worker.09", "mw.worker.10", "mw.worker.11",

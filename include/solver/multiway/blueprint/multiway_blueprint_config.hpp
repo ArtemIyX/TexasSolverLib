@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Versioned configuration for an offline multiway blueprint model.
+ */
+
 #include "games/multiway_rake.hpp"
 #include "solver/multiway/continuation/multiway_continuation_policy_kind.hpp"
 
@@ -11,6 +15,7 @@ namespace texas::solver::multiway
 	// Immutable configuration for one offline multiway blueprint. All chip values
 	// are exact integers; stack bands and action templates are added in later
 	// phases and receive their own version identities.
+	/** Rules, abstraction sizes, and semantic versions defining a blueprint. */
 	struct MultiwayBlueprintConfig
 	{
 		std::uint8_t player_count = 6;
@@ -41,6 +46,7 @@ namespace texas::solver::multiway
 			MultiwayContinuationPolicyKind::Blueprint;
 		std::uint64_t runtime_search_schema_version = 1;
 
+		/** Checks supported player, chip, bucket, and version settings. */
 		void validate() const;
 	};
 

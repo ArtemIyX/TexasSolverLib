@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * @brief Public generic DCFR entry points and strategy/value helpers.
+ */
+
 #include "core/types.hpp"
 #include "solver/generic/dcfr.hpp"
 #include "solver/generic/parallel_dcfr.hpp"
@@ -14,12 +18,18 @@
 namespace texas::solver
 {
 
-	/**
-	 * @brief Validate DCFR parameters before solving.
+	/** @brief Validates DCFR parameters before solving.
+	 * @throws std::invalid_argument If an exponent is outside the supported range.
 	 */
 	void validate_dcfr_parameters(double alpha, double beta, double gamma);
-	/**
-	 * @brief Solve Kuhn poker with DCFR.
+	/** @brief Solves Kuhn poker with DCFR.
+	 * @param iterations Number of solver iterations.
+	 * @param alpha Positive-regret discount exponent.
+	 * @param beta Negative-regret discount exponent.
+	 * @param gamma Strategy-sum discount exponent.
+	 * @param workers Maximum requested worker count.
+	 * @param frontier_multiplier Controls parallel traversal frontier sizing.
+	 * @return Average strategy, game value and solve profile.
 	 */
 	SolveOutput solve_kuhn(
 		std::uint32_t iterations,
@@ -28,8 +38,14 @@ namespace texas::solver
 		double gamma,
 		std::size_t workers = 1,
 		std::size_t frontier_multiplier = 8);
-	/**
-	 * @brief Solve Leduc poker with DCFR.
+	/** @brief Solves Leduc poker with DCFR.
+	 * @param iterations Number of solver iterations.
+	 * @param alpha Positive-regret discount exponent.
+	 * @param beta Negative-regret discount exponent.
+	 * @param gamma Strategy-sum discount exponent.
+	 * @param workers Maximum requested worker count.
+	 * @param frontier_multiplier Controls parallel traversal frontier sizing.
+	 * @return Average strategy, game value and solve profile.
 	 */
 	SolveOutput solve_leduc(
 		std::uint32_t iterations,
@@ -87,7 +103,7 @@ namespace texas::solver
 			return strategy;
 		}
 
-		inline const std::vector<Probability>& strategy_for_infoset(
+		inline const std::vector<Probability>* strategy_for_infoset(
 			const StrategyMap& strategy,
 			const InfosetKey& key,
 			std::size_t action_count,
@@ -96,7 +112,7 @@ namespace texas::solver
 			const auto it = strategy.find(key);
 			if (it != strategy.end() && it->second.size() == action_count)
 			{
-				return it->second;
+				return &it->second;
 			}
 
 			fallback_buffer.assign(action_count, 0.0);
@@ -105,7 +121,7 @@ namespace texas::solver
 				const auto uniform = 1.0 / static_cast<double>(action_count);
 				std::fill(fallback_buffer.begin(), fallback_buffer.end(), uniform);
 			}
-			return fallback_buffer;
+			return &fallback_buffer;
 		}
 
 		template <class G>
@@ -132,15 +148,15 @@ namespace texas::solver
 
 			const auto actions = state.legal_actions();
 			std::vector<Probability> fallback;
-			const auto& probs =
+			const auto* probs =
 				strategy_for_infoset(strategy, state.infoset_key(player), actions.size(), fallback);
 
 			std::array<Value, 2> value = { 0.0, 0.0 };
 			for (std::size_t idx = 0; idx < actions.size(); ++idx)
 			{
 				const auto child = expected_value(state.next_state(actions[idx]), strategy);
-				value[0] += probs[idx] * child[0];
-				value[1] += probs[idx] * child[1];
+				value[0] += (*probs)[idx] * child[0];
+				value[1] += (*probs)[idx] * child[1];
 			}
 			return value;
 		}
@@ -178,12 +194,12 @@ namespace texas::solver
 			}
 
 			std::vector<Probability> fallback;
-			const auto& probs =
+			const auto* probs =
 				strategy_for_infoset(strategy, state.infoset_key(player), actions.size(), fallback);
 			Value value = 0.0;
 			for (std::size_t idx = 0; idx < actions.size(); ++idx)
 			{
-				value += probs[idx] * br_state_value(state.next_state(actions[idx]), br_player, best_action, strategy);
+				value += (*probs)[idx] * br_state_value(state.next_state(actions[idx]), br_player, best_action, strategy);
 			}
 			return value;
 		}
@@ -229,13 +245,13 @@ namespace texas::solver
 			}
 
 			std::vector<Probability> fallback;
-			const auto& probs =
+			const auto* probs =
 				strategy_for_infoset(strategy, state.infoset_key(player), actions.size(), fallback);
 			for (std::size_t idx = 0; idx < actions.size(); ++idx)
 			{
 				collect_infosets(
 					state.next_state(actions[idx]),
-					counterfactual_reach * probs[idx],
+					counterfactual_reach * (*probs)[idx],
 					br_player,
 					strategy,
 					groups);

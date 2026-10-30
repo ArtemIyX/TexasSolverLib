@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Non-owning request and callback boundary for multiway leaf evaluation.
+ */
+
 #include "core/types.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway/continuation/multiway_continuation_policy_kind.hpp"
@@ -18,6 +22,7 @@ namespace texas::solver::multiway
 	// A narrow non-owning depth-limit boundary. The caller owns model state and
 	// supplies a plain function pointer so traversal does not use std::function
 	// or virtual dispatch in its hot path.
+	/** Public state and caller-owned views supplied for one leaf evaluation. */
 	struct MultiwayLeafEvaluationRequest
 	{
 		const MultiwayBettingSnapshot* betting = nullptr;
@@ -42,16 +47,20 @@ namespace texas::solver::multiway
 		std::uint64_t private_context_identity = 0;
 	};
 
+	/** Callback signature for evaluating one leaf request. */
 	using MultiwayLeafEvaluateFn = Value (*)(
 		const MultiwayLeafEvaluationRequest& request,
 		const void* context) noexcept;
 
+	/** Lightweight function-pointer evaluator with a non-owning context. */
 	struct MultiwayLeafEvaluator
 	{
 		MultiwayLeafEvaluateFn evaluate = nullptr;
 		const void* context = nullptr;
 
+		/** Returns whether an evaluation callback is installed. */
 		[[nodiscard]] bool valid() const noexcept { return evaluate != nullptr; }
+		/** Invokes the configured callback with its bound context. */
 		[[nodiscard]] Value operator()(const MultiwayLeafEvaluationRequest& request) const noexcept
 		{
 			return evaluate(request, context);

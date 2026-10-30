@@ -3,6 +3,8 @@ if(NOT DEFINED SOURCE_DIR)
 endif()
 
 file(READ "${SOURCE_DIR}/CMakeLists.txt" cmake_text)
+file(READ "${SOURCE_DIR}/cmake/TexasSolverTargets.cmake" target_cmake)
+string(APPEND cmake_text "\n${target_cmake}")
 
 function(require_absent needle label)
     string(FIND "${cmake_text}" "${needle}" position)

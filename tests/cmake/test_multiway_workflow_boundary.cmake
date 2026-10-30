@@ -2,7 +2,7 @@ if(NOT DEFINED SOURCE_DIR)
     message(FATAL_ERROR "SOURCE_DIR is required")
 endif()
 
-file(READ "${SOURCE_DIR}/CMakeLists.txt" cmake_text)
+file(READ "${SOURCE_DIR}/examples/CMakeLists.txt" cmake_text)
 file(READ "${SOURCE_DIR}/examples/multiway_workflow_main.cpp" source_text)
 file(READ "${SOURCE_DIR}/src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp" trainer_text)
 file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_training_report.cpp" report_text)

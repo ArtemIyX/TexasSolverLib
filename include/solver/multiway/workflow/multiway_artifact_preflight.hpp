@@ -1,5 +1,9 @@
 #pragma once
 
+/** @file
+ * Cold-path disk, process-memory, and identity checks before artifact writes.
+ */
+
 #include "solver/multiway/abstraction/multiway_model_identity.hpp"
 
 #include <cstdint>
@@ -8,6 +12,7 @@
 namespace texas::solver::multiway
 {
 
+	/** Destination, identity, size, and resource values checked before writing. */
 	struct MultiwayArtifactPreflightRequest
 	{
 		std::filesystem::path destination;
@@ -24,6 +29,7 @@ namespace texas::solver::multiway
 
 	// Cold-path checks performed before bucket generation or publication. Throws
 	// on an unsafe or internally inconsistent request.
+	/** Validates artifact output paths, capacity, and configured resource bounds. */
 	void preflight_multiway_artifact(const MultiwayArtifactPreflightRequest& request);
 
 } // namespace texas::solver::multiway
