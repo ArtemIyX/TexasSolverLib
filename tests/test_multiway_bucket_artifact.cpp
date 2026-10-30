@@ -290,6 +290,31 @@ TEST_CASE(multiway_bucket_artifact_inspector_rejects_identity_mismatch)
 	std::filesystem::remove(path);
 }
 
+TEST_CASE(multiway_bucket_registry_profile_rejects_identity_and_bucket_count_mismatch)
+{
+	auto config = texas::solver::multiway::MultiwayBlueprintConfig{};
+	config.flop_bucket_count = 12U;
+	config.turn_bucket_count = 12U;
+	config.river_bucket_count = 12U;
+	const auto expected_identity = texas::solver::multiway::make_multiway_model_identity(config);
+	auto profile = texas::solver::multiway::MultiwayBucketBaselineProfile::standard();
+	profile.flop_bucket_count = 12U;
+	profile.turn_bucket_count = 12U;
+	profile.river_bucket_count = 12U;
+	const auto registry = texas::solver::multiway::build_multiway_baseline_bucket_registry(
+		expected_identity, boards(), profile);
+
+	texas::solver::multiway::validate_multiway_bucket_registry_profile(
+		registry, expected_identity, profile);
+
+	auto wrong_profile = profile;
+	wrong_profile.turn_bucket_count = 13U;
+	EXPECT_THROW(texas::solver::multiway::validate_multiway_bucket_registry_profile(
+		registry, expected_identity, wrong_profile), std::invalid_argument);
+	EXPECT_THROW(texas::solver::multiway::validate_multiway_bucket_registry_profile(
+		registry, identity(), profile), std::invalid_argument);
+}
+
 TEST_CASE(multiway_bucket_artifact_inspector_reads_schema5_content)
 {
 	const auto source = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
@@ -303,7 +328,26 @@ TEST_CASE(multiway_bucket_artifact_inspector_reads_schema5_content)
 	EXPECT_EQ(inspected.flop_tables, 1U);
 	EXPECT_EQ(inspected.turn_tables, 1U);
 	EXPECT_EQ(inspected.river_tables, 1U);
+	EXPECT_EQ(inspected.flop_bucket_count, 96U);
+	EXPECT_EQ(inspected.turn_bucket_count, 128U);
+	EXPECT_EQ(inspected.river_bucket_count, 192U);
 	EXPECT_EQ(inspected.live_assignments, 3U * 1326U - (150U + 198U + 245U));
+	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_bucket_artifact_inspector_reports_schema4_bucket_counts)
+{
+	const auto source = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
+	const auto bytes = schema4_bytes(source);
+	const auto path = std::filesystem::temp_directory_path() / "texas_solver_bucket_inspect_schema4_test.bin";
+	{
+		std::ofstream output(path, std::ios::binary | std::ios::trunc);
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+	}
+	const auto inspected = texas::solver::multiway::inspect_multiway_bucket_artifact(path, identity());
+	EXPECT_EQ(inspected.flop_bucket_count, 96U);
+	EXPECT_EQ(inspected.turn_bucket_count, 128U);
+	EXPECT_EQ(inspected.river_bucket_count, 192U);
 	std::filesystem::remove(path);
 }
 

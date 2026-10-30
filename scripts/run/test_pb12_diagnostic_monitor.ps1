@@ -32,6 +32,18 @@ Require ($null -eq (Get-Pb12DiagnosticP99Stop $cycles[0..3])) 'Two cohorts canno
 Require ((Get-Pb12DiagnosticP99Stop $cycles).reason -eq 'third P99 cohort lower bound increased') 'Third-cohort lower bound must stop.'
 $cycles[4].duration_ms = 20
 Require ($null -eq (Get-Pb12DiagnosticP99Stop $cycles)) 'Equal P99 must not trigger the stop.'
+$retry2Cycles = @(
+    [pscustomobject]@{duration_ms=61735.817;live_bytes=95219697},
+    [pscustomobject]@{duration_ms=69640.4928;live_bytes=143844948},
+    [pscustomobject]@{duration_ms=28253.2422;live_bytes=161110818},
+    [pscustomobject]@{duration_ms=65828.6434;live_bytes=206790582},
+    [pscustomobject]@{duration_ms=75226.4279;live_bytes=251849651},
+    [pscustomobject]@{duration_ms=77450.4109;live_bytes=302007021},
+    [pscustomobject]@{duration_ms=81176.363;live_bytes=345943612}
+)
+Require ($null -eq (Get-Pb12DiagnosticP99Stop $retry2Cycles[0..5])) 'Retry2 first three complete cohorts do not increase.'
+$retry2Stop = Get-Pb12DiagnosticP99Stop $retry2Cycles
+Require ($retry2Stop.reason -eq 'third P99 cohort lower bound increased' -and $retry2Stop.evidence[0].first_cycle -eq 3 -and $retry2Stop.evidence[1].first_cycle -eq 5) 'Retry2 sliding cohorts must stop on the seventh cycle.'
 
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('pb12_monitor_' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $fixture
@@ -41,6 +53,21 @@ $store = Join-Path $fixture 'store'
 $child = $null
 $decoy = $null
 try {
+    $published = Join-Path $fixture 'published'
+    $replacement = Join-Path $fixture 'replacement'
+    $backup = Join-Path $fixture 'backup'
+    [IO.File]::WriteAllText($published, 'old')
+    [IO.File]::WriteAllText($replacement, 'new')
+    $reader = Open-Pb12SharedRead $published
+    try {
+        [IO.File]::Replace($replacement, $published, $backup)
+        $old = [IO.StreamReader]::new($reader)
+        try { Require ($old.ReadToEnd() -eq 'old') 'An open reader must retain the old generation.' }
+        finally { $old.Dispose() }
+        Require ([Text.Encoding]::UTF8.GetString((Read-Pb12SharedBytes $published)) -eq 'new') 'A new reader must observe the replacement.'
+        Require ((Get-Pb12SharedSha256 $published) -eq (Get-FileHash -LiteralPath $published -Algorithm SHA256).Hash) 'Shared hashing must preserve SHA-256.'
+    } finally { $reader.Dispose() }
+    Remove-Item -LiteralPath $published
     [IO.File]::WriteAllText($journal, "{`"event`":`"start`"}`n{`"event`":`"batch`"", [Text.Encoding]::ASCII)
     $state = @{ Offset = [long]0; Pending = '' }
     $events = @(Read-Pb12DiagnosticJournalTail $journal $state)
@@ -112,6 +139,14 @@ try {
     Require ($usage.live_bytes -eq 48 -and $usage.store_bytes -ge 348) 'A never-published component must be counted conservatively.'
 
     $shell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    foreach ($expectedExit in @(0, 7)) {
+        $exitChild = Start-Process -FilePath $shell -ArgumentList "-NoProfile -NonInteractive -Command `"Start-Sleep -Seconds 1; exit $expectedExit`"" -PassThru -WindowStyle Hidden
+        $null = $exitChild.Handle
+        $exitChild.WaitForExit()
+        $exitChild.Refresh()
+        Require ($exitChild.ExitCode -eq $expectedExit) 'The retained process handle must preserve the exit code after refresh.'
+        $exitChild.Dispose()
+    }
     $arguments = '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 30"'
     $child = Start-Process -FilePath $shell -ArgumentList $arguments -PassThru -WindowStyle Hidden
     $decoy = Start-Process -FilePath $shell -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -121,6 +156,10 @@ try {
     $decoy.Refresh()
     Require (-not $decoy.HasExited) 'Stopping the diagnostic process must not stop another process.'
 } finally {
+    foreach ($name in @('published', 'replacement', 'backup')) {
+        $file = Join-Path $fixture $name
+        if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file }
+    }
     if ($null -ne $child) { Stop-Pb12DiagnosticProcess $child }
     if ($null -ne $decoy) { Stop-Pb12DiagnosticProcess $decoy }
     if (Test-Path -LiteralPath $journal) { Remove-Item -LiteralPath $journal }

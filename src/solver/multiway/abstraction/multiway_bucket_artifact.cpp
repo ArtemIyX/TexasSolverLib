@@ -450,6 +450,22 @@ namespace texas::solver::multiway
 		}
 	}
 
+	void validate_multiway_bucket_registry_profile(
+		const MultiwayBucketRegistry& registry,
+		const MultiwayModelIdentity& expected_identity,
+		const MultiwayBucketBaselineProfile& expected_profile)
+	{
+		expected_identity.validate();
+		expected_profile.validate();
+		if (registry.identity() != expected_identity)
+			throw std::invalid_argument("multiway bucket artifact model identity mismatch");
+		for (const auto& table : registry.tables())
+		{
+			if (table.identity() != expected_identity || table.bucket_count() != expected_profile.bucket_count(table.street()))
+				throw std::invalid_argument("multiway bucket artifact profile mismatch");
+		}
+	}
+
 	std::vector<std::uint8_t> serialize_multiway_bucket_registry(const MultiwayBucketRegistry& registry)
 	{
 		registry.identity().validate();

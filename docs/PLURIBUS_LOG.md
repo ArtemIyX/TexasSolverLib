@@ -1,5 +1,134 @@
 # Pluribus Roadmap Progress Log
 
+## F1 10K checkpoint-only resume qualification
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Passed the focused PB-12 monitor test and retry3's checkpoint-only resume in a separate named attempt, preserving the earlier root-level resume evidence.
+- Retry3 training evidence passed: exit 0, 10,000 accepted trajectories, zero discarded, 10 checkpoints, 9 cycles, P99 pass, 22.40 GiB peak working set, 8.28 GiB peak private commit, 21.46 GiB minimum available memory, and 1.83x maximum disk amplification.
+- The resume exited 0 with 10,000 accepted and zero discarded trajectories. Model identity matched (`14334205690234538347`), and the original and resumed policy SHA-256 values matched (`D6421B352A1181F10B96C781396327266C84527F8EB3CD51A08C29B6036B7A6A`). Resume resource peaks were 16.30 GiB working set, 2.04 GiB private commit, and 27.64 GiB minimum available memory.
+
+### Files
+
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell.exe -NoProfile -File .\scripts\run\test_pb12_diagnostic_monitor.ps1` passed.
+- `$runName = 'pb12_diagnostic_f1_10k_20261030_retry3'; & .\scripts\run\resume_f1_10k_checkpoint_qualification.ps1 -RunName $runName -ResumeName 'retry1'` exited 0.
+- Inspected `tmp/pb12_diagnostic_f1_10k_20261030_retry3/monitor.jsonl`, `report.json`, and `resume_attempt_retry1/resume_report.json` plus `resume_equivalence.json`.
+- No build or training job was run; only the authorized monitor test and zero-batch resume were executed.
+
+### Limitations
+
+- This qualifies the 10K profile only. The 50M run remains unqualified.
+
+## F1 checkpoint resume exit evidence
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- The retry3 resume logged completed export and produced matching policy SHA-256 values and report identity and trajectory counts, but the wrapper reported a blank exit code and did not persist resource evidence.
+- Retain the launched process handle and support fresh named resume attempts without overwriting the original evidence. Add exit-code regression coverage and document the human retry.
+
+### Files
+
+- `scripts/run/resume_f1_10k_checkpoint_qualification.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the resume logs and reports and compared policy SHA-256 hashes. Builds, tests, compiled programs, and training were not run by the agent at the user's direction.
+
+### Limitations
+
+- The missing exit-code cause and handle fix require human verification. The first resume lacks persisted exit and resource evidence, so a fresh resume must pass all gates.
+
+## F1 10K retry2 checkpoint investigation
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Traced the P99 hard stop to increasing sliding cohorts and live-byte samples; checkpoint writes were much shorter than batch-to-checkpoint cycles. The journal does not establish a single performance root cause.
+- Record the triggering checkpoint and cycle before evaluating the unchanged gate, and add the preserved retry2 sequence to monitor regression coverage. Document both retries, measurement limits, and a fresh human-run name.
+
+### Files
+
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the preserved monitor, journal, logs, configuration, qualification scripts, and checkpoint timestamp. No builds, tests, compiled programs, or training were run, as requested.
+
+### Limitations
+
+- The regression and future qualification require human execution. Stable storage scans are not explicitly tied to the checkpoint generation; the recorded evidence does not establish whether this affected retry2.
+
+## F1 10K manifest publication investigation
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- The preserved 10K attempt failed publishing the aggregate training manifest during batch 7 with Windows access denied, after six completed batches. The monitor recorded no hard stop; its P99 result was incomplete after the trainer exit.
+- Allow atomic replacement during live monitor reads and add a Windows replacement regression. Keep stable-sample and qualification gates intact.
+- Update the human-run qualification instructions with a fresh run name and the failed attempt's evidence.
+
+### Files
+
+- `scripts/run/pb12_diagnostic_storage.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Source and preserved run evidence inspected; `git diff --check` passed. The human-run monitor test failed because Windows PowerShell passed an invalid null backup path to `File.Replace`; the test now supplies a backup path. The corrected test has not been run. Builds, compiled programs, and training were not run by the agent at the user's direction.
+
+### Limitations
+
+- The logs do not identify the handle that blocked publication. The regression and fresh qualification, including checkpoint-only resume, require human execution.
+
+## F1 10K checkpoint qualification preparation
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Added train-time bucket artifact identity and per-table street bucket-count validation, with inspection output exposing the profile counts.
+- Prepared a bounded 10K F1 12/12/12 qualification and checkpoint-only resume workflow. It records checkpoint write time separately from batch-to-checkpoint cycles and enforces memory, disk, and P99 gates.
+- Kept the monitor compatible with Windows PowerShell numeric literal syntax.
+- Existing Stage 9.4 and 3K results used 96/128/192 buckets, while the F1 artifact contains 12/12/12. Those runs do not qualify the target profile. Current evidence does not justify a 50M run.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `configs/multiway/f1_checkpoint_qualification_10k_v1.cfg`
+- `scripts/run/prepare_f1_10k_checkpoint_qualification.ps1`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/resume_f1_10k_checkpoint_qualification.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- Windows PowerShell 5.1 AST parsing passed for all three qualification scripts.
+- Builds, tests, training, and compiled programs were not run; the user reserved those for human execution.
+
+### Limitations
+
+- The 10K run and checkpoint-only resume gate remain pending human execution. Do not start the 50M run until both pass.
+
 ## Root README and AI workflow guide
 
 **Status:** Complete

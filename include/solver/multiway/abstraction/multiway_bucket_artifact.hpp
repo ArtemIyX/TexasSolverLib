@@ -109,6 +109,11 @@ namespace texas::solver::multiway
 	void validate_multiway_bucket_coverage(
 		const MultiwayBucketRegistry& registry,
 		const std::vector<MultiwayBucketBoardRequest>& required_boards);
+	/** @brief Requires registry identity and every table's bucket count to match the requested profile. */
+	void validate_multiway_bucket_registry_profile(
+		const MultiwayBucketRegistry& registry,
+		const MultiwayModelIdentity& expected_identity,
+		const MultiwayBucketBaselineProfile& expected_profile);
 
 	/** @brief Serializes a registry into its versioned binary representation. */
 	[[nodiscard]] std::vector<std::uint8_t> serialize_multiway_bucket_registry(
@@ -137,6 +142,9 @@ namespace texas::solver::multiway
 		std::uint64_t flop_tables = 0U;
 		std::uint64_t turn_tables = 0U;
 		std::uint64_t river_tables = 0U;
+		std::uint32_t flop_bucket_count = 0U;
+		std::uint32_t turn_bucket_count = 0U;
+		std::uint32_t river_bucket_count = 0U;
 		std::uint64_t live_assignments = 0U;
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t parallel_payload_hash = 0U;
