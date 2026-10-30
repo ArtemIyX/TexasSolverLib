@@ -15,6 +15,7 @@ TexasSolver repository work, alongside the specialized skills below.
 |Skill|When to use|
 | -------- | ------- |
 |texas-guide| Navigate TexasSolver architecture, tools, workflows, and project guidance|
+|[readme-authoring](.agents/skills/readme-authoring/SKILL.md)| Create, update, restructure, or review project, module, example, and research READMEs|
 |git-commit-hygiene| Commit small changes|
 |cpp-worker| Implement features|
 |cpp-unit-tests| Make unit tests for new features|

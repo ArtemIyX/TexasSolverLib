@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## Root README and AI workflow guide
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Added a general-audience README covering project purpose, maturity, the multiway workflow, onboarding, dependencies, research, and documentation.
+- Added a guide to repository agent instructions, skills, and project evidence.
+
+### Files
+
+- `README.md`
+- `docs/AI_WORKFLOW.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected current documentation, CMake definitions, example source, dependency licenses, and workflow configuration.
+- Checked local link targets and Markdown code-fence balance.
+
+### Limitations
+
+- Builds, tests, examples, documentation generation, and rendering were not run for this documentation task.
+- GitHub Pages deployment and live CI status were not verified.
+
 ## Linux Debug compiler diagnostics
 
 **Status:** Complete

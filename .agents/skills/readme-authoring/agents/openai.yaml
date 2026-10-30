@@ -1,0 +1,6 @@
+interface:
+  display_name: "TexasSolver README Authoring"
+  short_description: "Create and review evidence-based project READMEs"
+  default_prompt: "Use $readme-authoring to create, update, restructure, or review the requested TexasSolver README with balanced technical presentation."
+policy:
+  allow_implicit_invocation: true
