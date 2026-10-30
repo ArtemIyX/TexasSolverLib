@@ -1,0 +1,106 @@
+/* TexasSolver palette: navy surfaces, cyan links, emerald details, gold accents. */
+html {
+  --page-background-color: #07121b;
+  --page-foreground-color: #e5f1f3;
+  --page-link-color: #18d8e8;
+  --page-visited-link-color: #50d5b0;
+
+  --index-odd-item-bg-color: #0a1922;
+  --index-even-item-bg-color: #07121b;
+  --index-header-color: #e5f1f3;
+  --index-separator-color: #173640;
+
+  --header-background-color: #081923;
+  --header-separator-color: #143944;
+  --header-gradient-image: none;
+  --group-header-separator-color: #17606a;
+  --group-header-color: #9feaf0;
+  --inherit-header-color: #91aab1;
+  --footer-foreground-color: #849da5;
+  --citation-label-color: #efc66b;
+  --glow-color: #15d8e8;
+  --title-background-color: #081923;
+  --title-separator-color: #0d9daa;
+  --directory-separator-color: #16414a;
+  --separator-color: #183d47;
+  --blockquote-background-color: #0a1c26;
+  --blockquote-border-color: #0eaa98;
+
+  --memdecl-background-color: #0a1922;
+  --memdecl-separator-color: #183943;
+  --memdecl-foreground-color: #c1d2d6;
+  --memdecl-template-color: #5bdcc0;
+  --memdef-border-color: #1b4650;
+  --memdef-title-background-color: #102630;
+  --memdef-title-gradient-image: none;
+  --memdef-proto-background-color: #0e222c;
+  --memdef-proto-text-color: #d0e2e5;
+  --memdef-proto-text-shadow: none;
+  --memdef-doc-background-color: #07121b;
+  --memdef-param-name-color: #70ddb8;
+  --memdef-template-color: #5bdcc0;
+
+  --table-cell-border-color: #1b4650;
+  --table-header-background-color: #10313a;
+  --table-header-foreground-color: #e5f1f3;
+  --label-background-color: #087f70;
+  --label-left-top-border-color: #11c5a9;
+  --label-right-bottom-border-color: #07594f;
+  --label-foreground-color: #ecfffb;
+
+  --nav-background-color: #081923;
+  --nav-foreground-color: #b5cbd0;
+  --nav-gradient-image: none;
+  --nav-gradient-hover-image: none;
+  --nav-gradient-active-image: none;
+  --nav-gradient-active-image-parent: none;
+  --nav-separator-image: none;
+  --nav-breadcrumb-image: none;
+  --nav-breadcrumb-border-color: #173f48;
+  --nav-text-normal-color: #bed0d4;
+  --nav-text-hover-color: #e7fbfd;
+  --nav-text-active-color: #18d8e8;
+  --nav-text-normal-shadow: none;
+  --nav-text-hover-shadow: none;
+  --nav-text-active-shadow: none;
+  --nav-menu-button-color: #18d8e8;
+  --nav-menu-background-color: #0b202a;
+  --nav-menu-foreground-color: #dcebed;
+  --nav-menu-toggle-color: rgb(24 216 232 / 25%);
+  --nav-arrow-color: #18c9bd;
+  --nav-arrow-selected-color: #efc66b;
+
+  --toc-background-color: #091a24;
+  --toc-border-color: #173f48;
+  --toc-header-color: #18d8e8;
+  --search-background-color: #081923;
+  --search-foreground-color: #b8cbd0;
+  --search-active-color: #e5f1f3;
+  --search-filter-background-color: #0b202a;
+  --search-filter-foreground-color: #dcebed;
+  --search-filter-border-color: #17616b;
+  --search-filter-highlight-text-color: #061218;
+  --search-filter-highlight-bg-color: #18cbd9;
+  --search-results-foreground-color: #d0e2e5;
+  --search-results-background-color: #0a1c26;
+  --search-results-border-color: #17434d;
+
+  --code-keyword-color: #18d8e8;
+  --code-type-keyword-color: #6cdbbb;
+  --code-flow-keyword-color: #efc66b;
+  --code-comment-color: #7ba997;
+  --code-preprocessor-color: #e4bd68;
+  --code-string-literal-color: #7bd6a6;
+  --code-char-literal-color: #62d5c2;
+  --code-link-color: #35d6e4;
+  --code-external-link-color: #5bd5b4;
+  --fragment-foreground-color: #dcebed;
+  --fragment-background-color: #081923;
+  --fragment-border-color: #173f48;
+  --fragment-lineno-background-color: #0d202a;
+  --fragment-lineno-foreground-color: #8fa9b0;
+  --fragment-lineno-link-fg-color: #18d8e8;
+  --fragment-lineno-link-bg-color: #10343c;
+  --fragment-lineno-link-hover-fg-color: #efc66b;
+  --fragment-lineno-link-hover-bg-color: #17434b;
+}
