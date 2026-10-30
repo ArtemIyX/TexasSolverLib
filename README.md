@@ -1,15 +1,26 @@
-<!-- Header image placeholder: add a project-owned banner here when available. -->
+<h1 align="center">Texas Solver</h1>
 
-# TexasSolver
-
-[![C++17](https://img.shields.io/badge/C%2B%2B-17-blue)](CMakeLists.txt)
-[![CMake 3.20+](https://img.shields.io/badge/CMake-3.20%2B-blue)](CMakeLists.txt)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![CI workflow](https://img.shields.io/badge/CI-workflow-informational)](.github/workflows/ci.yml)
+<p align="center">
+    <img width="640" height="320" alt="readme_header" src="https://github.com/user-attachments/assets/c26c3f70-c139-49e7-bd80-5be9027f08b0" />
+</p>
+<p align="center">
+  <a href="CMakeLists.txt">
+    <img src="https://img.shields.io/badge/C%2B%2B-17-blue" alt="C++17">
+  </a>
+  <a href="CMakeLists.txt">
+    <img src="https://img.shields.io/badge/CMake-3.20%2B-blue" alt="CMake 3.20 or newer">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
+  </a>
+  <a href=".github/workflows/ci.yml">
+    <img src="https://img.shields.io/badge/CI-workflow-informational" alt="CI workflow">
+  </a>
+</p>
 
 TexasSolver is a C++17 library for studying poker strategies and imperfect-information games. It provides small-game and Texas hold'em solvers, together with tools for training, evaluating, and using strategies. Its longer-term research direction is a bounded, CPU-oriented six-player no-limit hold'em system inspired by published descriptions of Pluribus.
 
-The project is an independent reconstruction, not the original Pluribus implementation. Its purpose is to make solver components and experiments available for research and integration, not to claim the results of either upstream project.
+> The project is an independent reconstruction, not the original Pluribus implementation. Its purpose is to make solver components and experiments available for research and integration, not to claim the results of either upstream project.
 
 ## What is available
 
