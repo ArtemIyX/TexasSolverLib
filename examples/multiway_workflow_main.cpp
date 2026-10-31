@@ -604,9 +604,7 @@ namespace
 		{
 			throw std::runtime_error("bucket artifact has incomplete street coverage");
 		}
-		if (report.flop_bucket_count != bucket_profile.flop_bucket_count ||
-			report.turn_bucket_count != bucket_profile.turn_bucket_count ||
-			report.river_bucket_count != bucket_profile.river_bucket_count)
+		if (report.flop_bucket_count != bucket_profile.flop_bucket_count || report.turn_bucket_count != bucket_profile.turn_bucket_count || report.river_bucket_count != bucket_profile.river_bucket_count)
 			throw std::invalid_argument("bucket artifact profile does not match workflow configuration");
 		const auto text = std::string("{\n  \"identity\": ") + std::to_string(report.identity.combined_hash) + ",\n  \"evidence\": " + serialize_multiway_evidence_header(make_evidence_header(MULTIWAY_BUCKET_INSPECTION_REPORT_SCHEMA_VERSION, expected_bucket_identity, workflow.fingerprint())) + ",\n  \"flop_tables\": " + std::to_string(report.flop_tables) + ",\n  \"turn_tables\": " + std::to_string(report.turn_tables) + ",\n  \"river_tables\": " + std::to_string(report.river_tables) + ",\n  \"flop_bucket_count\": " + std::to_string(report.flop_bucket_count) + ",\n  \"turn_bucket_count\": " + std::to_string(report.turn_bucket_count) + ",\n  \"river_bucket_count\": " + std::to_string(report.river_bucket_count) + ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) + ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) + ",\n  \"parallel_payload_hash\": " + std::to_string(report.parallel_payload_hash) + ",\n  \"hash_algorithm\": \"" + std::string(hash_algorithm) + "\"" + ",\n  \"effective_threads\": " + std::to_string(report.effective_threads) + ",\n  \"identity_matches\": " + (report.identity == expected_bucket_identity ? "true" : "false") + ",\n  \"payload_hash_matches\": " + (report.payload_hash != 0U ? "true" : "false") + "\n}\n";
 		if (!authorized_report_path.empty())

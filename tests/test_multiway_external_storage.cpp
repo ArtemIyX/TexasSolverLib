@@ -303,10 +303,8 @@ TEST_CASE(multiway_external_record_store_visits_latest_records_in_bounded_key_or
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	MultiwayExternalRecordStore store(config(directory.path()), 2U);
-	store.append_batch(1U, 0x111U, {
-		{ 1U, { 1U, 10U } }, { 4U, { 4U, 10U } }, { 7U, { 7U, 10U } }, { 10U, { 10U, 10U } } });
-	store.append_batch(2U, 0x222U, {
-		{ 3U, { 3U, 20U } }, { 4U, { 4U, 20U } }, { 8U, { 8U, 20U } }, { 10U, { 10U, 20U } } });
+	store.append_batch(1U, 0x111U, { { 1U, { 1U, 10U } }, { 4U, { 4U, 10U } }, { 7U, { 7U, 10U } }, { 10U, { 10U, 10U } } });
+	store.append_batch(2U, 0x222U, { { 3U, { 3U, 20U } }, { 4U, { 4U, 20U } }, { 8U, { 8U, 20U } }, { 10U, { 10U, 20U } } });
 
 	OrderedRecordCapture before_compaction;
 	EXPECT_TRUE(store.visit_ordered_records(capture_ordered_record, &before_compaction));
@@ -325,7 +323,8 @@ TEST_CASE(multiway_external_record_store_visits_latest_records_in_bounded_key_or
 	OrderedRecordCapture matching_stopped;
 	matching_stopped.stop_after = 1U;
 	EXPECT_EQ(store.visit_matching_records({ 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U },
-		capture_ordered_record, &matching_stopped), false);
+				  capture_ordered_record, &matching_stopped),
+		false);
 	EXPECT_EQ(matching_stopped.keys, (std::vector<std::uint64_t>{ 1U }));
 
 	OrderedRecordCapture stopped;
@@ -1892,11 +1891,12 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		const auto lookups_before_batch = rows.stats().lookups;
 		std::vector<MultiwayExternalRowMetadata> batch_metadata;
 		rows.lookup_rows({
-			{ { { 10U }, 0 }, 17U, 3U },
-			{ { { 20U }, 2 }, 16U, 1U },
-			{ { { 10U }, 1 }, 17U, 2U },
-			{ { { 99U }, 0 }, 1U, 1U },
-		}, batch_metadata);
+							 { { { 10U }, 0 }, 17U, 3U },
+							 { { { 20U }, 2 }, 16U, 1U },
+							 { { { 10U }, 1 }, 17U, 2U },
+							 { { { 99U }, 0 }, 1U, 1U },
+						 },
+			batch_metadata);
 		EXPECT_EQ(rows.stats().lookups - lookups_before_batch, 3U);
 		EXPECT_EQ(batch_metadata.size(), 4U);
 		EXPECT_EQ(batch_metadata[0].action_count, 3U);
@@ -2728,16 +2728,16 @@ TEST_CASE(multiway_external_record_store_compaction_reads_sorted_runs_sequential
 	MultiwayExternalRecordStore store(storage_config, 4U);
 	store.append_batch(1U, 1U, { { 5U, { 0x05U, 0U, 0U, 0U } } });
 	store.append_batch(2U, 2U, {
-		{ 10U, { 0x10U, 0U, 0U, 0U } },
-		{ 20U, { 0x20U, 0U, 0U, 0U } },
-		{ 30U, { 0x30U, 0U, 0U, 0U } },
-	});
+								   { 10U, { 0x10U, 0U, 0U, 0U } },
+								   { 20U, { 0x20U, 0U, 0U, 0U } },
+								   { 30U, { 0x30U, 0U, 0U, 0U } },
+							   });
 	store.append_batch(3U, 3U, {
-		{ 10U, { 0xaaU, 0U, 0U, 0U } },
-		{ 25U, { 0x25U, 0U, 0U, 0U } },
-		{ 30U, { 0xbbU, 0U, 0U, 0U } },
-		{ 40U, { 0x40U, 0U, 0U, 0U } },
-	});
+								   { 10U, { 0xaaU, 0U, 0U, 0U } },
+								   { 25U, { 0x25U, 0U, 0U, 0U } },
+								   { 30U, { 0xbbU, 0U, 0U, 0U } },
+								   { 40U, { 0x40U, 0U, 0U, 0U } },
+							   });
 
 	store.compact();
 	const std::vector<std::uint64_t> expected_keys{ 5U, 10U, 20U, 25U, 30U, 40U };

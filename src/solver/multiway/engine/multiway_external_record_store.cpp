@@ -47,7 +47,6 @@ namespace texas::solver::multiway
 
 	MultiwayExternalRecordStore::~MultiwayExternalRecordStore() = default;
 
-
 	void MultiwayExternalRecordStore::begin_export_filter() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -216,7 +215,8 @@ namespace texas::solver::multiway
 				publish_append_batch_chunk(batch_number, merge_fingerprint, records, context);
 				stats_.commit_nanoseconds = multiway_memory_saturating_add(stats_.commit_nanoseconds,
 					static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-						std::chrono::steady_clock::now() - publication_started).count()));
+						std::chrono::steady_clock::now() - publication_started)
+							.count()));
 			}
 			catch (...)
 			{
@@ -567,9 +567,7 @@ namespace texas::solver::multiway
 			if (!visitor(context, item.key, newest.payload.data(), payload_bytes_))
 			{
 				stats_.read_nanoseconds = multiway_memory_saturating_add(
-					stats_.read_nanoseconds, static_cast<std::uint64_t>(
-						std::chrono::duration_cast<std::chrono::nanoseconds>(
-							std::chrono::steady_clock::now() - scan_started).count()));
+					stats_.read_nanoseconds, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - scan_started).count()));
 				return false;
 			}
 			for (const auto cursor_index : consumed)
@@ -584,9 +582,7 @@ namespace texas::solver::multiway
 			}
 		}
 		stats_.read_nanoseconds = multiway_memory_saturating_add(
-			stats_.read_nanoseconds, static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - scan_started).count()));
+			stats_.read_nanoseconds, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - scan_started).count()));
 		return true;
 	}
 
@@ -628,7 +624,7 @@ namespace texas::solver::multiway
 		constexpr std::uint64_t kSequentialDataSkipThresholdBytes = 1024U;
 		constexpr std::size_t kIndexKeysPerChunk = 4096U;
 		const auto load_index_chunk = [profile, kIndexKeysPerChunk](RunReader& reader, const Run& run,
-			std::uint64_t first_position) {
+										  std::uint64_t first_position) {
 			if (first_position >= run.record_count)
 				throw std::logic_error("external matching index chunk starts beyond its run");
 			const auto remaining = run.record_count - first_position;
@@ -641,8 +637,7 @@ namespace texas::solver::multiway
 				static_cast<std::streamsize>(reader.index_buffer.size()));
 			if (profile != nullptr)
 				++profile->index_reads;
-			if (!reader.index || reader.index.gcount() !=
-				static_cast<std::streamsize>(reader.index_buffer.size()))
+			if (!reader.index || reader.index.gcount() != static_cast<std::streamsize>(reader.index_buffer.size()))
 				throw std::runtime_error("external matching index run is truncated");
 		};
 		const auto initialize_index = [profile, &load_index_chunk](RunReader& reader, const Run& run) {
@@ -652,9 +647,7 @@ namespace texas::solver::multiway
 			{
 				++profile->index_opens;
 				profile->index_open_nanoseconds = multiway_memory_saturating_add(
-					profile->index_open_nanoseconds, static_cast<std::uint64_t>(
-						std::chrono::duration_cast<std::chrono::nanoseconds>(
-							std::chrono::steady_clock::now() - open_started).count()));
+					profile->index_open_nanoseconds, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - open_started).count()));
 			}
 			if (!reader.index)
 				throw std::runtime_error("external matching run cannot be opened");
@@ -675,7 +668,8 @@ namespace texas::solver::multiway
 			if (reader.position >= reader.index_buffer_first + reader.index_buffer_entries)
 				load_index_chunk(reader, run, reader.position);
 			const auto offset = static_cast<std::size_t>(
-				reader.position - reader.index_buffer_first) * 8U;
+									reader.position - reader.index_buffer_first)
+				* 8U;
 			reader.current_key = read_u64(reader.index_buffer.data() + offset);
 		};
 		for (const auto key : sorted_keys)
@@ -756,7 +750,8 @@ namespace texas::solver::multiway
 				static_cast<std::uint64_t>(checked_runs));
 			stats_.read_nanoseconds = multiway_memory_saturating_add(stats_.read_nanoseconds,
 				static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - started).count()));
+					std::chrono::steady_clock::now() - started)
+						.count()));
 			if (!found)
 				continue;
 			if (entry.valid)

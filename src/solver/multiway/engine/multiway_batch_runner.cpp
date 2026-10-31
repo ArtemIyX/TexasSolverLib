@@ -79,7 +79,7 @@ namespace texas::solver::multiway
 					.count());
 		}
 
-class MultiwayAdmissionDiagnosticsScope final
+		class MultiwayAdmissionDiagnosticsScope final
 		{
 		public:
 			MultiwayAdmissionDiagnosticsScope(
@@ -101,7 +101,7 @@ class MultiwayAdmissionDiagnosticsScope final
 		private:
 			MultiwaySolverCoordinator& coordinator_;
 		};
-	}
+	} // namespace
 
 	struct MultiwayRootBatchRunner::BatchRunContext
 	{
@@ -568,8 +568,6 @@ class MultiwayAdmissionDiagnosticsScope final
 		}
 	}
 
-
-
 	void MultiwayRootBatchRunner::prepare_batch_run(
 		BatchRunContext& context,
 		std::uint64_t first_trajectory_id,
@@ -1010,4 +1008,4 @@ class MultiwayAdmissionDiagnosticsScope final
 		finalize_batch_result(context);
 		return std::move(context.result);
 	}
-}
+} // namespace texas::solver::multiway

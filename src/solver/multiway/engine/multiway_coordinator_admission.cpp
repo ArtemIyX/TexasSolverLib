@@ -43,7 +43,7 @@ namespace texas::solver::multiway
 			if (rows[index - 1U].infoset == rows[index].infoset)
 				throw std::invalid_argument("multiway prepared rows must be unique");
 		}
-	}
+	}
 
 	std::size_t MultiwaySolverCoordinator::preflight_prepared_states(
 		const std::vector<MultiwayPublicStateDescriptor>& public_states,
@@ -483,4 +483,4 @@ namespace texas::solver::multiway
 		const auto summary = preflight_prepared_rows(public_states, rows, new_state_count);
 		commit_prepared_batch(public_states, rows, summary);
 	}
-}
+} // namespace texas::solver::multiway

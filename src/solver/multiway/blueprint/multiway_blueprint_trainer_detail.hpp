@@ -53,4 +53,4 @@ namespace texas::solver::multiway::trainer_detail
 		metadata.negative_regret_pruning_enabled = schedule.prune_negative_regrets ? 1U : 0U;
 		return metadata;
 	}
-}
+} // namespace texas::solver::multiway::trainer_detail

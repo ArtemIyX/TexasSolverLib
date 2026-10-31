@@ -69,9 +69,7 @@ namespace texas::solver::multiway
 		{
 			bool operator()(const Item& left, const Item& right) const noexcept
 			{
-				return left.key > right.key || (left.key == right.key
-					&& (left.generation < right.generation
-						|| (left.generation == right.generation && left.cursor > right.cursor)));
+				return left.key > right.key || (left.key == right.key && (left.generation < right.generation || (left.generation == right.generation && left.cursor > right.cursor)));
 			}
 		};
 
@@ -263,7 +261,9 @@ namespace texas::solver::multiway
 				throw std::logic_error("external compaction disk snapshot is inconsistent");
 			const auto post_publish_bytes = checked_add(
 				checked_add(checked_add(state.disk_snapshot.stored_bytes - old_manifest_bytes,
-					output_bytes), state.manifest_bytes), kGenerationManifestBytes);
+								output_bytes),
+					state.manifest_bytes),
+				kGenerationManifestBytes);
 			const auto post_publish_live_bytes = checked_add(
 				state.disk_snapshot.live_segment_bytes - state.input_bytes, output_bytes);
 			const ExternalDiskBudgetSnapshot post_publish_snapshot{ post_publish_bytes, post_publish_live_bytes };
@@ -283,7 +283,8 @@ namespace texas::solver::multiway
 			}
 			const auto output_peak_bytes = checked_add(
 				checked_add(record_bytes(state.total_records, payload_bytes_),
-					record_bytes(state.total_records, 0U)), state.manifest_bytes);
+					record_bytes(state.total_records, 0U)),
+				state.manifest_bytes);
 			check_disk_reserve(output_peak_bytes);
 		}
 	}
@@ -403,7 +404,8 @@ namespace texas::solver::multiway
 		stats_.compactions = multiway_memory_saturating_add(stats_.compactions, 1U);
 		stats_.compaction_nanoseconds = multiway_memory_saturating_add(stats_.compaction_nanoseconds,
 			static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - state.compaction_started).count()));
+				std::chrono::steady_clock::now() - state.compaction_started)
+					.count()));
 	}
 
 	void MultiwayExternalRecordStore::compact_impl(
@@ -413,7 +415,7 @@ namespace texas::solver::multiway
 		std::lock_guard<std::mutex> lock(mutex_);
 		CompactionState state{};
 		if (!select_compaction_inputs(base_generation, batch_suffix_only,
-			cleanup_orphans_before, state))
+				cleanup_orphans_before, state))
 			return;
 		struct CompactionFailureLatch
 		{

@@ -65,8 +65,7 @@ namespace texas::solver::multiway
 			}
 			sorted_state_ids.push_back(state_id);
 			records.push_back({ state_id, std::move(payload) });
-			while (cursor < order.size() &&
-				rows[order[cursor]].infoset.public_state.value == state_id)
+			while (cursor < order.size() && rows[order[cursor]].infoset.public_state.value == state_id)
 				++cursor;
 		}
 		struct ExistingRowContext
@@ -76,19 +75,16 @@ namespace texas::solver::multiway
 		};
 		ExistingRowContext existing_rows{ &records, 0U };
 		const auto copy_existing_row = [](void* raw_context, std::uint64_t state_id,
-			const std::uint8_t* payload, std::size_t payload_size) -> bool {
+										   const std::uint8_t* payload, std::size_t payload_size) -> bool {
 			auto& current = *static_cast<ExistingRowContext*>(raw_context);
-			while (current.next_record < current.records->size() &&
-				(*current.records)[current.next_record].key < state_id)
+			while (current.next_record < current.records->size() && (*current.records)[current.next_record].key < state_id)
 				++current.next_record;
-			if (current.next_record == current.records->size() ||
-				(*current.records)[current.next_record].key != state_id)
+			if (current.next_record == current.records->size() || (*current.records)[current.next_record].key != state_id)
 				throw std::logic_error("external row lookup returned an unrequested state");
 			constexpr std::size_t row_payload_size = 8U + 6U * 24U;
 			constexpr std::uint32_t expected_magic = 0x3152574dU;
 			constexpr std::uint32_t expected_schema = 1U;
-			if (payload_size != row_payload_size ||
-				read_u32(payload) != expected_magic || read_u32(payload + 4U) != expected_schema)
+			if (payload_size != row_payload_size || read_u32(payload) != expected_magic || read_u32(payload + 4U) != expected_schema)
 				throw std::invalid_argument("external row metadata record schema is invalid");
 			auto& output = (*current.records)[current.next_record].payload;
 			std::copy_n(payload, row_payload_size, output.data());
@@ -199,7 +195,8 @@ namespace texas::solver::multiway
 		std::sort(queries.begin(), queries.end(), [](const Query& left, const Query& right) {
 			return left.state_id != right.state_id
 				? left.state_id < right.state_id
-				: left.seat != right.seat ? left.seat < right.seat : left.row_index < right.row_index;
+				: left.seat != right.seat ? left.seat < right.seat
+										  : left.row_index < right.row_index;
 		});
 		std::vector<std::uint64_t> sorted_state_ids;
 		sorted_state_ids.reserve(queries.size());
@@ -218,38 +215,31 @@ namespace texas::solver::multiway
 		};
 		LookupContext context{ &queries, &output, 0U, page_width_ };
 		const auto visit = [](void* raw_context, std::uint64_t state_id,
-			const std::uint8_t* payload, std::size_t payload_size) -> bool {
+							   const std::uint8_t* payload, std::size_t payload_size) -> bool {
 			auto& current = *static_cast<LookupContext*>(raw_context);
 			constexpr std::size_t row_payload_size = 8U + 6U * 24U;
-			if (payload == nullptr || payload_size != row_payload_size ||
-				read_u32(payload) != 0x3152574dU || read_u32(payload + 4U) != 1U)
+			if (payload == nullptr || payload_size != row_payload_size || read_u32(payload) != 0x3152574dU || read_u32(payload + 4U) != 1U)
 				throw std::invalid_argument("external row metadata record schema is invalid");
-			while (current.next_query < current.queries->size() &&
-				(*current.queries)[current.next_query].state_id < state_id)
+			while (current.next_query < current.queries->size() && (*current.queries)[current.next_query].state_id < state_id)
 				++current.next_query;
-			while (current.next_query < current.queries->size() &&
-				(*current.queries)[current.next_query].state_id == state_id)
+			while (current.next_query < current.queries->size() && (*current.queries)[current.next_query].state_id == state_id)
 			{
 				const auto& query = (*current.queries)[current.next_query++];
 				const auto slot = 8U + static_cast<std::size_t>(query.seat) * 24U;
 				if (payload[slot] == 0U)
 					continue;
-				if (payload[slot] != 1U || payload[slot + 2U] != 0U ||
-					payload[slot + 3U] != 0U || read_u32(payload + slot + 20U) != 0U)
+				if (payload[slot] != 1U || payload[slot + 2U] != 0U || payload[slot + 3U] != 0U || read_u32(payload + slot + 20U) != 0U)
 					throw std::invalid_argument("external row metadata flags or reserved fields are invalid");
 				auto& row = (*current.output)[query.row_index];
 				row.action_count = payload[slot + 1U];
 				row.bucket_count = read_u32(payload + slot + 4U);
 				row.first_page_id = read_u64(payload + slot + 8U);
 				row.page_count = read_u32(payload + slot + 16U);
-				if (row.action_count == 0U || row.bucket_count == 0U ||
-					row.first_page_id == 0U || row.page_count == 0U)
+				if (row.action_count == 0U || row.bucket_count == 0U || row.first_page_id == 0U || row.page_count == 0U)
 					throw std::invalid_argument("external row metadata contains an invalid shape");
 				const auto expected_pages =
-					(static_cast<std::uint64_t>(row.bucket_count) + current.page_width - 1U) /
-					current.page_width;
-				if (row.page_count != expected_pages ||
-					row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
+					(static_cast<std::uint64_t>(row.bucket_count) + current.page_width - 1U) / current.page_width;
+				if (row.page_count != expected_pages || row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
 					throw std::invalid_argument("external row metadata page range is inconsistent");
 			}
 			return true;

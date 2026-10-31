@@ -32,4 +32,4 @@ namespace texas::solver::hunl
 		bool memory_warning = false;
 		bool memory_rejected = false;
 	};
-}
+} // namespace texas::solver::hunl

@@ -261,4 +261,4 @@ namespace texas::solver::multiway
 			diagnostics_.street_visits = checkpoint.street_visits;
 		}
 	}
-}
+} // namespace texas::solver::multiway

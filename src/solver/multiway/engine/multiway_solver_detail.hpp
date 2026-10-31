@@ -601,5 +601,5 @@ namespace texas::solver::multiway
 			}
 			return static_cast<std::size_t>(shape.bucket_count) * actions;
 		}
-	}
-}
+	} // namespace
+} // namespace texas::solver::multiway

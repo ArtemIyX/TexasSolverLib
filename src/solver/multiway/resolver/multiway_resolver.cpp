@@ -937,18 +937,12 @@ namespace texas::solver::multiway
 			MultiwayResolverResult* result)
 		{
 			result->diagnostics.status = status;
-			if (config.stable_root_cache != nullptr && config.stable_root_cache->find(
-					request.blueprint_identity, root.public_state_id, request.hero_seat,
-					static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)),
-					root.menu, &result->policy))
+			if (config.stable_root_cache != nullptr && config.stable_root_cache->find(request.blueprint_identity, root.public_state_id, request.hero_seat, static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)), root.menu, &result->policy))
 			{
 				set_policy_provenance(
 					&result->diagnostics, MultiwayPolicyProvenance::StableRootFallback);
 			}
-			if (result->policy.empty() && try_apply_blueprint_policy(
-					root.blueprint, request.blueprint_identity, { root.public_state_id },
-					{ { root.public_state_id }, request.hero_seat }, root.bucket, root.menu,
-					&result->policy))
+			if (result->policy.empty() && try_apply_blueprint_policy(root.blueprint, request.blueprint_identity, { root.public_state_id }, { { root.public_state_id }, request.hero_seat }, root.bucket, root.menu, &result->policy))
 			{
 				set_policy_provenance(
 					&result->diagnostics, MultiwayPolicyProvenance::BlueprintFallback);
@@ -1011,12 +1005,12 @@ namespace texas::solver::multiway
 			if (plan.delivers_policy)
 			{
 				const auto fallback_status = deadline_reached(
-					request.deadline, config.runtime_limits.deadline_reserve)
+												 request.deadline, config.runtime_limits.deadline_reserve)
 					? MultiwayResolverStatus::DeadlineFallback
 					: (search_outcome == RuntimeSearchOutcome::NoRoot
-						|| search_outcome == RuntimeSearchOutcome::MemoryRejected)
-						? MultiwayResolverStatus::RejectedByBudget
-						: MultiwayResolverStatus::ResourceExhausted;
+						  || search_outcome == RuntimeSearchOutcome::MemoryRejected)
+					? MultiwayResolverStatus::RejectedByBudget
+					: MultiwayResolverStatus::ResourceExhausted;
 				finalize_resolver_fallback(request, root, config, fallback_status, result);
 				return true;
 			}

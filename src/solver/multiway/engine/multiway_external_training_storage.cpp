@@ -8,12 +8,7 @@ namespace texas::solver::multiway
 		std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
 		std::size_t maximum_ancestry_depth, bool synchronous_durability,
 		std::uint64_t maximum_page_id)
-		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)),
-			row_config_(std::move(row_config)), page_config_(std::move(page_config)),
-			page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes),
-			maximum_page_id_(maximum_page_id), maximum_ancestry_depth_(maximum_ancestry_depth),
-			synchronous_durability_(synchronous_durability),
-			transaction_(directory_, synchronous_durability)
+		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)), row_config_(std::move(row_config)), page_config_(std::move(page_config)), page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes), maximum_page_id_(maximum_page_id), maximum_ancestry_depth_(maximum_ancestry_depth), synchronous_durability_(synchronous_durability), transaction_(directory_, synchronous_durability)
 	{
 		if (directory_.empty() || page_width_ == 0U || row_page_cache_bytes_ == 0U || maximum_ancestry_depth_ == 0U || catalog_config_.directory.lexically_normal() != (directory_ / "catalog").lexically_normal() || row_config_.directory.lexically_normal() != (directory_ / "rows").lexically_normal() || page_config_.directory.lexically_normal() != (directory_ / "pages").lexically_normal() || catalog_config_.synchronous_durability != synchronous_durability_ || row_config_.synchronous_durability != synchronous_durability_ || page_config_.synchronous_durability != synchronous_durability_)
 			throw std::invalid_argument("external training storage component paths or bounds are invalid");

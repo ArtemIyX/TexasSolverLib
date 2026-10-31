@@ -16,17 +16,22 @@ namespace texas::solver::multiway::bucket_artifact_detail
 
 	inline std::uint32_t bucket_assignment_width(std::uint32_t bucket_count) noexcept
 	{
-		return bucket_count <= 0x100U ? 1U : bucket_count <= 0x10000U ? 2U : 4U;
+		return bucket_count <= 0x100U ? 1U : bucket_count <= 0x10000U ? 2U
+																	  : 4U;
 	}
 
 	inline std::size_t board_size_for(Street street) noexcept
 	{
 		switch (street)
 		{
-			case Street::Flop: return 3U;
-			case Street::Turn: return 4U;
-			case Street::River: return 5U;
-			default: return 0U;
+			case Street::Flop:
+				return 3U;
+			case Street::Turn:
+				return 4U;
+			case Street::River:
+				return 5U;
+			default:
+				return 0U;
 		}
 	}
 
@@ -74,4 +79,4 @@ namespace texas::solver::multiway::bucket_artifact_detail
 		identity.validate();
 		return identity;
 	}
-}
+} // namespace texas::solver::multiway::bucket_artifact_detail

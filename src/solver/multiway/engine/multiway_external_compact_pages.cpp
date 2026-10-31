@@ -24,8 +24,7 @@ namespace texas::solver::multiway
 		if (lookup_slot_count > std::numeric_limits<std::size_t>::max() / sizeof(std::uint32_t))
 			throw std::length_error("external compact page lookup index byte count overflows size_t");
 		const auto lookup_index_bytes = lookup_slot_count * sizeof(std::uint32_t);
-		if (lookup_index_bytes > cache_bytes ||
-			cache_bytes - lookup_index_bytes <= store_cache_bytes + 2U * payload)
+		if (lookup_index_bytes > cache_bytes || cache_bytes - lookup_index_bytes <= store_cache_bytes + 2U * payload)
 			throw std::invalid_argument("external compact page cache cannot hold one working page");
 		if (lookup_slot_count != 0U)
 			page_lookup_slots_.resize(static_cast<std::size_t>(lookup_slot_count), 0U);
@@ -45,8 +44,7 @@ namespace texas::solver::multiway
 		if (publication_memory > std::numeric_limits<std::size_t>::max() - page_memory)
 			throw std::length_error("external compact page publication budget overflows size_t");
 		const auto scratch_bytes = lookup_scratch_.capacity() + encode_scratch_.capacity();
-		if (lookup_index_bytes > cache_bytes ||
-			cache_bytes - lookup_index_bytes <= store_cache_bytes + scratch_bytes)
+		if (lookup_index_bytes > cache_bytes || cache_bytes - lookup_index_bytes <= store_cache_bytes + scratch_bytes)
 			throw std::invalid_argument("external compact page cache cannot hold fixed scratch");
 		const auto page_budget = cache_bytes - lookup_index_bytes - store_cache_bytes - scratch_bytes;
 		auto capacity = page_budget / (page_memory + publication_memory);
@@ -100,8 +98,7 @@ namespace texas::solver::multiway
 	{
 		if (page_lookup_slots_.empty())
 			return;
-		if (page.page_id == 0U || page.page_id >= page_lookup_slots_.size() ||
-			slot >= pages_.size() || slot >= std::numeric_limits<std::uint32_t>::max())
+		if (page.page_id == 0U || page.page_id >= page_lookup_slots_.size() || slot >= pages_.size() || slot >= std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("external compact page id or cache slot exceeds lookup index bounds");
 		page_lookup_slots_[static_cast<std::size_t>(page.page_id)] =
 			static_cast<std::uint32_t>(slot + 1U);
@@ -109,8 +106,7 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalCompactPages::forget_cached_page(Page& page, std::size_t slot) noexcept
 	{
-		if (page_lookup_slots_.empty() || !page.valid || page.page_id >= page_lookup_slots_.size() ||
-			slot >= std::numeric_limits<std::uint32_t>::max())
+		if (page_lookup_slots_.empty() || !page.valid || page.page_id >= page_lookup_slots_.size() || slot >= std::numeric_limits<std::uint32_t>::max())
 			return;
 		auto& encoded_slot = page_lookup_slots_[static_cast<std::size_t>(page.page_id)];
 		if (encoded_slot == static_cast<std::uint32_t>(slot + 1U))
@@ -567,9 +563,7 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayExternalCompactPages::memory_bytes() const noexcept
 	{
-		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) +
-			lookup_scratch_.capacity() + encode_scratch_.capacity() +
-			page_lookup_slots_.capacity() * sizeof(std::uint32_t) + pages_.capacity() * sizeof(Page);
+		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) + lookup_scratch_.capacity() + encode_scratch_.capacity() + page_lookup_slots_.capacity() * sizeof(std::uint32_t) + pages_.capacity() * sizeof(Page);
 		for (const auto& page : pages_)
 			result += page.regrets.capacity() * sizeof(std::int32_t) + page.strategy_masses.capacity() * sizeof(std::uint64_t) + page.before_regrets.capacity() * sizeof(std::int32_t) + page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
 		return result + pages_.size() * (sizeof(Page*) + sizeof(MultiwayExternalRecord) + page_payload_size());

@@ -295,4 +295,4 @@ namespace texas::solver::multiway
 		checkpoint_buffers_ = result.coordinator.memory_snapshot();
 		return result;
 	}
-}
+} // namespace texas::solver::multiway

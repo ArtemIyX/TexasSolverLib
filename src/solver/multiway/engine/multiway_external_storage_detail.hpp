@@ -290,7 +290,7 @@ namespace texas::solver::multiway
 			};
 			Context context{ error_message };
 			const auto reject_existing = [](void* raw_context, std::uint64_t,
-				const std::uint8_t*, std::size_t) -> bool {
+											 const std::uint8_t*, std::size_t) -> bool {
 				const auto& current = *static_cast<Context*>(raw_context);
 				throw std::invalid_argument(current.error_message);
 			};
@@ -892,5 +892,5 @@ namespace texas::solver::multiway
 			if (!input.eof())
 				throw std::runtime_error("external storage run read failed");
 		}
-	}
+	} // namespace
 } // namespace texas::solver::multiway

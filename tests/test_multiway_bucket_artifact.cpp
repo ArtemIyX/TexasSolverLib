@@ -310,9 +310,11 @@ TEST_CASE(multiway_bucket_registry_profile_rejects_identity_and_bucket_count_mis
 	auto wrong_profile = profile;
 	wrong_profile.turn_bucket_count = 13U;
 	EXPECT_THROW(texas::solver::multiway::validate_multiway_bucket_registry_profile(
-		registry, expected_identity, wrong_profile), std::invalid_argument);
+					 registry, expected_identity, wrong_profile),
+		std::invalid_argument);
 	EXPECT_THROW(texas::solver::multiway::validate_multiway_bucket_registry_profile(
-		registry, identity(), profile), std::invalid_argument);
+					 registry, identity(), profile),
+		std::invalid_argument);
 }
 
 TEST_CASE(multiway_bucket_artifact_inspector_reads_schema5_content)

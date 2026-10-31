@@ -199,5 +199,4 @@ namespace texas::solver::multiway
 		}
 	}
 
-
 } // namespace texas::solver::multiway

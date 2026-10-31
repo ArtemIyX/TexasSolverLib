@@ -209,7 +209,7 @@ namespace texas::solver::multiway
 			}
 			return true;
 		}
-	}
+	} // namespace
 
 	void MultiwayTraversalPruningConfig::validate() const
 	{
@@ -269,7 +269,7 @@ namespace texas::solver::multiway
 		}
 	}
 
-struct MultiwayRootExternalSamplingTraversal::TraversalContext
+	struct MultiwayRootExternalSamplingTraversal::TraversalContext
 	{
 		const MultiwayTerminalAdapter* terminal = nullptr;
 		const MultiwaySamplerDealToken* deal = nullptr;
@@ -624,7 +624,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext
 		}
 	}
 
-Value MultiwayRootExternalSamplingTraversal::evaluate_decision_action(
+	Value MultiwayRootExternalSamplingTraversal::evaluate_decision_action(
 		DecisionNodeContext& decision, std::size_t action) const
 	{
 		const auto& state = *decision.state;
@@ -971,4 +971,4 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_decision_action(
 		}
 		return context.accepted;
 	}
-}
+} // namespace texas::solver::multiway

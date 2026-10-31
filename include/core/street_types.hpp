@@ -12,9 +12,9 @@ namespace texas::core
 	enum class Street : std::uint8_t
 	{
 		Preflop = 0,  ///< Before community cards are dealt.
-		Flop = 1,     ///< Three community cards are available.
-		Turn = 2,     ///< Four community cards are available.
-		River = 3,    ///< Five community cards are available.
+		Flop = 1,	  ///< Three community cards are available.
+		Turn = 2,	  ///< Four community cards are available.
+		River = 3,	  ///< Five community cards are available.
 		Showdown = 4, ///< Hand resolution after betting is complete.
 	};
-}
+} // namespace texas::core

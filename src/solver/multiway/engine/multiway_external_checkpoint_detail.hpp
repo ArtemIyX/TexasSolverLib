@@ -172,5 +172,5 @@ namespace texas::solver::multiway
 					std::rethrow_exception(error);
 			return valid.load(std::memory_order_relaxed);
 		}
-	}
+	} // namespace
 } // namespace texas::solver::multiway

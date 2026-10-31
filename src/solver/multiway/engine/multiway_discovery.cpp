@@ -15,7 +15,7 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
-struct DiscoveryMergeDiagnosticsDelta
+		struct DiscoveryMergeDiagnosticsDelta
 		{
 			std::uint64_t public_state_merge_nanoseconds = 0U;
 			std::uint64_t row_merge_nanoseconds = 0U;
@@ -568,7 +568,7 @@ struct DiscoveryMergeDiagnosticsDelta
 				return left < right;
 			});
 		}
-	}
+	} // namespace
 
 	namespace detail
 	{
@@ -670,7 +670,7 @@ struct DiscoveryMergeDiagnosticsDelta
 				candidates, coordinator, diagnostics, scratch.order, scratch.parent_indexes, scratch.depths,
 				scratch.colors, scratch.stack);
 		}
-	}
+	} // namespace detail
 
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
 	{
@@ -789,4 +789,4 @@ struct DiscoveryMergeDiagnosticsDelta
 			rows_.erase(row_output, rows_.end());
 		}
 	}
-}
+} // namespace texas::solver::multiway

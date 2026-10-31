@@ -6,9 +6,7 @@ namespace texas::solver::multiway
 		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
 		std::uint32_t page_width, std::uint64_t page_cache_bytes,
 		std::uint64_t maximum_page_id)
-		: rows_(std::move(row_config), page_width), pages_(std::move(page_config), page_width,
-			page_cache_bytes, maximum_page_id), next_page_id_(rows_.next_page_id()),
-			page_width_(page_width)
+		: rows_(std::move(row_config), page_width), pages_(std::move(page_config), page_width, page_cache_bytes, maximum_page_id), next_page_id_(rows_.next_page_id()), page_width_(page_width)
 	{
 		if (page_width_ == 0U)
 			throw std::invalid_argument("external compact storage page width is zero");

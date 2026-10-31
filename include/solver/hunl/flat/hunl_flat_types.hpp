@@ -21,4 +21,4 @@ namespace texas::solver::hunl
 		Float64 = 0, ///< Store values as double precision.
 		Float32 = 1, ///< Store values as single precision.
 	};
-}
+} // namespace texas::solver::hunl

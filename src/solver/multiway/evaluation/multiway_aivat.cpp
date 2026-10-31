@@ -257,5 +257,4 @@ namespace texas::solver::multiway
 		return sink(record, context);
 	}
 
-
 } // namespace texas::solver::multiway

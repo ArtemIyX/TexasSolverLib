@@ -42,4 +42,4 @@ namespace texas::solver::multiway
 			return !(*this == other);
 		}
 	};
-}
+} // namespace texas::solver::multiway

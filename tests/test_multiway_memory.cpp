@@ -40,7 +40,8 @@ TEST_CASE(multiway_external_page_lookup_index_bound_accounts_for_rows_and_value_
 	EXPECT_EQ(multiway_external_page_lookup_max_page_id(1000U, 10000U, 16U), 1625U);
 	EXPECT_THROW(multiway_external_page_lookup_max_page_id(1U, 1U, 0U), std::invalid_argument);
 	EXPECT_THROW(multiway_external_page_lookup_max_page_id(
-		std::numeric_limits<std::uint64_t>::max(), 16U, 16U), std::length_error);
+					 std::numeric_limits<std::uint64_t>::max(), 16U, 16U),
+		std::length_error);
 }
 
 TEST_CASE(multiway_process_memory_phase_names_round_trip_in_order)

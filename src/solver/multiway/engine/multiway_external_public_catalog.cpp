@@ -217,10 +217,9 @@ namespace texas::solver::multiway
 		};
 		ClassificationContext context{ &states, &new_state_flags, existing_nodes, 0U };
 		const auto visit = [](void* raw_context, std::uint64_t key,
-			const std::uint8_t* payload, std::size_t payload_size) -> bool {
+							   const std::uint8_t* payload, std::size_t payload_size) -> bool {
 			auto& current = *static_cast<ClassificationContext*>(raw_context);
-			while (current.next_state < current.states->size() &&
-				(*current.states)[current.next_state].id.value < key)
+			while (current.next_state < current.states->size() && (*current.states)[current.next_state].id.value < key)
 				++current.next_state;
 			if (current.next_state == current.states->size())
 				return false;
@@ -228,9 +227,7 @@ namespace texas::solver::multiway
 				return true;
 
 			MultiwayPackedPublicNode existing{};
-			const bool found = payload_size == external_public_catalog_record_size() &&
-				decode_external_public_node(payload, external_public_node_record_size(), existing) &&
-				existing.id.value == key;
+			const bool found = payload_size == external_public_catalog_record_size() && decode_external_public_node(payload, external_public_node_record_size(), existing) && existing.id.value == key;
 			if (found)
 			{
 				(*current.new_state_flags)[current.next_state] = 0U;
@@ -345,13 +342,11 @@ namespace texas::solver::multiway
 			ExistingStateContext context{ &states, new_state_flags,
 				&found_existing, 0U };
 			const auto validate_existing = [](void* raw_context, std::uint64_t key,
-				const std::uint8_t*, std::size_t) -> bool {
+											   const std::uint8_t*, std::size_t) -> bool {
 				auto& current = *static_cast<ExistingStateContext*>(raw_context);
-				while (current.next_state < current.states->size() &&
-					(*current.states)[current.next_state].id.value < key)
+				while (current.next_state < current.states->size() && (*current.states)[current.next_state].id.value < key)
 					++current.next_state;
-				if (current.next_state == current.states->size() ||
-					(*current.states)[current.next_state].id.value != key)
+				if (current.next_state == current.states->size() || (*current.states)[current.next_state].id.value != key)
 					throw std::logic_error("external catalog lookup returned an unrequested state");
 				if ((*current.new_state_flags)[current.next_state] != 0U)
 					throw std::invalid_argument("external public catalog cannot append an existing state id");

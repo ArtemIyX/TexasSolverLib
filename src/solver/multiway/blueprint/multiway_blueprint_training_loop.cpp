@@ -17,7 +17,7 @@ namespace texas::solver::multiway
 		{
 			return interval != 0U && batch % interval == 0U;
 		}
-	}
+	} // namespace
 
 	void MultiwayBlueprintTrainer::record_process_memory_snapshot(
 		MultiwayMemoryPhase phase,
@@ -423,4 +423,4 @@ namespace texas::solver::multiway
 			batch_count, config_.limits.trajectories_per_batch, config_.deterministic_seed,
 			progress_callback, progress_context);
 	}
-}
+} // namespace texas::solver::multiway

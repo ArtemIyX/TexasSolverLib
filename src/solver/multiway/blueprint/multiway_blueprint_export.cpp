@@ -366,7 +366,6 @@ namespace texas::solver::multiway
 		std::uint64_t result_shard_count = 0U;
 	};
 
-
 	void MultiwayFullBlueprintExportPlan::validate() const
 	{
 		identity.validate();
@@ -604,7 +603,6 @@ namespace texas::solver::multiway
 			plan.compact_direct_order
 		};
 		telemetry.plan.sharding_metadata_bytes = sharding_metadata_bytes;
-
 	}
 
 	void MultiwayBlueprintTrainer::enforce_full_policy_export_gates(
@@ -707,7 +705,6 @@ namespace texas::solver::multiway
 				: multiway_export_system_rejection_reason_name(telemetry.system_gate.rejection_reason);
 			throw std::runtime_error(std::string("multiway blueprint export memory gate rejected: ") + reason);
 		}
-
 	}
 
 	MultiwayMemoryComponent MultiwayBlueprintTrainer::export_buffer_component(
@@ -926,7 +923,6 @@ namespace texas::solver::multiway
 					pages_before, external->compact_storage().page_store_stats());
 			}
 		}
-
 	}
 
 	void MultiwayBlueprintTrainer::write_memory_full_policy_export_rows(ExportRunContext& context) const
@@ -950,7 +946,7 @@ namespace texas::solver::multiway
 			const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
 			for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
 			{
-		if (compact != nullptr)
+				if (compact != nullptr)
 					compact->average_strategy_into(shape.infoset, bucket, strategy.data(), shape.action_count);
 				else
 					lease.storage().average_strategy_into(shape.infoset, bucket, strategy.data(), shape.action_count);
@@ -1090,4 +1086,4 @@ namespace texas::solver::multiway
 	{
 		return trainer_->save_full_policy_atomic(path);
 	}
-}
+} // namespace texas::solver::multiway

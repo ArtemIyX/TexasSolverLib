@@ -20,4 +20,4 @@ namespace texas::core
 {
 	/// Number of encoded cards in the standard deck.
 	inline constexpr std::size_t DECK_CARD_COUNT = 52U;
-}
+} // namespace texas::core

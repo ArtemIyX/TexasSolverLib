@@ -80,7 +80,7 @@ namespace texas::solver::multiway
 			hash_u64(regret_bits, hash);
 			hash_u64(strategy_bits, hash);
 		}
-	}
+	} // namespace
 
 	void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams)
 	{
@@ -378,4 +378,4 @@ namespace texas::solver::multiway
 
 		return stream_fingerprint;
 	}
-}
+} // namespace texas::solver::multiway
