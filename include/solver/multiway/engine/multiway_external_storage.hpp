@@ -366,12 +366,39 @@ namespace texas::solver::multiway
 			bool valid = false;
 			std::vector<std::uint8_t> payload;
 		};
+		struct AppendBatchContext
+		{
+			std::size_t first = 0U;
+			std::size_t count = 0U;
+			std::uint64_t next_generation = 0U;
+			std::uint64_t batch_bytes = 0U;
+			std::uint64_t index_bytes = 0U;
+			std::uint64_t wal_bytes = 0U;
+			std::filesystem::path data_path;
+			std::filesystem::path data_temp;
+			std::filesystem::path index_path;
+			std::filesystem::path index_temp;
+		};
 
 		void load_manifest();
 		void append_batch_impl(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch);
+		[[nodiscard]] std::uint64_t validate_append_batch_input(std::uint64_t batch_number,
+			const std::vector<MultiwayExternalRecord>& records) const;
+		[[nodiscard]] AppendBatchContext prepare_append_batch_chunk(std::uint64_t batch_number,
+			const std::vector<MultiwayExternalRecord>& records, std::size_t first,
+			std::uint64_t maximum_static_records, bool allow_same_batch) const;
+		void publish_append_batch_chunk(std::uint64_t batch_number,
+			std::uint64_t merge_fingerprint, const std::vector<MultiwayExternalRecord>& records,
+			const AppendBatchContext& context);
 		void compact_impl(bool retain_input_runs, std::uint64_t base_generation,
 			bool batch_suffix_only, bool cleanup_orphans_before);
+		struct CompactionState;
+		[[nodiscard]] bool select_compaction_inputs(std::uint64_t base_generation,
+			bool batch_suffix_only, bool cleanup_orphans_before, CompactionState& state);
+		void prepare_compaction_merge(CompactionState& state);
+		void write_compaction_output(CompactionState& state);
+		void publish_compaction_result(bool retain_input_runs, CompactionState& state);
 		void cleanup_orphans();
 		void recover_wal();
 		void publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number);
@@ -646,6 +673,11 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t page_payload_size() const noexcept;
 		void decode_page(const std::uint8_t* bytes, Page& page) const;
 		void encode_page(const Page& page, std::vector<std::uint8_t>& bytes) const;
+		[[nodiscard]] std::vector<Page*> collect_dirty_pages();
+		void encode_dirty_pages(const std::vector<Page*>& dirty,
+			std::vector<MultiwayExternalRecord>& records);
+		void rollback_dirty_pages(const std::vector<Page*>& dirty) noexcept;
+		void clear_dirty_pages(const std::vector<Page*>& dirty) noexcept;
 		std::unique_ptr<MultiwayExternalRecordStore> store_;
 		std::uint32_t page_width_ = 0U;
 		std::vector<Page> pages_;

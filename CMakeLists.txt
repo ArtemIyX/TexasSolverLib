@@ -297,7 +297,17 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/session/multiway_search_session.cpp
     src/solver/multiway/engine/multiway_solver.cpp
     src/solver/multiway/engine/multiway_compact_storage.cpp
-    src/solver/multiway/engine/multiway_external_storage.cpp
+    src/solver/multiway/engine/multiway_external_checkpoint.cpp
+    src/solver/multiway/engine/multiway_external_transaction.cpp
+    src/solver/multiway/engine/multiway_external_storage_config.cpp
+    src/solver/multiway/engine/multiway_external_record_store.cpp
+    src/solver/multiway/engine/multiway_external_compaction.cpp
+    src/solver/multiway/engine/multiway_external_public_catalog.cpp
+    src/solver/multiway/engine/multiway_external_row_index.cpp
+    src/solver/multiway/engine/multiway_external_compact_pages.cpp
+    src/solver/multiway/engine/multiway_external_compact_storage.cpp
+    src/solver/multiway/engine/multiway_external_training_storage.cpp
+    src/solver/multiway/engine/multiway_external_page_cache.cpp
     src/solver/multiway/engine/multiway_public_catalog.cpp
     src/solver/multiway/abstraction/multiway_terminal_adapter.cpp
     src/solver/multiway/engine/multiway_traversal.cpp
