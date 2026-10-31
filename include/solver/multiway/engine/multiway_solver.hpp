@@ -1093,9 +1093,40 @@ namespace texas::solver::multiway
 			double regret = 0.0;
 			double strategy_sum = 0.0;
 		};
+		struct PreparedAdmissionSummary
+		{
+			std::size_t new_state_count = 0U;
+			std::size_t new_row_count = 0U;
+			std::size_t new_value_count = 0U;
+			std::size_t current_row_count = 0U;
+			std::size_t current_value_count = 0U;
+			bool compact = false;
+			bool external = false;
+		};
 
 		[[nodiscard]] const MultiwayPublicStateDescriptor* public_state(
 			MultiwayPublicStateId id) const;
+		void validate_prepared_batch_inputs(
+			const std::vector<MultiwayPublicStateDescriptor>& public_states,
+			const std::vector<std::size_t>& parent_order,
+			const std::vector<MultiwaySparseRowShape>& rows,
+			const std::vector<std::size_t>* parent_indexes) const;
+		[[nodiscard]] std::size_t preflight_prepared_states(
+			const std::vector<MultiwayPublicStateDescriptor>& public_states,
+			const std::vector<std::size_t>& parent_order,
+			const std::vector<MultiwaySparseRowShape>& rows,
+			const std::vector<std::size_t>* parent_indexes);
+		[[nodiscard]] PreparedAdmissionSummary preflight_prepared_rows(
+			const std::vector<MultiwayPublicStateDescriptor>& public_states,
+			const std::vector<MultiwaySparseRowShape>& rows,
+			std::size_t new_state_count);
+		void commit_prepared_batch(
+			const std::vector<MultiwayPublicStateDescriptor>& public_states,
+			const std::vector<MultiwaySparseRowShape>& rows,
+			const PreparedAdmissionSummary& summary);
+		[[nodiscard]] std::uint64_t merge_worker_stream_cells(
+			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
+			MultiwayDeltaMergePath path, std::size_t delta_count);
 		void merge_worker_streams_locked(
 			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
 			MultiwayDeltaMergePath path);

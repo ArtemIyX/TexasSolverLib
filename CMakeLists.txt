@@ -296,6 +296,9 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/engine/multiway_scheduler.cpp
     src/solver/multiway/session/multiway_search_session.cpp
     src/solver/multiway/engine/multiway_solver.cpp
+    src/solver/multiway/engine/multiway_coordinator_admission.cpp
+    src/solver/multiway/engine/multiway_coordinator_merge.cpp
+    src/solver/multiway/engine/multiway_coordinator_checkpoint.cpp
     src/solver/multiway/engine/multiway_compact_storage.cpp
     src/solver/multiway/engine/multiway_external_checkpoint.cpp
     src/solver/multiway/engine/multiway_external_transaction.cpp
