@@ -252,6 +252,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_blueprint_store.cpp
     src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp
     src/solver/multiway/blueprint/multiway_blueprint_export.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_checkpoint.cpp
     src/solver/multiway/blueprint/multiway_blueprint_training_loop.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
     src/solver/multiway/abstraction/multiway_bucket_catalog.cpp

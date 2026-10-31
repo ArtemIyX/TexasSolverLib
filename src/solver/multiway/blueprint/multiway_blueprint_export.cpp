@@ -1,5 +1,5 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
-#include "solver/multiway/blueprint/multiway_blueprint_trainer_detail.hpp"
+#include "multiway_blueprint_trainer_detail.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
