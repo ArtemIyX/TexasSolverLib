@@ -1,5 +1,61 @@
 # Pluribus Roadmap Progress Log
 
+## CTest failure scanner detection
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Updated the CTest error scanner to recognize harness `[FAIL]` records with or without source locations and to fall back to CTest's failed-test summary. Missing or unreadable logs now fail closed.
+- Fixed the row-index regression setup by compacting its runs before ordered iteration, preserving the configured fan-in limit.
+
+### Files
+
+- `scripts/python/scan_ctest_errors.py`
+- `scripts/python/test_scan_ctest_errors.py`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/application_and_script_io.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `& .\scripts\codex_powershell.ps1 python .\scripts\python\test_scan_ctest_errors.py` passed (5 tests).
+- Scanning `tmp/ctest_debug.log` reported the row-index failure and failed CTest target, with exit code 1.
+- Focused build of `test_multiway_external_storage` passed; focused CTest passed (1/1).
+
+### Limitations
+
+- Full CTest was not rerun.
+
+## F1 50K bounded scale-up gate
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Defined and prepared a 50-batch, 50,000-trajectory F1 12/12/12 profile with 5,000,000 public-state/sparse-row caps and a 16 GiB disk reservation. Kept memory, disk-amplification, and P99 hard stops unchanged.
+- The focused monitor test passed and the 50K training attempt stopped at the P99 lower-bound gate after 6 checkpoints and 5 cycles. The first two complete cohort P99 values were 66,039.4304 ms and 67,013.8412 ms; cycle 5 at 80,958.331 ms established a strictly higher lower bound for the third cohort. Inspection confirmed this is the intended stop condition, not a monitor defect.
+- Memory and disk gates remained within limits: 16.92 GiB peak working set, 2.68 GiB peak private commit, 26.71 GiB minimum available memory, and 1.84x maximum disk amplification. The 50K profile did not qualify; no resume was run.
+
+### Files
+
+- `configs/multiway/f1_checkpoint_qualification_50k_v1.cfg`
+- `scripts/run/prepare_f1_50k_checkpoint_qualification.ps1`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/resume_f1_10k_checkpoint_qualification.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/f1_50k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell.exe -NoProfile -File .\scripts\run\test_pb12_diagnostic_monitor.ps1` passed.
+- PowerShell AST parsing passed for the preparation, monitor runner, and resume scripts.
+- Prepared `pb12_diagnostic_f1_50k_20261030_gate1`; the recorded trainer and bucket hashes matched retry3.
+- `& .\scripts\run\run_pb12_diagnostic.ps1 -RunName 'pb12_diagnostic_f1_50k_20261030_gate1'` exited 1 because the P99 stop fired. The monitor recorded 6 checkpoints, 5 cycles, and the stop reason. No build or checkpoint-only resume was run.
+
+### Limitations
+
+- The 50K profile is not qualified. Investigate the increasing cycle durations before another bounded run; do not weaken the P99 gate or advance to 50M.
+
 ## F1 10K checkpoint-only resume qualification
 
 **Status:** Complete
