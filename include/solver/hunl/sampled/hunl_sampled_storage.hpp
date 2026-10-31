@@ -38,14 +38,14 @@ namespace texas::solver::hunl
 	/** @brief Row offsets and discount metadata for allocated sampled storage. */
 	struct HUNLSampledInfosetMeta
 	{
-		InfosetId id{};
-		PlayerId player = -1;
-		Street street = Street::Preflop;
-		std::uint32_t bucket_count = 0;
-		std::uint8_t action_count = 0;
 		std::size_t regret_offset = 0;
 		std::size_t strategy_sum_offset = 0;
+		InfosetId id{};
+		PlayerId player = -1;
+		std::uint32_t bucket_count = 0;
 		std::uint32_t last_discount_iter = 0;
+		std::uint8_t action_count = 0;
+		Street street = Street::Preflop;
 
 		/** @brief Returns bucket_count times action_count with saturation on overflow. */
 		[[nodiscard]] std::size_t value_count() const noexcept
