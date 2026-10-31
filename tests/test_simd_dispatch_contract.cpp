@@ -17,8 +17,9 @@ TEST_CASE(simd_backend_name_is_stable)
 TEST_CASE(sampled_backend_name_does_not_claim_fma)
 {
 	EXPECT_TRUE(std::string_view{
-		texas::solver::hunl::hunl_sampled_simd_backend_name(
-			texas::solver::hunl::HUNLSampledSimdBackend::Avx2)} == "avx2");
+					texas::solver::hunl::hunl_sampled_simd_backend_name(
+						texas::solver::hunl::HUNLSampledSimdBackend::Avx2) }
+		== "avx2");
 }
 
 TEST_CASE(simd_update_strategy_supports_exact_in_place_alias)
@@ -37,7 +38,8 @@ TEST_CASE(sampled_selected_kernel_matches_scalar_reference)
 	const std::vector<float> regrets{
 		1.0f, -2.0f, 0.0f, 4.0f, -1.0f,
 		2.0f, 3.0f, -4.0f, 0.0f, 1.0f,
-		-1.0f, 2.0f, 5.0f, -3.0f, 0.0f };
+		-1.0f, 2.0f, 5.0f, -3.0f, 0.0f
+	};
 	std::vector<float> expected(actions * buckets, 0.0f);
 	std::vector<float> actual(actions * buckets, 0.0f);
 	texas::solver::hunl::regret_matching_action_major_f32_scalar(

@@ -21,8 +21,7 @@ namespace texas::solver::hunl
 		bool use_sampled_avx2() noexcept
 		{
 #if defined(__AVX2__)
-			return g_hunl_sampled_simd_enabled.load(std::memory_order_relaxed) &&
-				texas::util::detect_simd_backend() == texas::util::SimdBackend::Avx2;
+			return g_hunl_sampled_simd_enabled.load(std::memory_order_relaxed) && texas::util::detect_simd_backend() == texas::util::SimdBackend::Avx2;
 #else
 			return false;
 #endif

@@ -374,7 +374,7 @@ namespace texas::util
 		return SimdBackend::Neon;
 #elif defined(__AVX2__)
 		bool supported = false;
-#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+	#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
 		int cpu_info[4] = {};
 		__cpuidex(cpu_info, 1, 0);
 		const bool osxsave = (cpu_info[2] & (1 << 27)) != 0;
@@ -390,9 +390,9 @@ namespace texas::util
 				supported = ymm_state && (cpu_info[1] & (1 << 5)) != 0;
 			}
 		}
-#elif defined(__GNUC__) || defined(__clang__)
+	#elif defined(__GNUC__) || defined(__clang__)
 		supported = __builtin_cpu_supports("avx2") != 0;
-#endif
+	#endif
 		return supported ? SimdBackend::Avx2 : SimdBackend::Sse2;
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return SimdBackend::Sse2;
@@ -624,11 +624,11 @@ namespace texas::util
 			discount_regrets_avx2(regrets, len, pos_scale, neg_scale);
 			return;
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		discount_regrets_sse2(regrets, len, pos_scale, neg_scale);
-#else
+	#else
 		discount_regrets_scalar(regrets, len, pos_scale, neg_scale);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		discount_regrets_sse2(regrets, len, pos_scale, neg_scale);
 #else
@@ -644,11 +644,11 @@ namespace texas::util
 			discount_strategy_sum_avx2(strategy, len, strat_scale);
 			return;
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		discount_strategy_sum_sse2(strategy, len, strat_scale);
-#else
+	#else
 		discount_strategy_sum_scalar(strategy, len, strat_scale);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		discount_strategy_sum_sse2(strategy, len, strat_scale);
 #else
@@ -663,11 +663,11 @@ namespace texas::util
 		{
 			return positive_regrets_and_total_avx2(regrets, out_positive, len);
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return positive_regrets_and_total_sse2(regrets, out_positive, len);
-#else
+	#else
 		return positive_regrets_and_total_scalar(regrets, out_positive, len);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return positive_regrets_and_total_sse2(regrets, out_positive, len);
 #else
@@ -688,11 +688,11 @@ namespace texas::util
 			update_regret_sum_avx2(regret_sum, action_values, len, node_value, opp_reach);
 			return;
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		update_regret_sum_sse2(regret_sum, action_values, len, node_value, opp_reach);
-#else
+	#else
 		update_regret_sum_scalar(regret_sum, action_values, len, node_value, opp_reach);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		update_regret_sum_sse2(regret_sum, action_values, len, node_value, opp_reach);
 #else
@@ -737,11 +737,11 @@ namespace texas::util
 			update_strategy_sum_avx2(strategy_sum, strategy, len, own_reach);
 			return;
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		update_strategy_sum_sse2(strategy_sum, strategy, len, own_reach);
-#else
+	#else
 		update_strategy_sum_scalar(strategy_sum, strategy, len, own_reach);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		update_strategy_sum_sse2(strategy_sum, strategy, len, own_reach);
 #else
@@ -887,11 +887,11 @@ namespace texas::util
 		{
 			return dot_product_avx2(lhs, rhs, len);
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return dot_product_sse2(lhs, rhs, len);
-#else
+	#else
 		return dot_product_scalar(lhs, rhs, len);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return dot_product_sse2(lhs, rhs, len);
 #else
@@ -1062,11 +1062,11 @@ namespace texas::util
 			normalize_avx2(out, len, total);
 			return;
 		}
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		normalize_sse2(out, len, total);
-#else
+	#else
 		normalize_scalar(out, len, total);
-#endif
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		normalize_sse2(out, len, total);
 #else

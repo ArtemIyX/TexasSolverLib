@@ -31,4 +31,4 @@ namespace texas::solver::multiway::detail
 	[[nodiscard]] std::size_t prune_compact_regrets_selected(
 		std::int32_t* regrets, std::size_t count,
 		std::int32_t threshold, std::int32_t replacement) noexcept;
-}
+} // namespace texas::solver::multiway::detail

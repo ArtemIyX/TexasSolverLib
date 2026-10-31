@@ -18,7 +18,7 @@ namespace texas::solver::multiway::detail
 #if defined(TEXASSOLVER_COMPACT_PRUNE_AVX2_COMPILED)
 		bool runtime_has_avx2() noexcept
 		{
-#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+	#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
 			int cpu_info[4] = {};
 			__cpuidex(cpu_info, 1, 0);
 			const bool osxsave = (cpu_info[2] & (1 << 27)) != 0;
@@ -33,14 +33,14 @@ namespace texas::solver::multiway::detail
 				return false;
 			__cpuidex(cpu_info, 7, 0);
 			return (cpu_info[1] & (1 << 5)) != 0;
-#elif defined(__GNUC__) || defined(__clang__)
+	#elif defined(__GNUC__) || defined(__clang__)
 			return __builtin_cpu_supports("avx2") != 0;
-#else
+	#else
 			return false;
-#endif
+	#endif
 		}
 #endif
-	}
+	} // namespace
 
 	std::size_t prune_compact_regrets_scalar(
 		std::int32_t* regrets, std::size_t count,
@@ -99,10 +99,10 @@ namespace texas::solver::multiway::detail
 #endif
 			case MultiwayCompactPruneBackend::Avx2:
 #if defined(TEXASSOLVER_COMPACT_PRUNE_AVX2_COMPILED)
-				{
-					static const bool available = runtime_has_avx2();
-					return available;
-				}
+			{
+				static const bool available = runtime_has_avx2();
+				return available;
+			}
 #else
 				return false;
 #endif
@@ -120,4 +120,4 @@ namespace texas::solver::multiway::detail
 			return prune_compact_regrets_sse2(regrets, count, threshold, replacement);
 		return prune_compact_regrets_scalar(regrets, count, threshold, replacement);
 	}
-}
+} // namespace texas::solver::multiway::detail

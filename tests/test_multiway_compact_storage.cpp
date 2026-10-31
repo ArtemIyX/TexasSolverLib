@@ -25,8 +25,8 @@ namespace
 
 namespace
 {
-	using texas::solver::multiway::detail::MultiwayCompactPruneBackend;
 	using texas::solver::multiway::detail::multiway_compact_prune_backend_available;
+	using texas::solver::multiway::detail::MultiwayCompactPruneBackend;
 	using texas::solver::multiway::detail::prune_compact_regrets_avx2;
 	using texas::solver::multiway::detail::prune_compact_regrets_scalar;
 	using texas::solver::multiway::detail::prune_compact_regrets_sse2;
@@ -46,7 +46,7 @@ namespace
 		}
 		return 0U;
 	}
-}
+} // namespace
 
 TEST_CASE(multiway_compact_storage_memory_snapshot_attributes_each_storage_array)
 {
@@ -184,7 +184,12 @@ TEST_CASE(multiway_compact_prune_simd_matches_scalar_for_boundaries_and_tails)
 		MultiwayCompactPruneBackend::Avx2,
 	};
 	const std::array<std::int32_t, 7U> values{
-		std::numeric_limits<std::int32_t>::min(), -5, -1, 0, 1, 5,
+		std::numeric_limits<std::int32_t>::min(),
+		-5,
+		-1,
+		0,
+		1,
+		5,
 		std::numeric_limits<std::int32_t>::max(),
 	};
 	for (const auto backend : backends)

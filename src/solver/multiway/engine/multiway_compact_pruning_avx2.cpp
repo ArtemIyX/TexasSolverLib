@@ -24,13 +24,11 @@ namespace texas::solver::multiway::detail
 			const auto updated = _mm256_blendv_epi8(values, replacement_vector, mask);
 			_mm256_storeu_si256(reinterpret_cast<__m256i*>(regrets + i), updated);
 			const auto bits = static_cast<unsigned>(_mm256_movemask_ps(_mm256_castsi256_ps(mask)));
-			pruned += (bits & 1U) + ((bits >> 1U) & 1U) + ((bits >> 2U) & 1U) +
-				((bits >> 3U) & 1U) + ((bits >> 4U) & 1U) + ((bits >> 5U) & 1U) +
-				((bits >> 6U) & 1U) + ((bits >> 7U) & 1U);
+			pruned += (bits & 1U) + ((bits >> 1U) & 1U) + ((bits >> 2U) & 1U) + ((bits >> 3U) & 1U) + ((bits >> 4U) & 1U) + ((bits >> 5U) & 1U) + ((bits >> 6U) & 1U) + ((bits >> 7U) & 1U);
 		}
 		return pruned + prune_compact_regrets_scalar(regrets + i, count - i, threshold, replacement);
 #else
 		return prune_compact_regrets_scalar(regrets, count, threshold, replacement);
 #endif
 	}
-}
+} // namespace texas::solver::multiway::detail
