@@ -384,6 +384,25 @@ namespace texas::solver::multiway
 			MultiwayMemoryComponent export_buffers = {});
 
 	private:
+		struct ExportRunContext;
+
+		void prepare_full_policy_export_plan(
+			ExportRunContext& context,
+			const std::filesystem::path& path) const;
+		void enforce_full_policy_export_gates(
+			ExportRunContext& context,
+			const std::filesystem::path& path) const;
+		void setup_full_policy_export_writer(
+			ExportRunContext& context,
+			const std::filesystem::path& path) const;
+		void write_full_policy_export_rows(ExportRunContext& context) const;
+		void write_external_full_policy_export_rows(ExportRunContext& context) const;
+		void write_memory_full_policy_export_rows(ExportRunContext& context) const;
+		[[nodiscard]] MultiwayMemoryComponent export_buffer_component(
+			const ExportRunContext& context) const noexcept;
+		[[nodiscard]] MultiwayFullBlueprintExportResult finish_full_policy_export(
+			ExportRunContext& context) const;
+
 		void record_export_memory_snapshot(
 			MultiwayMemoryPhase phase,
 			MultiwayProcessMemorySnapshot snapshot,
