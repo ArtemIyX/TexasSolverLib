@@ -20,6 +20,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint32_t MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE = 256U;
 
 	/** @brief Work and wait counters collected during bucket generation. */
+#pragma pack(push, 8)
 	struct MultiwayBucketGenerationStats
 	{
 		std::uint64_t chunks_built = 0U;
@@ -29,6 +30,7 @@ namespace texas::solver::multiway
 		std::uint64_t ordered_publish_wait_nanoseconds = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
 	};
+#pragma pack(pop)
 
 	/** @brief Estimates peak process bytes for the requested worker and queue limits. */
 	[[nodiscard]] std::uint64_t estimate_multiway_bucket_generation_process_memory_bytes(
@@ -44,6 +46,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t>& payload)>;
 
 	/** @brief Thread, chunk, queue and optional telemetry settings for generation. */
+#pragma pack(push, 8)
 	struct MultiwayBucketGenerationOptions
 	{
 		std::uint32_t requested_threads = MULTIWAY_BUCKET_DEFAULT_THREADS;
@@ -52,13 +55,16 @@ namespace texas::solver::multiway
 		MultiwayBucketGenerationStats* stats = nullptr;
 		MultiwayBucketDirectSerializedBuilder direct_serialized_builder;
 	};
+#pragma pack(pop)
 
 	/** @brief Completed and total table counts reported by generation callbacks. */
+#pragma pack(push, 8)
 	struct MultiwayBucketGenerationProgress
 	{
 		std::uint64_t completed_tables = 0U;
 		std::uint64_t total_tables = 0U;
 	};
+#pragma pack(pop)
 
 	/** @brief Builds table objects for an indexed chunk. */
 	using MultiwayBucketChunkBuilder = std::function<void(

@@ -39,6 +39,7 @@ namespace texas::solver::multiway
 	// Stable numeric identities are assigned by the coordinator. Zero is reserved
 	// as an invalid identity so an omitted id cannot become a storage key.
 	/** Stable coordinator-assigned identifier for a canonical public state. */
+#pragma pack(push, 8)
 	struct MultiwayPublicStateId
 	{
 		std::uint64_t value = 0;
@@ -56,8 +57,10 @@ namespace texas::solver::multiway
 			return value < other.value;
 		}
 	};
+#pragma pack(pop)
 
 	/** Public-state and acting-seat identity used to address a solver row. */
+#pragma pack(push, 8)
 	struct MultiwayInfosetId
 	{
 		MultiwayPublicStateId public_state{};
@@ -78,8 +81,10 @@ namespace texas::solver::multiway
 			return public_state < other.public_state;
 		}
 	};
+#pragma pack(pop)
 
 	/** Exact action-menu entry, including its resulting street contribution. */
+#pragma pack(push, 8)
 	struct MultiwayActionDescriptor
 	{
 		MultiwayAction action = MultiwayAction::Fold;
@@ -98,8 +103,10 @@ namespace texas::solver::multiway
 			return !(*this == other);
 		}
 	};
+#pragma pack(pop)
 
 	/** One actor and action pair in a public betting history. */
+#pragma pack(push, 8)
 	struct MultiwayPublicHistoryEntry
 	{
 		core::PlayerId actor = -1;
@@ -110,9 +117,11 @@ namespace texas::solver::multiway
 			return actor == other.actor && action == other.action;
 		}
 	};
+#pragma pack(pop)
 
 	// The known board and its deterministic chance boundary.  `remaining_board_cards`
 	// prevents a root from silently relying on a caller-selected runout length.
+#pragma pack(push, 8)
 	struct MultiwayBoardRunoutState
 	{
 		std::uint8_t remaining_board_cards = 2;
@@ -127,6 +136,7 @@ namespace texas::solver::multiway
 			return !(*this == other);
 		}
 	};
+#pragma pack(pop)
 
 	// Side-pot settlement follows the existing terminal layer's cyclic seat-id
 	// order, beginning at `odd_chip_first_seat`.  Seat order for transitions is
@@ -140,6 +150,7 @@ namespace texas::solver::multiway
 	// A stable action abstraction is identified by its coordinator-assigned menu
 	// id together with the version that produced its target sizes.
 	/** Action-menu id paired with the abstraction version that produced it. */
+#pragma pack(push, 8)
 	struct MultiwayActionAbstractionIdentity
 	{
 		std::uint64_t menu_id = 0;
@@ -150,6 +161,7 @@ namespace texas::solver::multiway
 			return menu_id == other.menu_id && version == other.version;
 		}
 	};
+#pragma pack(pop)
 
 	/** Type of transition that connects a public state to its parent. */
 	enum class MultiwayPublicParentEdgeKind : std::uint8_t
@@ -162,6 +174,7 @@ namespace texas::solver::multiway
 
 	// Typed incoming edge for a coordinator-admitted public state. Only the
 	// payload matching `kind` is consumed: action, dealt_card, or next board.
+#pragma pack(push, 8)
 	struct MultiwayPublicParentEdge
 	{
 		MultiwayPublicParentEdgeKind kind = MultiwayPublicParentEdgeKind::None;
@@ -172,10 +185,12 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> dealt_cards;
 		std::vector<std::uint8_t> transition_board;
 	};
+#pragma pack(pop)
 
 	// This descriptor is the canonical public object admitted by the coordinator.
 	// It intentionally contains no private cards, ranges, or mutable policy data.
 	/** Canonical public-only state accepted into the solver catalog. */
+#pragma pack(push, 8)
 	struct MultiwayPublicStateDescriptor
 	{
 		MultiwayPublicStateId id{};
@@ -188,7 +203,9 @@ namespace texas::solver::multiway
 		std::vector<MultiwayPublicHistoryEntry> history;
 		std::vector<MultiwayActionDescriptor> legal_actions;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct MultiwayPackedBetting
 	{
 		std::array<int, 6U> stacks{};
@@ -208,8 +225,10 @@ namespace texas::solver::multiway
 		int big_blind = 0;
 		core::Street street = core::Street::Flop;
 	};
+#pragma pack(pop)
 
 	/** Fixed-width catalog representation of a public-state descriptor. */
+#pragma pack(push, 8)
 	struct MultiwayPackedPublicNode
 	{
 		MultiwayPublicStateId id{};
@@ -229,14 +248,17 @@ namespace texas::solver::multiway
 		std::uint8_t transition_board_count = 0U;
 		std::uint32_t legal_menu_handle = 0U;
 	};
+#pragma pack(pop)
 
 	/** Non-owning packed view of a public state's legal action menu. */
+#pragma pack(push, 8)
 	struct MultiwayPackedMenuView
 	{
 		const MultiwayActionDescriptor* actions = nullptr;
 		std::uint8_t action_count = 0U;
 		std::uint64_t action_menu_id = 0U;
 	};
+#pragma pack(pop)
 
 	// Append-only fixed-node public catalog. Dynamic descriptors are recreated
 	// only at cold API/checkpoint boundaries.
@@ -296,21 +318,27 @@ namespace texas::solver::multiway
 
 	private:
 		friend class MultiwaySolverCoordinator;
+#pragma pack(push, 8)
 		struct IndexEntry
 		{
 			MultiwayPublicStateId id{};
 			std::size_t node_index = 0U;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct MenuIndexEntry
 		{
 			std::uint64_t canonical_menu_id = 0U;
 			std::uint32_t menu_handle = 0U;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct PendingMenuIndexEntry
 		{
 			std::uint64_t canonical_menu_id = 0U;
 			std::uint32_t pending_menu_index = 0U;
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] std::size_t find_menu(const std::vector<MultiwayActionDescriptor>& menu) const noexcept;
 		[[nodiscard]] std::size_t find_menu_by_key(
@@ -351,6 +379,7 @@ namespace texas::solver::multiway
 	// The complete public/private root needed by a future traversal. It is copied
 	// into MultiwaySolveRequest and then exposed only through const accessors.
 	/** Immutable root state and model metadata required to start traversal. */
+#pragma pack(push, 8)
 	struct MultiwayRootSnapshot
 	{
 		MultiwayPublicStateDescriptor public_state;
@@ -389,8 +418,10 @@ namespace texas::solver::multiway
 			return leaf_model_version ^ rake_policy.identity();
 		}
 	};
+#pragma pack(pop)
 
 	/** Capacity, worker, backend, and external-store settings for one solve. */
+#pragma pack(push, 8)
 	struct MultiwaySolverLimits
 	{
 		enum class StorageBackend : std::uint8_t
@@ -462,6 +493,7 @@ namespace texas::solver::multiway
 				: max_discovery_entries;
 		}
 	};
+#pragma pack(pop)
 
 	// Immutable boundary input. Traversal must treat this request as a batch
 	// snapshot and cannot mutate the caller's root, ranges, or policy metadata.
@@ -495,13 +527,16 @@ namespace texas::solver::multiway
 		std::optional<MultiwayCompiledPrivateRanges> compiled_private_ranges_;
 	};
 
+#pragma pack(push, 8)
 	struct MultiwaySparseRowShape
 	{
 		MultiwayInfosetId infoset{};
 		std::uint32_t bucket_count = 0;
 		std::uint8_t action_count = 0;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct MultiwaySparseRowMetadata
 	{
 		MultiwaySparseRowShape shape{};
@@ -510,8 +545,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] std::size_t value_count() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Row shapes and floating-point or compact accumulator checkpoint data. */
+#pragma pack(push, 8)
 	struct MultiwaySparseStorageCheckpoint
 	{
 		struct ActivePage
@@ -529,10 +566,12 @@ namespace texas::solver::multiway
 		std::vector<double> regrets;
 		std::vector<double> strategy_sums;
 	};
+#pragma pack(pop)
 
 	// Runtime-only checkpoint diagnostics. These fields are not serialized or
 	// included in the checkpoint payload hash.
 	/** Runtime-only timing, size, and publication diagnostics for checkpointing. */
+#pragma pack(push, 8)
 	struct MultiwayCheckpointTelemetry
 	{
 		std::uint64_t snapshot_lock_wait_nanoseconds = 0U;
@@ -571,7 +610,9 @@ namespace texas::solver::multiway
 			late_window_baseline_bytes = late_window_baseline_bytes > other.late_window_baseline_bytes ? late_window_baseline_bytes : other.late_window_baseline_bytes;
 		}
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct MultiwayCoordinatorCheckpoint
 	{
 		std::vector<MultiwayPublicStateDescriptor> public_states;
@@ -584,6 +625,7 @@ namespace texas::solver::multiway
 		MultiwayCheckpointTelemetry telemetry{};
 		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 	};
+#pragma pack(pop)
 
 	// Coordinator-owned sparse rows. Values are action-major: [action][bucket].
 	// Persistent accumulators are Float64. Merges use fixed global delta order and
@@ -594,6 +636,7 @@ namespace texas::solver::multiway
 	class MultiwaySparseRowStorage
 	{
 	public:
+#pragma pack(push, 8)
 		struct CheckpointRowView
 		{
 			const MultiwaySparseRowMetadata* metadata = nullptr;
@@ -601,6 +644,7 @@ namespace texas::solver::multiway
 			const double* strategy_sums = nullptr;
 			std::size_t value_count = 0U;
 		};
+#pragma pack(pop)
 
 		/** Creates a row store with maximum row and value capacities. */
 		MultiwaySparseRowStorage(std::size_t max_rows, std::size_t max_values);
@@ -672,6 +716,7 @@ namespace texas::solver::multiway
 	};
 
 	/** One worker's regret and average-strategy update for an action bucket. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerDelta
 	{
 		MultiwayInfosetId infoset{};
@@ -681,6 +726,7 @@ namespace texas::solver::multiway
 		double strategy_sum = 0.0;
 		std::uint64_t trajectory_id = 0;
 	};
+#pragma pack(pop)
 
 	// Bounded worker-local stream. Traversal appends allocation-free after the
 	// constructor reserves capacity, sorts once at the worker boundary, and never
@@ -713,13 +759,16 @@ namespace texas::solver::multiway
 		std::vector<MultiwayWorkerDelta> deltas_;
 	};
 
+#pragma pack(push, 8)
 	struct MultiwayRootActionProbability
 	{
 		MultiwayActionDescriptor action{};
 		Probability probability = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Probabilities for the root infoset and bucket of one solve. */
+#pragma pack(push, 8)
 	struct MultiwayRootPolicy
 	{
 		MultiwayPublicStateId public_state{};
@@ -727,8 +776,10 @@ namespace texas::solver::multiway
 		std::uint32_t bucket = 0;
 		std::vector<MultiwayRootActionProbability> actions;
 	};
+#pragma pack(pop)
 
 	/** Batch, traversal, admission, and optional quality results for a solve. */
+#pragma pack(push, 8)
 	struct MultiwaySolveDiagnostics
 	{
 		std::uint64_t batches_completed = 0;
@@ -753,6 +804,7 @@ namespace texas::solver::multiway
 		double export_seconds = 0.0;
 		std::optional<MultiwayNashConv> quality;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::size_t MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD = 4U;
 
@@ -767,6 +819,7 @@ namespace texas::solver::multiway
 
 	// Cold coordinator admission diagnostics. These counters are runtime-only
 	// telemetry and do not affect strategy identity or deterministic merges.
+#pragma pack(push, 8)
 	struct MultiwayAdmissionDiagnostics
 	{
 		std::uint64_t raw_public_state_candidates = 0U;
@@ -948,6 +1001,7 @@ namespace texas::solver::multiway
 			append(worker_local_unique_row_candidates_by_worker, other.worker_local_unique_row_candidates_by_worker);
 		}
 	};
+#pragma pack(pop)
 
 	// Immutable boundary output. It deliberately retains only a root policy,
 	// per-seat root values, and diagnostics; it never exports dense global policy.
@@ -1087,12 +1141,15 @@ namespace texas::solver::multiway
 
 	private:
 		friend class MultiwayTerminalAdapter;
+#pragma pack(push, 8)
 		struct PendingMergeCell
 		{
 			std::size_t index = 0U;
 			double regret = 0.0;
 			double strategy_sum = 0.0;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct PreparedAdmissionSummary
 		{
 			std::size_t new_state_count = 0U;
@@ -1103,6 +1160,7 @@ namespace texas::solver::multiway
 			bool compact = false;
 			bool external = false;
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] const MultiwayPublicStateDescriptor* public_state(
 			MultiwayPublicStateId id) const;

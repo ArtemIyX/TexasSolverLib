@@ -8,6 +8,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct RolloutFixture
 	{
 		texas::MultiwayFixedState state{};
@@ -41,6 +42,7 @@ namespace
 			holes[1] = { 3U, 4U };
 		}
 	};
+#pragma pack(pop)
 
 	bool provide_input(const texas::MultiwayLeafEvaluationRequest&, texas::MultiwayRolloutInput* output,
 		const void* context) noexcept

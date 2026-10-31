@@ -23,6 +23,7 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+#pragma pack(push, 8)
 		struct PublicStateValidationMetadata
 		{
 			std::uint64_t canonical_menu_id = 0U;
@@ -31,6 +32,7 @@ namespace texas::solver::multiway
 			core::PlayerId current_player = -1;
 			MultiwayNextNodeKind next_node_kind = MultiwayNextNodeKind::BettingDecision;
 		};
+#pragma pack(pop)
 
 		[[maybe_unused]] bool valid_action(MultiwayAction action) noexcept
 		{

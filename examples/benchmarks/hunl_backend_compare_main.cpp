@@ -20,10 +20,12 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct CompareConfig
 	{
 		std::uint32_t iterations = 20;
 	};
+#pragma pack(pop)
 
 	bool parse_uint32(std::string_view text, std::uint32_t& out)
 	{
@@ -93,6 +95,7 @@ namespace
 		return backend + "-" + std::to_string(workers);
 	}
 
+#pragma pack(push, 8)
 	struct ResultRow
 	{
 		std::string label;
@@ -105,6 +108,7 @@ namespace
 		double exploitability = 0.0;
 		double game_value = 0.0;
 	};
+#pragma pack(pop)
 
 	ResultRow solve_old_sequential(const texas::HUNLConfig& config, std::uint32_t iterations)
 	{

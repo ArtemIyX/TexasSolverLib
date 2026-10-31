@@ -13,6 +13,7 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Half-open interval of deterministic trajectory IDs. */
+#pragma pack(push, 8)
 	struct HUNLSampledTrajectoryRange
 	{
 		std::uint64_t begin = 0; ///< First trajectory ID.
@@ -24,13 +25,16 @@ namespace texas::solver::hunl
 			return end - begin;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief One worker's assigned trajectory interval. */
+#pragma pack(push, 8)
 	struct HUNLSampledWorkerBatch
 	{
 		std::size_t worker_index = 0;			 ///< Worker receiving the batch.
 		HUNLSampledTrajectoryRange trajectories; ///< Deterministic half-open interval.
 	};
+#pragma pack(pop)
 
 	static_assert(
 		std::is_trivially_copyable_v<HUNLSampledTrajectoryRange>,

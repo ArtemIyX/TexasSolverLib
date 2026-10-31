@@ -27,6 +27,7 @@ namespace texas::solver::multiway
 
 		constexpr double kMinimumProbability = 1e-12;
 
+#pragma pack(push, 8)
 		struct RuntimeSearchMeasurement
 		{
 			explicit RuntimeSearchMeasurement(MultiwayResolverDiagnostics* diagnostics) noexcept
@@ -44,6 +45,7 @@ namespace texas::solver::multiway
 			MultiwayResolverDiagnostics* diagnostics = nullptr;
 			std::chrono::steady_clock::time_point started{};
 		};
+#pragma pack(pop)
 
 		enum class RuntimeSearchOutcome : std::uint8_t
 		{
@@ -786,6 +788,7 @@ namespace texas::solver::multiway
 			return state;
 		}
 
+#pragma pack(push, 8)
 		struct PreparedResolverRoot
 		{
 			std::vector<std::uint8_t> canonical_board;
@@ -794,6 +797,7 @@ namespace texas::solver::multiway
 			std::uint32_t bucket = 0U;
 			std::uint64_t public_state_id = 0U;
 		};
+#pragma pack(pop)
 
 		PreparedResolverRoot prepare_resolver_root(
 			const MultiwayResolverRequest& request,
@@ -849,6 +853,7 @@ namespace texas::solver::multiway
 			return root;
 		}
 
+#pragma pack(push, 8)
 		struct ResolverSearchPlan
 		{
 			bool run_search = false;
@@ -856,6 +861,7 @@ namespace texas::solver::multiway
 			bool has_early_fallback = false;
 			MultiwayResolverStatus fallback_status = MultiwayResolverStatus::RejectedByBudget;
 		};
+#pragma pack(pop)
 
 		ResolverSearchPlan assess_resolver_search_eligibility(
 			const MultiwayResolverRequest& request,

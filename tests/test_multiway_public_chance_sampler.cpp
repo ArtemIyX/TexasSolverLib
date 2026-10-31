@@ -80,6 +80,7 @@ namespace
 		return result;
 	}
 
+#pragma pack(push, 8)
 	struct SamplerFixture
 	{
 		SamplerFixture(texas::Street street, const std::vector<std::uint8_t>& board)
@@ -118,6 +119,7 @@ namespace
 		texas::MultiwaySolverCoordinator coordinator;
 		texas::MultiwayTerminalAdapter adapter;
 	};
+#pragma pack(pop)
 
 	bool same_edge(
 		const texas::MultiwaySampledPublicBoardChance& left,

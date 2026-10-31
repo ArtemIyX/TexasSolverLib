@@ -26,6 +26,7 @@ namespace texas::solver::hunl
 		static_cast<std::uint8_t>(ACTION_ALL_IN + 1U);
 
 	/** @brief Dimensions and owner for one sampled information-set row. */
+#pragma pack(push, 8)
 	struct HUNLSampledInfosetShape
 	{
 		InfosetId id{};
@@ -34,8 +35,10 @@ namespace texas::solver::hunl
 		std::uint32_t bucket_count = 0;
 		std::uint8_t action_count = 0;
 	};
+#pragma pack(pop)
 
 	/** @brief Row offsets and discount metadata for allocated sampled storage. */
+#pragma pack(push, 8)
 	struct HUNLSampledInfosetMeta
 	{
 		std::size_t regret_offset = 0;
@@ -58,8 +61,10 @@ namespace texas::solver::hunl
 			return static_cast<std::size_t>(bucket_count) * actions;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Non-owning read-only view of a sampled regret and strategy-sum row. */
+#pragma pack(push, 8)
 	struct HUNLSampledConstRowView
 	{
 		const float* regret = nullptr;
@@ -80,8 +85,10 @@ namespace texas::solver::hunl
 			return regret == nullptr || strategy_sum == nullptr || value_count() == 0;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Non-owning mutable view of a sampled regret and strategy-sum row. */
+#pragma pack(push, 8)
 	struct HUNLSampledRowView
 	{
 		float* regret = nullptr;
@@ -102,12 +109,14 @@ namespace texas::solver::hunl
 			return regret == nullptr || strategy_sum == nullptr || value_count() == 0;
 		}
 	};
+#pragma pack(pop)
 
 	static_assert(
 		std::is_trivially_copyable_v<HUNLSampledInfosetMeta>,
 		"HUNLSampledInfosetMeta should stay trivially copyable");
 
 	/** @brief Byte and row counts for sampled storage. */
+#pragma pack(push, 8)
 	struct HUNLSampledStorageMemoryEstimate
 	{
 		std::uint64_t meta_bytes = 0;
@@ -132,6 +141,7 @@ namespace texas::solver::hunl
 			return total;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Sparse or dense rows of sampled regrets and strategy sums. */
 	class HUNLSampledStorage

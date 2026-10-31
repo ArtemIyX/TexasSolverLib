@@ -21,6 +21,7 @@ namespace texas::solver::dcfr
 {
 
 	/** @brief Regret and strategy accumulators for one multi-hand information set. */
+#pragma pack(push, 8)
 	struct VectorInfosetData
 	{
 		std::size_t action_count = 0;		  ///< Number of actions at this information set.
@@ -34,8 +35,10 @@ namespace texas::solver::dcfr
 		/** @brief Allocates action-by-hand regret and strategy arrays. */
 		VectorInfosetData(std::size_t action_count, std::size_t hand_count);
 	};
+#pragma pack(pop)
 
 	/** @brief Memory and information-set counts for a vector solver. */
+#pragma pack(push, 8)
 	struct VectorMemoryProfile
 	{
 		std::uint64_t total_bytes = 0;											///< Estimated or measured total bytes for solver storage.
@@ -44,8 +47,10 @@ namespace texas::solver::dcfr
 		std::unordered_map<std::string, std::uint32_t> infoset_count_by_street; ///< Information-set counts by street.
 		std::array<std::size_t, 2> hand_count = { 0, 0 };						///< Hand counts by player.
 	};
+#pragma pack(pop)
 
 	/** @brief Average strategy and run metadata from a vector DCFR solve. */
+#pragma pack(push, 8)
 	struct VectorSolveOutput
 	{
 		std::unordered_map<std::string, std::vector<double>> average_strategy; ///< Action probabilities by information-set key.
@@ -55,8 +60,10 @@ namespace texas::solver::dcfr
 		std::array<std::size_t, 2> hand_count_per_player = { 0, 0 };		   ///< Active private-hand count by player.
 		VectorMemoryProfile memory_profile;									   ///< Storage and information-set measurements.
 	};
+#pragma pack(pop)
 
 	/** @brief Concrete hand lists and chip scale used by vector terminal evaluation. */
+#pragma pack(push, 8)
 	struct EvalContext
 	{
 		std::array<std::size_t, 2> hand_count = { 0, 0 };			  ///< Number of concrete hands for each player.
@@ -74,8 +81,10 @@ namespace texas::solver::dcfr
 			std::vector<std::array<std::uint8_t, 2>> p1_holes,
 			int big_blind);
 	};
+#pragma pack(pop)
 
 	/** @brief DCFR solver state for vector-valued hand reach and payoff operations. */
+#pragma pack(push, 8)
 	struct VectorDCFR
 	{
 		double alpha = 1.5;										///< Positive-regret discount exponent.
@@ -167,6 +176,7 @@ namespace texas::solver::dcfr
 			const BettingTree& tree,
 			const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs);
 	};
+#pragma pack(pop)
 
 	/** @brief Runs vector DCFR for explicit hole-card pairs. */
 	VectorSolveOutput solve_vector_dcfr(

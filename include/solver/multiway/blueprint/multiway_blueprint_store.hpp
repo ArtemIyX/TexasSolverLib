@@ -17,6 +17,7 @@ namespace texas::solver::multiway
 	// Compact immutable runtime blueprint. Rows are sorted by public state, seat,
 	// and bucket; action probabilities are quantized and action-menu bound.
 	/** Owning representation of one infoset, bucket, and action menu policy row. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintRow
 	{
 		MultiwayInfosetId infoset{};
@@ -27,8 +28,10 @@ namespace texas::solver::multiway
 		/** Checks that the row has a valid identity and normalized action policy. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Non-owning access to a row's quantized actions. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintRowView
 	{
 		MultiwayInfosetId infoset{};
@@ -40,6 +43,7 @@ namespace texas::solver::multiway
 		/** Returns true when the view points to at least one action. */
 		[[nodiscard]] bool valid() const noexcept { return actions != nullptr && action_count != 0U; }
 	};
+#pragma pack(pop)
 
 	/** Sorted immutable store for runtime blueprint lookup. */
 	class MultiwayBlueprintStore
@@ -73,6 +77,7 @@ namespace texas::solver::multiway
 			MultiwayInfosetId infoset, std::uint32_t bucket) const noexcept;
 
 	private:
+#pragma pack(push, 8)
 		struct RuntimeRow
 		{
 			MultiwayInfosetId infoset{};
@@ -81,6 +86,7 @@ namespace texas::solver::multiway
 			std::size_t action_offset = 0U;
 			std::size_t action_count = 0U;
 		};
+#pragma pack(pop)
 
 		MultiwayModelIdentity identity_{};
 		std::vector<RuntimeRow> rows_;

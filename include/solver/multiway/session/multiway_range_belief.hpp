@@ -29,6 +29,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Source, revisions, and normalization masses associated with a range row. */
+#pragma pack(push, 8)
 	struct MultiwayRangeBeliefMetadata
 	{
 		MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
@@ -47,17 +48,21 @@ namespace texas::solver::multiway
 		double input_mass = 0.0;
 		double normalized_mass = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Canonical hole-card combination and caller-supplied weight. */
+#pragma pack(push, 8)
 	struct MultiwayRangeBeliefSuppliedEntry
 	{
 		CanonicalComboCards hole = { 0U, 0U };
 		double weight = 0.0;
 	};
+#pragma pack(pop)
 
 	// Each seat supplies its own public/dead-card mask. A null dead-card pointer
 	// is valid only when dead_card_count is zero.
 	/** Non-owning hand weights and dead cards used to initialize one seat range. */
+#pragma pack(push, 8)
 	struct MultiwayRangeBeliefSeatInput
 	{
 		const MultiwayRangeBeliefSuppliedEntry* entries = nullptr;
@@ -65,6 +70,7 @@ namespace texas::solver::multiway
 		const std::uint8_t* dead_cards = nullptr;
 		std::size_t dead_card_count = 0U;
 	};
+#pragma pack(pop)
 
 	/** Outcome of conditioning a seat's belief on an observed action. */
 	enum class MultiwayRangeBeliefUpdateResult : std::uint8_t
@@ -166,12 +172,14 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayRangeBeliefView view(std::size_t seat) const;
 
 	private:
+#pragma pack(push, 8)
 		struct Row
 		{
 			std::array<double, CANONICAL_HOLE_COMBINATION_COUNT> weights = {};
 			CanonicalComboLegalMask legal_mask = {};
 			MultiwayRangeBeliefMetadata metadata = {};
 		};
+#pragma pack(pop)
 
 		static Row make_uniform_row(const MultiwayRangeBeliefSeatInput& input, std::uint64_t revision);
 		static Row make_supplied_row(const MultiwayRangeBeliefSeatInput& input, std::uint64_t revision);

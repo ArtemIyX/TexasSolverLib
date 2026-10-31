@@ -1217,21 +1217,27 @@ namespace texas::solver::multiway
 		std::uint64_t menu_capacity,
 		std::uint64_t action_capacity) noexcept
 	{
+#pragma pack(push, 8)
 		struct StateIndexLayout
 		{
 			MultiwayPublicStateId id;
 			std::size_t node_index;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct MenuIndexLayout
 		{
 			std::uint64_t key;
 			std::uint32_t handle;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct PendingMenuIndexLayout
 		{
 			std::uint64_t key;
 			std::uint32_t pending_index;
 		};
+#pragma pack(pop)
 		MultiwayCatalogCapacityEstimate result;
 		if (state_capacity > std::numeric_limits<std::size_t>::max() || menu_capacity > std::numeric_limits<std::size_t>::max() || action_capacity > std::numeric_limits<std::size_t>::max())
 		{

@@ -266,6 +266,7 @@ namespace texas::solver::multiway
 		const auto temporary = std::filesystem::path(path.string() + ".tmp");
 		if (std::filesystem::exists(temporary))
 			throw std::runtime_error("external checkpoint manifest temporary path already exists");
+#pragma pack(push, 8)
 		struct TemporaryFileCleanup
 		{
 			std::filesystem::path path;
@@ -275,6 +276,7 @@ namespace texas::solver::multiway
 				std::filesystem::remove(path, ignored);
 			}
 		} cleanup{ temporary };
+#pragma pack(pop)
 		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
 		if (!output)
 			throw std::runtime_error("external checkpoint manifest cannot be opened");

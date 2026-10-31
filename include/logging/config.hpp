@@ -58,6 +58,7 @@ namespace texas::logging
 	};
 
 	/** @brief Console sink settings. */
+#pragma pack(push, 8)
 	struct ConsoleConfig
 	{
 		bool enabled = true;					///< Whether console logging is enabled.
@@ -66,7 +67,9 @@ namespace texas::logging
 		ColorMode color = ColorMode::Automatic; ///< Console color policy.
 		std::string pattern = "%v";				///< spdlog pattern for console messages.
 	};
+#pragma pack(pop)
 	/** @brief Rotating file sink settings. */
+#pragma pack(push, 8)
 	struct FileConfig
 	{
 		bool enabled = false;											  ///< Whether file logging is enabled.
@@ -78,7 +81,9 @@ namespace texas::logging
 		std::uint32_t rotate_files = 5U;								  ///< Number of rotated files to retain.
 		std::string pattern = "[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] [%t] %v"; ///< spdlog pattern for file messages.
 	};
+#pragma pack(pop)
 	/** @brief Progress display and refresh settings. */
+#pragma pack(push, 8)
 	struct ProgressConfig
 	{
 		bool enabled = true;						 ///< Whether progress display is enabled.
@@ -89,7 +94,9 @@ namespace texas::logging
 		bool show_eta = true;						 ///< Include estimated completion time when available.
 		bool show_rate = true;						 ///< Include the configured or measured rate.
 	};
+#pragma pack(pop)
 	/** @brief Effective logging settings after file and override processing. */
+#pragma pack(push, 8)
 	struct Config
 	{
 		bool enabled = true;									///< Global logging switch.
@@ -104,21 +111,27 @@ namespace texas::logging
 		/** @brief Initializes category thresholds from the default level. */
 		Config();
 	};
+#pragma pack(pop)
 	/** @brief One configuration bootstrap error and its source location. */
+#pragma pack(push, 8)
 	struct BootstrapError
 	{
 		std::filesystem::path file; ///< File associated with the error, when known.
 		std::string key;			///< Configuration key associated with the error, when known.
 		std::string reason;			///< Human-readable cause.
 	};
+#pragma pack(pop)
 	/** @brief Effective config or the first bootstrap error. */
+#pragma pack(push, 8)
 	struct ConfigLoadResult
 	{
 		Config config{};		///< Parsed or defaulted configuration.
 		BootstrapError error{}; ///< Error details when ok is false.
 		bool ok = true;			///< Whether loading and merging succeeded.
 	};
+#pragma pack(pop)
 	/** @brief Command-line overrides for logging settings. */
+#pragma pack(push, 8)
 	struct Overrides
 	{
 		std::filesystem::path config_path; ///< Explicit configuration file path.
@@ -130,6 +143,7 @@ namespace texas::logging
 		bool no_log = false;			   ///< Disable logging globally.
 		bool quiet = false;				   ///< Select quiet-mode defaults.
 	};
+#pragma pack(pop)
 	/** @brief Environment-variable names mapped to their values. */
 	using EnvironmentMap = std::unordered_map<std::string, std::string>;
 

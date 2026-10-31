@@ -13,6 +13,7 @@
 namespace texas::solver::multiway
 {
 	/** Predicted sizes and retained scratch for a streamed checkpoint write. */
+#pragma pack(push, 8)
 	struct MultiwayTrainingCheckpointStreamPlan
 	{
 		std::uint64_t public_state_count = 0U;
@@ -23,8 +24,10 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t retained_scratch_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Measurements and publication gates returned by a checkpoint write. */
+#pragma pack(push, 8)
 	struct MultiwayTrainingCheckpointWriteResult
 	{
 		MultiwayTrainingCheckpointStreamPlan plan{};
@@ -36,8 +39,10 @@ namespace texas::solver::multiway
 		MultiwayExportProcessGateResult process_gate{};
 		MultiwayExportSystemGateResult system_gate{};
 	};
+#pragma pack(pop)
 
 	/** Non-owning trainer data consumed by the streaming checkpoint writer. */
+#pragma pack(push, 8)
 	struct MultiwayTrainingCheckpointStreamSource
 	{
 		const MultiwayModelIdentity* identity = nullptr;
@@ -54,13 +59,16 @@ namespace texas::solver::multiway
 		std::uint64_t last_merged_stream_fingerprint = 0U;
 		std::array<std::uint64_t, 4U> street_visits{};
 	};
+#pragma pack(pop)
 
 	/** Optional fault-injection controls for checkpoint publication. */
+#pragma pack(push, 8)
 	struct MultiwayTrainingCheckpointWriteOptions
 	{
 		bool fail_before_close = false;
 		bool fail_before_publication = false;
 	};
+#pragma pack(pop)
 
 	// Versioned, lossless process-resume artifact. It is separate from the
 	// root-policy deployment artifact because it retains all sparse accumulators.

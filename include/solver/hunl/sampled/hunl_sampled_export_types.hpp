@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <vector>
 
+#pragma pack(push, 8)
+
 namespace texas::solver::hunl
 {
 	/** @brief One exported root action with its probability and menu metadata. */
@@ -27,3 +29,5 @@ namespace texas::solver::hunl
 		std::vector<HUNLSampledActionProbability> actions; ///< Root actions in menu order.
 	};
 } // namespace texas::solver::hunl
+
+#pragma pack(pop)

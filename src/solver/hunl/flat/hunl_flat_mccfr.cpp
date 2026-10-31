@@ -164,6 +164,7 @@ namespace texas::solver::hunl
 			return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 		}
 
+#pragma pack(push, 8)
 		struct DenseTraversalRowView
 		{
 			const double* current_strategy = nullptr;
@@ -180,6 +181,7 @@ namespace texas::solver::hunl
 				return current_strategy != nullptr && regret_delta != nullptr && strategy_delta != nullptr && action_stride == bucket_count;
 			}
 		};
+#pragma pack(pop)
 
 		DenseTraversalRowView build_dense_traversal_row_view(
 			const HUNLFlatInfosetTable& infoset_table,

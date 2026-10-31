@@ -50,14 +50,17 @@ namespace texas::solver::multiway
 	};
 
 	/** @brief Public context used to select a menu profile. */
+#pragma pack(push, 8)
 	struct MultiwayActionAbstractionContext
 	{
 		MultiwayPreflopSituation preflop_situation = MultiwayPreflopSituation::Auto;
 		MultiwayRelativePosition relative_position = MultiwayRelativePosition::Unknown;
 		MultiwayPostflopSizingMode postflop_sizing = MultiwayPostflopSizingMode::Compatibility;
 	};
+#pragma pack(pop)
 
 	/** @brief Versioned templates and thresholds for multiway action abstraction. */
+#pragma pack(push, 8)
 	struct MultiwayActionAbstractionConfig
 	{
 		// Increment whenever a menu template or its contextual selection changes.
@@ -89,6 +92,7 @@ namespace texas::solver::multiway
 		/** @brief Validates sizing templates, counts and translation threshold. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Outcome of mapping an observed action to a configured menu entry. */
 	enum class MultiwayActionTranslationStatus : std::uint8_t
@@ -101,6 +105,7 @@ namespace texas::solver::multiway
 	// Cold-path policy for deviations which must remain explicit in a local
 	// search rather than use a blueprint translation.
 	/** @brief Rules for deciding whether an off-menu action should be expanded locally. */
+#pragma pack(push, 8)
 	struct MultiwayDeviationExpansionConfig
 	{
 		std::uint64_t policy_version = 1U;
@@ -112,6 +117,7 @@ namespace texas::solver::multiway
 		/** @brief Validates policy version, seat count and enabled streets. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Local policy for handling an observed off-menu action. */
 	enum class MultiwayDeviationDisposition : std::uint8_t
@@ -123,6 +129,7 @@ namespace texas::solver::multiway
 	// The observed descriptor remains authoritative for public history and range
 	// updates. translated_action is only a blueprint-policy lookup key.
 	/** @brief Observed action, policy lookup action and translation provenance. */
+#pragma pack(push, 8)
 	struct MultiwayActionTranslation
 	{
 		MultiwayActionDescriptor observed_action{};
@@ -134,6 +141,7 @@ namespace texas::solver::multiway
 		double observed_scale = 0.0;
 		double translated_scale = 0.0;
 	};
+#pragma pack(pop)
 
 	/** @brief Generates legal abstract menus and classifies observed actions. */
 	class MultiwayActionAbstraction

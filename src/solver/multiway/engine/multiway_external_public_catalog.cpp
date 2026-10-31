@@ -208,6 +208,7 @@ namespace texas::solver::multiway
 		if (states.empty())
 			return;
 
+#pragma pack(push, 8)
 		struct ClassificationContext
 		{
 			const std::vector<MultiwayPublicStateDescriptor>* states = nullptr;
@@ -215,6 +216,7 @@ namespace texas::solver::multiway
 			std::vector<MultiwayPackedPublicNode>* existing_nodes = nullptr;
 			std::size_t next_state = 0U;
 		};
+#pragma pack(pop)
 		ClassificationContext context{ &states, &new_state_flags, existing_nodes, 0U };
 		const auto visit = [](void* raw_context, std::uint64_t key,
 							   const std::uint8_t* payload, std::size_t payload_size) -> bool {
@@ -331,6 +333,7 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external public catalog discovery flags are invalid");
 		if (new_state_flags != nullptr)
 		{
+#pragma pack(push, 8)
 			struct ExistingStateContext
 			{
 				const std::vector<MultiwayPublicStateDescriptor>* states = nullptr;
@@ -338,6 +341,7 @@ namespace texas::solver::multiway
 				std::vector<std::uint8_t>* found_existing = nullptr;
 				std::size_t next_state = 0U;
 			};
+#pragma pack(pop)
 			std::vector<std::uint8_t> found_existing(states.size(), 0U);
 			ExistingStateContext context{ &states, new_state_flags,
 				&found_existing, 0U };

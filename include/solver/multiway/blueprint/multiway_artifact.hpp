@@ -29,6 +29,7 @@ namespace texas::solver::multiway
 	// Sidecar for a compact root-only checkpoint. It binds the artifact bytes to
 	// the exact model identity without adding row storage to deployment exports.
 	/** Identity and content hash sidecar for a compact root snapshot. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintManifest
 	{
 		std::uint32_t schema_version = MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION;
@@ -38,6 +39,7 @@ namespace texas::solver::multiway
 		/** Checks schema version and identity/hash fields. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Identifies whether a verified snapshot came from the primary or fallback path. */
 	enum class MultiwayArtifactSource : std::uint8_t
@@ -47,6 +49,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Compact snapshot and manifest after identity and integrity verification. */
+#pragma pack(push, 8)
 	struct MultiwayVerifiedBlueprintArtifact
 	{
 		MultiwayBlueprintSnapshot snapshot{};
@@ -56,6 +59,7 @@ namespace texas::solver::multiway
 		/** Checks the snapshot and manifest against the expected model identity. */
 		void validate(const MultiwayModelIdentity& expected_identity) const;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_POLICY_CONTENT_HASH_VERSION = 1U;
@@ -64,6 +68,7 @@ namespace texas::solver::multiway
 	// Full runtime lookup payload. It is independent of the compact root
 	// snapshot so hosts can retain the latter as a compatible fallback.
 	/** Owning, full-row runtime blueprint payload. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintArtifact
 	{
 		std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION;
@@ -77,8 +82,10 @@ namespace texas::solver::multiway
 		/** Estimates the artifact's contribution to runtime memory usage. */
 		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Non-owning view of one serialized full-blueprint row. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintRowView
 	{
 		MultiwayInfosetId infoset{};
@@ -95,8 +102,10 @@ namespace texas::solver::multiway
 		{
 		}
 	};
+#pragma pack(pop)
 
 	/** Validated dimensions and identity for a streamed full-blueprint write. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintStreamPlan
 	{
 		std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION;
@@ -109,15 +118,19 @@ namespace texas::solver::multiway
 		/** Checks plan schema, identity, and byte/count invariants. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Half-open row interval assigned to one shard. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardRange
 	{
 		std::uint64_t first_row = 0U;
 		std::uint64_t row_count = 0U;
 	};
+#pragma pack(pop)
 
 	/** Row partition and per-shard serialized-size limit. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardLayout
 	{
 		std::uint64_t maximum_serialized_bytes = 0U;
@@ -127,19 +140,23 @@ namespace texas::solver::multiway
 		/** Checks that ranges cover planned rows within the configured bound. */
 		void validate(const MultiwayFullBlueprintStreamPlan& plan) const;
 	};
+#pragma pack(pop)
 
 	/** Estimated payload and manifest sizes for a sharded export. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardedSizeEstimate
 	{
 		std::uint64_t shard_bytes = 0U;
 		std::uint64_t manifest_bytes = 0U;
 		std::uint64_t total_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION = 1U;
 	inline constexpr std::uint64_t MULTIWAY_FULL_BLUEPRINT_MAX_SHARDS = 65'536U;
 
 	/** Relative path and verified range metadata for one shard file. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardReference
 	{
 		std::string relative_path;
@@ -148,8 +165,10 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
 	};
+#pragma pack(pop)
 
 	/** Identity, counts, hashes, and shard list for a full-blueprint export. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardManifest
 	{
 		std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION;
@@ -164,6 +183,7 @@ namespace texas::solver::multiway
 		/** Checks schema, identity, contiguous ranges, and aggregate counts. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Builds a validated stream plan for the requested row and action counts. */
 	[[nodiscard]] MultiwayFullBlueprintStreamPlan make_multiway_full_blueprint_stream_plan(
@@ -227,6 +247,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Aggregated timing and flush measurements for streaming output. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintWriterProfile
 	{
 		std::uint64_t sampled_rows = 0U;
@@ -236,8 +257,10 @@ namespace texas::solver::multiway
 		std::uint64_t sampled_encoding_nanoseconds = 0U;
 		std::uint64_t flushes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Strict-order, failure-injection, and optional profiling settings. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintStreamOptions
 	{
 		bool require_strict_row_order = true;
@@ -246,8 +269,10 @@ namespace texas::solver::multiway
 		// Optional caller-owned aggregate, shared across shards.
 		MultiwayFullBlueprintWriterProfile* profile = nullptr;
 	};
+#pragma pack(pop)
 
 	/** Counts, hashes, size, and publication method for one stream. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintStreamResult
 	{
 		std::uint64_t row_count = 0U;
@@ -257,16 +282,20 @@ namespace texas::solver::multiway
 		std::uint64_t policy_content_hash = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
+#pragma pack(pop)
 
 	/** Current encoded and output-stream byte progress. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintStreamProgress
 	{
 		std::uint64_t encoded_bytes = 0U;
 		// Bytes handed to the output stream, not necessarily durable on disk.
 		std::uint64_t stream_write_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Counts, hashes, and publication details for a sharded stream. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardedStreamResult
 	{
 		std::uint64_t row_count = 0U;
@@ -277,6 +306,7 @@ namespace texas::solver::multiway
 		std::uint64_t manifest_bytes = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
+#pragma pack(pop)
 
 	/** Writes a full blueprint incrementally to one atomically published file. */
 	class MultiwayFullBlueprintStreamWriter
@@ -422,13 +452,16 @@ namespace texas::solver::multiway
 	// Public audit record. It intentionally has no cards, ranges, raw seeds, or
 	// worker state. Probabilities are quantized to preserve a stable log boundary.
 	/** One public action and quantized policy probability in an audit record. */
+#pragma pack(push, 8)
 	struct MultiwayPublicDecisionPolicy
 	{
 		MultiwayActionDescriptor action{};
 		std::uint16_t probability = 0;
 	};
+#pragma pack(pop)
 
 	/** Public-only resolver decision suitable for an audit log. */
+#pragma pack(push, 8)
 	struct MultiwayPublicDecisionLog
 	{
 		std::uint32_t schema_version = MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION;
@@ -447,6 +480,7 @@ namespace texas::solver::multiway
 		/** Checks schema, public decision identity, and policy consistency. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Builds an auditable public decision record from a resolver request/result. */
 	[[nodiscard]] MultiwayPublicDecisionLog make_multiway_public_decision_log(
@@ -457,6 +491,7 @@ namespace texas::solver::multiway
 	// Sealed, public-only replay envelope. It carries the per-decision seeds from
 	// the public replay history while excluding hero cards and opponent ranges.
 	/** Integrity-sealed public replay history with deterministic decision seeds. */
+#pragma pack(push, 8)
 	struct MultiwayProtectedReplayRecord
 	{
 		std::uint32_t schema_version = MULTIWAY_PROTECTED_REPLAY_SCHEMA_VERSION;
@@ -474,5 +509,6 @@ namespace texas::solver::multiway
 		/** Checks schema, history, seed count, and integrity hash. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 } // namespace texas::solver::multiway

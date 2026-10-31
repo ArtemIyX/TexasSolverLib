@@ -39,6 +39,7 @@ namespace texas::solver::multiway
 	[[nodiscard]] bool decode_external_public_node(const std::uint8_t* bytes,
 		std::size_t size, MultiwayPackedPublicNode& output) noexcept;
 	/** Directory, cache, durability, compaction, and observer settings for a store. */
+#pragma pack(push, 8)
 	struct MultiwayExternalStorageConfig
 	{
 		std::filesystem::path directory;
@@ -61,15 +62,19 @@ namespace texas::solver::multiway
 		/** Validates storage limits against the record payload size. */
 		void validate(std::size_t payload_bytes) const;
 	};
+#pragma pack(pop)
 
 	/** Keyed byte payload appended to or retrieved from a record store. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRecord
 	{
 		std::uint64_t key = 0U;
 		std::vector<std::uint8_t> payload;
 	};
+#pragma pack(pop)
 
 	/** Cumulative lookup, I/O, cache, compaction, and publication counters. */
+#pragma pack(push, 8)
 	struct MultiwayExternalStorageStats
 	{
 		std::uint64_t lookups = 0U;
@@ -92,8 +97,10 @@ namespace texas::solver::multiway
 		std::uint64_t compactions = 0U;
 		std::uint64_t compaction_nanoseconds = 0U;
 	};
+#pragma pack(pop)
 
 	/** Detailed timing and byte counts for external-record lookup operations. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRecordLookupProfile
 	{
 		std::uint64_t index_opens = 0U;
@@ -108,15 +115,19 @@ namespace texas::solver::multiway
 		std::uint64_t data_open_nanoseconds = 0U;
 		std::uint64_t data_read_nanoseconds = 0U;
 	};
+#pragma pack(pop)
 
 	/** On-disk bytes retained by live and obsolete storage segments. */
+#pragma pack(push, 8)
 	struct MultiwayExternalDiskUsage
 	{
 		std::uint64_t live_segment_bytes = 0U;
 		std::uint64_t retained_segment_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Aggregate and per-component external storage metrics for training. */
+#pragma pack(push, 8)
 	struct MultiwayExternalStorageTelemetry
 	{
 		MultiwayExternalStorageStats stats{};
@@ -128,8 +139,10 @@ namespace texas::solver::multiway
 		std::uint64_t aggregate_commit_nanoseconds = 0U;
 		MultiwayExternalDiskUsage disk_usage{};
 	};
+#pragma pack(pop)
 
 	/** Published catalog, row, and page generations for one committed batch. */
+#pragma pack(push, 8)
 	struct MultiwayExternalGenerationManifest
 	{
 		std::uint64_t generation = 0U;
@@ -144,9 +157,11 @@ namespace texas::solver::multiway
 		std::uint64_t logical_value_count = 0U;
 		std::uint64_t content_hash = 0U;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA = 6U;
 	/** Resume metadata and pinned external segment references for training. */
+#pragma pack(push, 8)
 	struct MultiwayExternalCheckpointManifest
 	{
 		struct SegmentReference
@@ -183,20 +198,25 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 3U> component_last_batch_numbers{};
 		std::array<std::vector<SegmentReference>, 3U> segments;
 	};
+#pragma pack(pop)
 
 	/** Optional publication failure injection for checkpoint writing. */
+#pragma pack(push, 8)
 	struct MultiwayExternalCheckpointWriteOptions
 	{
 		bool fail_before_publication = false;
 	};
+#pragma pack(pop)
 
 	/** Optional transaction failure controls used by restore verification. */
+#pragma pack(push, 8)
 	struct MultiwayExternalCheckpointRestoreOptions
 	{
 		std::uint32_t fail_after_component_publications = 0U;
 		bool fail_before_aggregate_publication = false;
 		bool leave_pending_journal_for_recovery_test = false;
 	};
+#pragma pack(pop)
 
 	// Captures the currently published aggregate generation without exporting
 	// catalog, row, or cell data into process memory.
@@ -350,6 +370,7 @@ namespace texas::solver::multiway
 			std::uint32_t component);
 
 	private:
+#pragma pack(push, 8)
 		struct Run
 		{
 			std::uint64_t generation = 0U;
@@ -360,12 +381,16 @@ namespace texas::solver::multiway
 			std::uint64_t minimum_key = 0U;
 			std::uint64_t maximum_key = 0U;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct CacheEntry
 		{
 			std::uint64_t key = 0U;
 			bool valid = false;
 			std::vector<std::uint8_t> payload;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct AppendBatchContext
 		{
 			std::size_t first = 0U;
@@ -379,6 +404,7 @@ namespace texas::solver::multiway
 			std::filesystem::path index_path;
 			std::filesystem::path index_temp;
 		};
+#pragma pack(pop)
 
 		void load_manifest();
 		void append_batch_impl(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
@@ -498,6 +524,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Bucket/action dimensions and page range for one external row. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRowMetadata
 	{
 		std::uint32_t bucket_count = 0U;
@@ -505,8 +532,10 @@ namespace texas::solver::multiway
 		std::uint64_t first_page_id = 0U;
 		std::uint32_t page_count = 0U;
 	};
+#pragma pack(pop)
 
 	/** Page id and local dimensions for one bucket range. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRowPage
 	{
 		std::uint64_t page_id = 0U;
@@ -514,6 +543,7 @@ namespace texas::solver::multiway
 		std::uint32_t bucket_count = 0U;
 		std::uint8_t action_count = 0U;
 	};
+#pragma pack(pop)
 
 	/** Stable non-owning row handle bound to its owning external row index. */
 	class MultiwayExternalRowBinding
@@ -581,6 +611,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Per-operation timing and lookup counters for a compact page request. */
+#pragma pack(push, 8)
 	struct MultiwayExternalPageProfile
 	{
 		std::uint64_t locate_nanoseconds = 0U;
@@ -593,12 +624,14 @@ namespace texas::solver::multiway
 		std::uint64_t zero_pages = 0U;
 		MultiwayExternalRecordLookupProfile record_lookup{};
 	};
+#pragma pack(pop)
 
 	/** Bounded cache of fixed-point pages backed by an external record store. */
 	class MultiwayExternalCompactPages
 	{
 	public:
 		/** Pinned mutable cell view; valid only until the page is unpinned. */
+#pragma pack(push, 8)
 		struct PageView
 		{
 			// Cell pointers remain valid only until the matching unpin. Action stride
@@ -610,6 +643,7 @@ namespace texas::solver::multiway
 			std::uint8_t action_count = 0U;
 			std::uint32_t action_stride = 0U;
 		};
+#pragma pack(pop)
 
 		/** Opens a fixed-width page store with a bounded decoded-page cache. */
 		MultiwayExternalCompactPages(MultiwayExternalStorageConfig config,
@@ -650,6 +684,7 @@ namespace texas::solver::multiway
 		}
 
 	private:
+#pragma pack(push, 8)
 		struct Page
 		{
 			std::uint64_t page_id = 0U;
@@ -666,6 +701,7 @@ namespace texas::solver::multiway
 			std::vector<std::int32_t> before_regrets;
 			std::vector<std::uint64_t> before_strategy_masses;
 		};
+#pragma pack(pop)
 		[[nodiscard]] Page* find(std::uint64_t page_id) noexcept;
 		void validate_page_id(std::uint64_t page_id) const;
 		void cache_page(Page& page, std::size_t slot);
@@ -703,6 +739,7 @@ namespace texas::solver::multiway
 	{
 	public:
 		/** Move-only pinned page and bucket index used for accumulator access. */
+#pragma pack(push, 8)
 		struct PinnedBucket
 		{
 			PinnedBucket() = default;
@@ -716,6 +753,7 @@ namespace texas::solver::multiway
 			std::uint32_t local_bucket = 0U;
 			bool writable = false;
 		};
+#pragma pack(pop)
 
 		/** Opens the external row index and bounded compact-page cache. */
 		MultiwayExternalCompactStorage(MultiwayExternalStorageConfig row_config,
@@ -863,12 +901,14 @@ namespace texas::solver::multiway
 	{
 	public:
 		/** Mutable byte view valid only while its cache page remains pinned. */
+#pragma pack(push, 8)
 		struct PageView
 		{
 			std::uint64_t key = 0U;
 			std::uint8_t* bytes = nullptr;
 			std::size_t size = 0U;
 		};
+#pragma pack(pop)
 
 		/** Creates a bounded cache over the supplied record store. */
 		MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes);
@@ -889,6 +929,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 
 	private:
+#pragma pack(push, 8)
 		struct Page
 		{
 			std::uint64_t key = 0U;
@@ -898,6 +939,7 @@ namespace texas::solver::multiway
 			std::vector<std::uint8_t> bytes;
 			std::vector<std::uint8_t> before_batch;
 		};
+#pragma pack(pop)
 		[[nodiscard]] Page* find(std::uint64_t key) noexcept;
 		MultiwayExternalRecordStore* store_ = nullptr;
 		std::size_t payload_bytes_ = 0U;

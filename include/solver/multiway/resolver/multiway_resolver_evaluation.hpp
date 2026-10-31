@@ -26,14 +26,17 @@ namespace texas::solver::multiway
 	};
 
 	/** Stable candidate id paired with its resolver path. */
+#pragma pack(push, 8)
 	struct MultiwayResolverEvaluationCandidate
 	{
 		std::uint64_t id = 0U;
 		MultiwayResolverEvaluationCandidateKind kind =
 			MultiwayResolverEvaluationCandidateKind::StaticLegal;
 	};
+#pragma pack(pop)
 
 	/** Resolver settings and candidate registry for the evaluation adapter. */
+#pragma pack(push, 8)
 	struct MultiwayResolverEvaluationAdapterConfig
 	{
 		MultiwayResolverConfig resolver{};
@@ -42,16 +45,19 @@ namespace texas::solver::multiway
 		/** Checks candidate ids, modes, and resolver configuration. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	// One decision record returned to a callback-owned match host. It retains
 	// public resolver diagnostics but no request cards or ranges.
 	/** Candidate decision result and seed used by one evaluation host call. */
+#pragma pack(push, 8)
 	struct MultiwayResolverEvaluationDecision
 	{
 		std::uint64_t candidate_id = 0U;
 		std::uint64_t sampling_seed = 0U;
 		MultiwayResolverResult result{};
 	};
+#pragma pack(pop)
 
 	// Cold adapter for evaluation hosts. Every resolve call creates a fresh
 	// resolver, so stable-root state and runtime search sessions are request-local.

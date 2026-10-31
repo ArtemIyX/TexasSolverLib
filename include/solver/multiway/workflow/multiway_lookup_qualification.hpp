@@ -19,6 +19,7 @@ namespace texas::solver::multiway
 	class MultiwayMappedShardedBlueprintProvider;
 
 	/** Lookup outcomes, policy hash, replay fingerprints, and bounded samples. */
+#pragma pack(push, 8)
 	struct MultiwayLookupQualificationReport
 	{
 		MultiwayEvidenceHeader evidence{
@@ -45,6 +46,7 @@ namespace texas::solver::multiway
 			return missing_infosets == 0U && missing_buckets == 0U && action_menu_mismatches == 0U && (lookup_hits == 0U || policy_content_hash != 0U) && (second_replay_fingerprint == 0U || replay_fingerprint == second_replay_fingerprint);
 		}
 	};
+#pragma pack(pop)
 
 	// Replays deterministic sampled trajectories from the supplied initial root.
 	// Opponent policy requests must resolve through the immutable full blueprint.

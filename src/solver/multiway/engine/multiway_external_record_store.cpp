@@ -492,6 +492,7 @@ namespace texas::solver::multiway
 			return true;
 		const auto scan_started = std::chrono::steady_clock::now();
 
+#pragma pack(push, 8)
 		struct Cursor
 		{
 			std::ifstream index;
@@ -504,12 +505,15 @@ namespace texas::solver::multiway
 			bool has_previous_key = false;
 			std::vector<std::uint8_t> payload;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct Item
 		{
 			std::uint64_t key;
 			std::uint64_t generation;
 			std::size_t cursor;
 		};
+#pragma pack(pop)
 		const auto greater = [](const Item& left, const Item& right) {
 			return left.key > right.key || (left.key == right.key && (left.generation < right.generation || (left.generation == right.generation && left.cursor > right.cursor)));
 		};
@@ -606,6 +610,7 @@ namespace texas::solver::multiway
 		if (runs_.empty())
 			return true;
 
+#pragma pack(push, 8)
 		struct RunReader
 		{
 			std::ifstream index;
@@ -619,6 +624,7 @@ namespace texas::solver::multiway
 			bool index_initialized = false;
 			bool has_current = false;
 		};
+#pragma pack(pop)
 		std::vector<RunReader> readers(runs_.size());
 		std::vector<std::uint8_t> payload(payload_bytes_);
 		constexpr std::uint64_t kSequentialDataSkipThresholdBytes = 1024U;

@@ -20,13 +20,16 @@ namespace texas::util
 	using SuitPerm = std::array<std::uint8_t, 4>;
 
 	/** Dealt-card outcomes grouped with the suit permutation to their representative. */
+#pragma pack(push, 8)
 	struct IsoClass
 	{
 		std::size_t representative_child_idx = 0;
 		std::vector<std::pair<std::size_t, SuitPerm>> members;
 	};
+#pragma pack(pop)
 
 	/** Canonical public chance outcome and its combined probability/multiplicity. */
+#pragma pack(push, 8)
 	struct PublicChanceClass
 	{
 		std::size_t representative_outcome_idx = 0;
@@ -34,30 +37,38 @@ namespace texas::util
 		double probability = 0.0;
 		std::uint32_t multiplicity = 0;
 	};
+#pragma pack(pop)
 
 	/** Child member of a collapsed class and its per-player hand mappings. */
+#pragma pack(push, 8)
 	struct CollapseMember
 	{
 		std::size_t child_idx = 0;
 		std::array<std::vector<std::uint32_t>, 2> sigma;
 		SuitPerm rel_perm = { 0, 1, 2, 3 };
 	};
+#pragma pack(pop)
 
 	/** Representative child and equivalent children under suit symmetry. */
+#pragma pack(push, 8)
 	struct CollapseClass
 	{
 		std::size_t representative_child_idx = 0;
 		std::vector<CollapseMember> members;
 	};
+#pragma pack(pop)
 
 	/** Chance children partition and whether the node is symmetric. */
+#pragma pack(push, 8)
 	struct ChanceCollapse
 	{
 		std::vector<CollapseClass> classes;
 		bool symmetric = false;
 	};
+#pragma pack(pop)
 
 	/** Optional precomputed chance collapses indexed by flat-tree node. */
+#pragma pack(push, 8)
 	struct SuitIsoCache
 	{
 		std::vector<std::optional<ChanceCollapse>> nodes;
@@ -67,6 +78,7 @@ namespace texas::util
 		/** Reports whether any cache entries are populated. */
 		bool is_active() const;
 	};
+#pragma pack(pop)
 
 	/** Applies a suit permutation to one card id. */
 	std::uint8_t apply_perm_to_card(const SuitPerm& perm, std::uint8_t card);

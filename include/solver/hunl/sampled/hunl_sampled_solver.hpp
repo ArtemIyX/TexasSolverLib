@@ -22,6 +22,7 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Structured public root and optional depth-limited evaluator for a sampled solve. */
+#pragma pack(push, 8)
 	struct HUNLSampledSolveRequest
 	{
 		// Production sampled solving requires one explicit structured public
@@ -30,8 +31,10 @@ namespace texas::solver::hunl
 		// Non-owning. Required when the structured root has a non-zero depth limit.
 		const HUNLLeafEvaluator* leaf_evaluator = nullptr; ///< Non-owning callback required for depth-limited roots.
 	};
+#pragma pack(pop)
 
 	/** @brief Root strategy, range-wide diagnostics and progress from a sampled solve. */
+#pragma pack(push, 8)
 	struct HUNLSampledSolveResult
 	{
 		HUNLSampledRootStrategy root_strategy;											///< Acting-root strategy for the selected hero hand.
@@ -40,8 +43,10 @@ namespace texas::solver::hunl
 		std::uint64_t batches_completed = 0;											///< Whole trajectory batches completed.
 		bool timed_out = false;															///< Whether a supplied budget or deadline expired.
 	};
+#pragma pack(pop)
 
 	/** @brief Memory estimates for sampled graph, rows, workers and exports. */
+#pragma pack(push, 8)
 	struct HUNLSampledMemoryEstimate
 	{
 		std::uint64_t public_state_cache_bytes = 0;
@@ -64,6 +69,7 @@ namespace texas::solver::hunl
 			return total_bytes_live;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Result category of sampled memory preflight. */
 	enum class HUNLSampledMemoryStatus : std::uint8_t
@@ -74,6 +80,7 @@ namespace texas::solver::hunl
 	};
 
 	/** @brief Recorded changes made by adaptive memory fallback. */
+#pragma pack(push, 8)
 	struct HUNLSampledAdaptiveAdjustments
 	{
 		/** @brief Maximum number of before/after estimates retained. */
@@ -84,8 +91,10 @@ namespace texas::solver::hunl
 		std::array<std::uint64_t, kMaxRecordedSteps> estimate_after{};	///< Estimates after each adjustment.
 		std::size_t recorded_step_count = 0;							///< Number of recorded adjustments.
 	};
+#pragma pack(pop)
 
 	/** @brief Memory preflight status, estimate and effective sampled settings. */
+#pragma pack(push, 8)
 	struct HUNLSampledMemoryPreflight
 	{
 		HUNLSampledMemoryStatus status = HUNLSampledMemoryStatus::Ok; ///< Admission category.
@@ -94,6 +103,7 @@ namespace texas::solver::hunl
 		HUNLSampledAdaptiveAdjustments adjustments{};				  ///< Fallback steps taken during preflight.
 		const char* message = "";									  ///< Static detail for warning or rejection.
 	};
+#pragma pack(pop)
 
 	/** @brief Coordinates validation, memory preflight and sampled traversal sessions. */
 	class HUNLSampledSolver

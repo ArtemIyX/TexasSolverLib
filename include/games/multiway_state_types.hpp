@@ -10,6 +10,8 @@
 
 #include <vector>
 
+#pragma pack(push, 8)
+
 namespace texas::games::multiway
 {
 	/** @brief Initial stacks, contributions and betting metadata for a multiway hand. */
@@ -57,3 +59,5 @@ namespace texas::games::multiway
 		void validate() const;
 	};
 } // namespace texas::games::multiway
+
+#pragma pack(pop)

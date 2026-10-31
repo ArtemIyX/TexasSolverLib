@@ -21,6 +21,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct BenchmarkConfig
 	{
 		std::string preset = "tiny";
@@ -37,7 +38,9 @@ namespace
 		bool use_sparse_storage = false;
 		bool use_discounting = false;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct BenchmarkResult
 	{
 		std::string graph_name;
@@ -75,7 +78,9 @@ namespace
 		std::uint64_t worker_wakeups = 0;
 		std::uint64_t strategy_snapshot_rebuilds = 0;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct GraphPresetSpec
 	{
 		std::string name;
@@ -84,12 +89,15 @@ namespace
 		std::uint32_t opponent_actions = 0;
 		std::uint32_t reply_actions = 0;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct BatchSweepRun
 	{
 		std::uint32_t batch_size = 0;
 		std::vector<BenchmarkResult> results;
 	};
+#pragma pack(pop)
 
 	bool parse_positive_u32(std::string_view text, std::uint32_t& out)
 	{

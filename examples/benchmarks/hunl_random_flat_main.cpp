@@ -31,6 +31,7 @@ namespace
 	constexpr std::uint64_t kMemoryWarningBytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
 	constexpr std::uint64_t kMemoryFailBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 
+#pragma pack(push, 8)
 	struct RandomConfig
 	{
 		enum class Preset : std::uint8_t
@@ -57,6 +58,7 @@ namespace
 		bool street_overridden = false;
 		bool precision_overridden = false;
 	};
+#pragma pack(pop)
 
 	bool parse_uint64(std::string_view text, std::uint64_t& out)
 	{
@@ -389,12 +391,15 @@ namespace
 		return strategy;
 	}
 
+#pragma pack(push, 8)
 	struct RandomState
 	{
 		texas::HUNLConfig config;
 		texas::HUNLState state;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct TimedBenchmarkResult
 	{
 		texas::HUNLFlatAverageStrategyTable strategy_table;
@@ -423,6 +428,7 @@ namespace
 		texas::HUNLFlatMCCFR::Profile sampled_profile{};
 		texas::HUNLFlatMCCFR::Counters sampled_counters{};
 	};
+#pragma pack(pop)
 
 	RandomState make_random_state(const RandomConfig& cfg)
 	{

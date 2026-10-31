@@ -17,6 +17,7 @@ namespace texas::solver::hunl
 	class HUNLSampledStorage;
 
 	/** @brief Value estimate and work counters produced by one sampled traversal. */
+#pragma pack(push, 8)
 	struct HUNLSampledTraversalResult
 	{
 		/** @brief Sentinel indicating no sampled edge slot was recorded. */
@@ -35,8 +36,10 @@ namespace texas::solver::hunl
 		};
 		std::uint8_t sampled_edge_slot_count = 0;
 	};
+#pragma pack(pop)
 
 	/** @brief Regret and average-strategy increment for one action-bucket value. */
+#pragma pack(push, 8)
 	struct HUNLSampledValueDelta
 	{
 		core::InfosetId infoset_id{};
@@ -46,8 +49,10 @@ namespace texas::solver::hunl
 		double strategy_sum = 0.0;
 		std::uint64_t trajectory_id = 0;
 	};
+#pragma pack(pop)
 
 	/** @brief Worker-owned action buffers and unmerged value deltas. */
+#pragma pack(push, 8)
 	struct HUNLSampledWorkerScratch
 	{
 		std::vector<double> action_values;
@@ -60,6 +65,7 @@ namespace texas::solver::hunl
 		/** @brief Reserves space for at least count value deltas. */
 		void reserve_deltas(std::size_t count);
 	};
+#pragma pack(pop)
 
 	/** @brief Merges one worker's deltas into sampled storage. */
 	void merge_hunl_sampled_worker_deltas(

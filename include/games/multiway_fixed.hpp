@@ -22,6 +22,7 @@ namespace texas::games::multiway
 	constexpr std::size_t kMultiwayFixedMaxActions = 4U; ///< Capacity of a fixed legal-action menu.
 
 	/** @brief Fixed-capacity list of actions legal in one betting state. */
+#pragma pack(push, 8)
 	struct MultiwayFixedActionMenu
 	{
 		std::array<MultiwayAction, kMultiwayFixedMaxActions> actions = {}; ///< Legal actions in menu order.
@@ -33,12 +34,14 @@ namespace texas::games::multiway
 		 */
 		[[nodiscard]] bool contains(MultiwayAction action) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Fixed-capacity, value-owned view of a multiway betting state.
 	 *
 	 * Per-seat arrays use entries [0, seat_count). The type owns no heap memory
 	 * and copies its state by value.
 	 */
+#pragma pack(push, 8)
 	struct MultiwayFixedState
 	{
 		std::uint8_t seat_count = 0;									   ///< Active table size, from two through kMultiwayFixedMaxSeats.
@@ -90,6 +93,7 @@ namespace texas::games::multiway
 		 */
 		[[nodiscard]] MultiwayFixedState begin_next_street(Street next_street, PlayerId first_player) const;
 	};
+#pragma pack(pop)
 
 	/** @brief Converts a validated dynamic game config to fixed-capacity state.
 	 * @param config Initial stacks, contributions, street and first actor.
@@ -118,6 +122,7 @@ namespace texas::games::multiway
 		const MultiwayFixedState& state);
 
 	/** @brief Inputs required to settle a multiway hand in fixed-capacity storage. */
+#pragma pack(push, 8)
 	struct MultiwayFixedTerminalInput
 	{
 		std::uint8_t seat_count = 0;										  ///< Active table size; per-seat arrays use entries [0, seat_count).
@@ -133,8 +138,10 @@ namespace texas::games::multiway
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief One fixed-capacity side-pot layer and its eligible seats. */
+#pragma pack(push, 8)
 	struct MultiwayFixedSidePot
 	{
 		int amount = 0;														///< Chips remaining in this pot after rake is taken.
@@ -142,16 +149,20 @@ namespace texas::games::multiway
 		std::array<PlayerId, kMultiwayFixedMaxSeats> eligible_players = {}; ///< Non-folded seats eligible to win this pot.
 		std::uint8_t eligible_count = 0;									///< Number of valid eligible_players entries.
 	};
+#pragma pack(pop)
 
 	/** @brief Reusable temporary arrays for fixed-capacity settlement. */
+#pragma pack(push, 8)
 	struct MultiwayFixedTerminalScratch
 	{
 		std::array<int, kMultiwayFixedMaxSeats> levels = {};	   ///< Sorted distinct contribution levels for the current call.
 		std::uint8_t level_count = 0;							   ///< Number of valid levels entries.
 		std::array<PlayerId, kMultiwayFixedMaxSeats> winners = {}; ///< Temporary winner seats for one pot.
 	};
+#pragma pack(pop)
 
 	/** @brief Fixed-capacity payouts, refunds, utilities and pot details for a settled hand. */
+#pragma pack(push, 8)
 	struct MultiwayFixedTerminalResult
 	{
 		std::uint8_t seat_count = 0;										///< Number of seats represented by result arrays.
@@ -162,6 +173,7 @@ namespace texas::games::multiway
 		std::array<Value, kMultiwayFixedMaxSeats> utilities = {};			///< Net payout minus contribution for each seat.
 		int rake_taken = 0;													///< Chips removed from contested pots under the rake policy.
 	};
+#pragma pack(pop)
 
 	/** @brief Settles a hand using the rake policy stored in input.
 	 *

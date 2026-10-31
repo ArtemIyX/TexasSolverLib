@@ -25,6 +25,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Topology identifiers and allocation state for one logical processor. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerTopologyRecord
 	{
 		std::uint32_t cpu_set_id = kMultiwayUnknownTopologyId;
@@ -45,8 +46,10 @@ namespace texas::solver::multiway
 			return (static_cast<std::uint32_t>(processor_group) << 16U) | static_cast<std::uint32_t>(logical_processor_index);
 		}
 	};
+#pragma pack(pop)
 
 	/** Processor records and provenance returned by topology discovery. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerTopologyInventory
 	{
 		MultiwayWorkerTopologySource source = MultiwayWorkerTopologySource::Synthetic;
@@ -69,6 +72,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayWorkerTopologyRecord* find(
 			std::uint16_t processor_group, std::uint16_t logical_processor_index) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Strategy for mapping solver workers to discovered processors. */
 	enum class MultiwayWorkerPlacementPolicy : std::uint8_t
@@ -88,6 +92,7 @@ namespace texas::solver::multiway
 		const char* value);
 
 	/** Requested placement policy and migration-sampling interval. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerPlacementConfig
 	{
 		MultiwayWorkerPlacementPolicy policy = MultiwayWorkerPlacementPolicy::OsDefault;
@@ -98,8 +103,10 @@ namespace texas::solver::multiway
 		/** Checks that the selected policy and sampling interval are supported. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Resolved processor requests for the coordinator and solver workers. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerPlacementPlan
 	{
 		MultiwayWorkerPlacementPolicy policy = MultiwayWorkerPlacementPolicy::OsDefault;
@@ -111,6 +118,7 @@ namespace texas::solver::multiway
 		std::uint32_t coordinator_physical_core_id = kMultiwayUnknownTopologyId;
 		std::vector<MultiwayWorkerTopologyRecord> requested;
 	};
+#pragma pack(pop)
 
 	/** Creates an inventory from caller-provided processor records. */
 	[[nodiscard]] MultiwayWorkerTopologyInventory make_multiway_worker_topology(

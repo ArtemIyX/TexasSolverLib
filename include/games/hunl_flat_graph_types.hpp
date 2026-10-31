@@ -18,6 +18,8 @@
 #include <type_traits>
 #include <vector>
 
+#pragma pack(push, 8)
+
 namespace texas::games::hunl
 {
 	struct HUNLConfig;
@@ -160,3 +162,5 @@ namespace texas::games::hunl
 		static HUNLFlatSolveGraph build(std::shared_ptr<const HUNLConfig> config);
 	};
 } // namespace texas::games::hunl
+
+#pragma pack(pop)

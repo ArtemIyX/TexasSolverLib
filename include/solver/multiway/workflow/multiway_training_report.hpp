@@ -15,6 +15,7 @@ namespace texas::solver::multiway
 {
 
 	/** Evidence header, batch metrics, memory gates, and export/checkpoint results. */
+#pragma pack(push, 8)
 	struct MultiwayTrainingReport
 	{
 		MultiwayEvidenceHeader evidence{
@@ -208,6 +209,7 @@ namespace texas::solver::multiway
 		/** Checks schema, training counts, instrumentation, and telemetry fields. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Builds a report from trainer status and deterministic merge metadata. */
 	[[nodiscard]] MultiwayTrainingReport make_multiway_training_report(

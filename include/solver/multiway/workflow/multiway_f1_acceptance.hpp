@@ -15,6 +15,7 @@ namespace texas::solver::multiway
 {
 
 	/** Identity and content verification results for bucket artifacts. */
+#pragma pack(push, 8)
 	struct MultiwayF1BucketEvidence
 	{
 		MultiwayEvidenceHeader header{
@@ -30,8 +31,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Coverage, progress, and process-memory evidence from training. */
+#pragma pack(push, 8)
 	struct MultiwayF1TrainingEvidence
 	{
 		MultiwayEvidenceHeader header{
@@ -53,8 +56,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Equality predicates recorded for continuous and resumed runs. */
+#pragma pack(push, 8)
 	struct MultiwayF1ResumeEvidence
 	{
 		MultiwayEvidenceHeader header{
@@ -68,8 +73,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Missing-row counters and replay fingerprints from lookup qualification. */
+#pragma pack(push, 8)
 	struct MultiwayF1LookupEvidence
 	{
 		MultiwayEvidenceHeader header{
@@ -85,8 +92,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Operator, time, command, report, and exit status for one human run. */
+#pragma pack(push, 8)
 	struct MultiwayF1HumanRunRecord
 	{
 		std::string operator_id;
@@ -99,8 +108,10 @@ namespace texas::solver::multiway
 		/** Checks required operator, time, command, and report metadata. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Combined machine and human evidence consumed by acceptance checks. */
+#pragma pack(push, 8)
 	struct MultiwayF1AcceptanceEvidence
 	{
 		MultiwayEvidenceHeader header{
@@ -116,8 +127,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Acceptance status, failed predicate count, and source report names. */
+#pragma pack(push, 8)
 	struct MultiwayF1AcceptanceReport
 	{
 		std::uint32_t schema_version = MULTIWAY_ACCEPTANCE_REPORT_SCHEMA_VERSION;
@@ -129,8 +142,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Report paths and operator record used to construct acceptance evidence. */
+#pragma pack(push, 8)
 	struct MultiwayF1AcceptanceInputPaths
 	{
 		std::filesystem::path bucket_inspection_report;
@@ -140,6 +155,7 @@ namespace texas::solver::multiway
 		std::filesystem::path second_lookup_report;
 		MultiwayF1HumanRunRecord human_run{};
 	};
+#pragma pack(pop)
 
 	/** Evaluates all acceptance predicates against validated evidence. */
 	[[nodiscard]] MultiwayF1AcceptanceReport evaluate_multiway_f1_acceptance(

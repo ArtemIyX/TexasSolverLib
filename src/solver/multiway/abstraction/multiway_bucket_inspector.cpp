@@ -24,6 +24,7 @@ namespace texas::solver::multiway
 		constexpr std::uint32_t kLeafTables = 4096U;
 		constexpr std::uint64_t kHeaderBytes = 116U;
 
+#pragma pack(push, 8)
 		struct Range
 		{
 			std::uint64_t begin = 0U;
@@ -32,7 +33,9 @@ namespace texas::solver::multiway
 			core::Street street = core::Street::Flop;
 			std::uint64_t street_index = 0U;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct Reader
 		{
 			std::ifstream input;
@@ -80,6 +83,7 @@ namespace texas::solver::multiway
 				return value;
 			}
 		};
+#pragma pack(pop)
 
 		std::uint64_t get_u64(std::ifstream& input)
 		{
@@ -122,11 +126,13 @@ namespace texas::solver::multiway
 			}
 		}
 
+#pragma pack(push, 8)
 		struct Header
 		{
 			MultiwayModelIdentity identity{};
 			std::uint32_t table_count = 0U;
 		};
+#pragma pack(pop)
 
 		Header read_header(const std::filesystem::path& path, const MultiwayModelIdentity& expected)
 		{
@@ -169,6 +175,7 @@ namespace texas::solver::multiway
 			return expected == file_bytes;
 		}
 
+#pragma pack(push, 8)
 		struct LeafResult
 		{
 			std::uint64_t tables = 0U;
@@ -178,6 +185,7 @@ namespace texas::solver::multiway
 			std::exception_ptr error{};
 			std::uint64_t error_table = std::numeric_limits<std::uint64_t>::max();
 		};
+#pragma pack(pop)
 
 		void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept
 		{

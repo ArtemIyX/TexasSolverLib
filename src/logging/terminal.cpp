@@ -10,6 +10,7 @@ namespace texas::logging::detail
 {
 	namespace
 	{
+#pragma pack(push, 8)
 		struct TerminalState
 		{
 			std::mutex mutex;
@@ -34,6 +35,8 @@ namespace texas::logging::detail
 			bool show_eta = true;
 			bool show_rate = true;
 		};
+#pragma pack(pop)
+		static_assert(alignof(std::mutex) <= 8, "packed TerminalState requires naturally aligned mutexes");
 		TerminalState& state()
 		{
 			static TerminalState value;

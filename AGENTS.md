@@ -112,6 +112,9 @@ Ownership rule:
 ## Style
 
 - Use C++17.
+- Declare project structs under `#pragma pack(push, 8)` and restore the previous packing with `#pragma pack(pop)` after the declarations. Keep includes outside the packing scope.
+- Preserve explicit cache-line alignment where required. Eight is a member packing limit, not a cap on an explicitly aligned struct.
+- Treat packing changes as ABI changes: rebuild consumers and verify member alignment, serialized layouts, and compatibility on supported platforms. Packing does not define a portable wire format.
 - Keep comments short and useful.
 - Prefer clear structured APIs over ad hoc strings.
 - Use integer ids and explicit metadata for states, rows, actions, buckets, and trajectories.

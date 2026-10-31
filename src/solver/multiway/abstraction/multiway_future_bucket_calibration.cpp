@@ -69,6 +69,7 @@ namespace texas::solver::multiway
 		result.samples = samples.size();
 		result.artifact_bytes = bytes.size();
 		result.profile_identity = profile.feature_version ^ (profile.clustering_version << 21U) ^ profile.seed;
+#pragma pack(push, 8)
 		struct BucketStats
 		{
 			std::size_t board = 0U;
@@ -77,6 +78,7 @@ namespace texas::solver::multiway
 			double sum = 0.0;
 			double sum_squared = 0.0;
 		};
+#pragma pack(pop)
 		std::vector<BucketStats> stats;
 		std::vector<std::size_t> sample_boards;
 		sample_boards.reserve(samples.size());

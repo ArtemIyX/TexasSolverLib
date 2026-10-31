@@ -42,6 +42,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Limits on betting expansion and exact all-in enumeration. */
+#pragma pack(push, 8)
 	struct MultiwayRolloutLimits
 	{
 		std::uint32_t max_betting_actions = 64U;
@@ -49,14 +50,17 @@ namespace texas::solver::multiway
 		// spaces use the supplied common-random-number seeds instead.
 		std::uint32_t max_exact_runouts = 1'200U;
 	};
+#pragma pack(pop)
 
 	/** Fixed-capacity action and blueprint-probability output from a provider. */
+#pragma pack(push, 8)
 	struct MultiwayRolloutActionMenu
 	{
 		std::array<MultiwayActionDescriptor, MULTIWAY_ROLLOUT_MAX_ACTIONS> actions{};
 		std::array<Probability, MULTIWAY_ROLLOUT_MAX_ACTIONS> blueprint{};
 		std::uint8_t count = 0;
 	};
+#pragma pack(pop)
 
 	// The provider returns the blueprint menu at one exact betting state. It must
 	// only return legal, unique actions and must not retain `board`.
@@ -71,6 +75,7 @@ namespace texas::solver::multiway
 	// Converts the existing dynamic leaf request to a fixed continuation state.
 	// Holes are ordered by seat and include folded seats to preserve settlement.
 	/** Fixed-state cards, board, and settlement settings for one rollout. */
+#pragma pack(push, 8)
 	struct MultiwayRolloutInput
 	{
 		const MultiwayFixedState* state = nullptr;
@@ -83,6 +88,7 @@ namespace texas::solver::multiway
 		PlayerId odd_chip_first_seat = 0;
 		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
 	};
+#pragma pack(pop)
 
 	/** Converts a leaf request into the fixed rollout input representation. */
 	using MultiwayRolloutInputProviderFn = bool (*)(
@@ -91,6 +97,7 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** Caller-owned fixed-state buffers reused during a rollout evaluation. */
+#pragma pack(push, 8)
 	struct MultiwayRolloutScratch
 	{
 		MultiwayFixedState state{};
@@ -101,8 +108,10 @@ namespace texas::solver::multiway
 		MultiwayFixedTerminalResult terminal_result{};
 		std::array<Probability, MULTIWAY_ROLLOUT_MAX_ACTIONS> policy{};
 	};
+#pragma pack(pop)
 
 	/** Values and runout counters for every fixed continuation policy. */
+#pragma pack(push, 8)
 	struct MultiwayRolloutProfileResult
 	{
 		std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
@@ -112,11 +121,13 @@ namespace texas::solver::multiway
 		std::uint32_t exact_runouts = 0;
 		std::uint32_t betting_actions = 0;
 	};
+#pragma pack(pop)
 
 	// Internal cache keys remain request-local and contain opaque identities, not
 	// private cards or range rows. Public-state identity already binds the exact
 	// betting history and legal action menu.
 	/** Request identity for safely reusing one rollout profile from a local cache. */
+#pragma pack(push, 8)
 	struct MultiwayContinuationCacheKey
 	{
 		MultiwayPublicStateId public_state{};
@@ -140,8 +151,10 @@ namespace texas::solver::multiway
 		/** Orders keys deterministically for sorted cache storage. */
 		[[nodiscard]] bool operator<(const MultiwayContinuationCacheKey& other) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Counters and repeated-seed measurements collected for rollout calls. */
+#pragma pack(push, 8)
 	struct MultiwayContinuationDiagnostics
 	{
 		std::uint64_t seed = 0;
@@ -159,6 +172,7 @@ namespace texas::solver::multiway
 		std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> mean_policy_values{};
 		std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> repeated_seed_variance{};
 	};
+#pragma pack(pop)
 
 	// Fixed-capacity, request-local cache. Construction performs the only reserve;
 	// lookup and admission never grow storage beyond the configured byte cap.
@@ -197,11 +211,13 @@ namespace texas::solver::multiway
 		[[nodiscard]] static constexpr std::uint64_t entry_bytes() noexcept;
 
 	private:
+#pragma pack(push, 8)
 		struct Entry
 		{
 			MultiwayContinuationCacheKey key{};
 			MultiwayRolloutProfileResult value{};
 		};
+#pragma pack(pop)
 
 		std::size_t capacity_ = 0;
 		std::vector<Entry> entries_;
@@ -213,6 +229,7 @@ namespace texas::solver::multiway
 	}
 
 	/** Providers, seed batch, bounds, cache, diagnostics, and scratch for rollout. */
+#pragma pack(push, 8)
 	struct MultiwayRolloutLeafContext
 	{
 		MultiwayRolloutInputProviderFn provide_input = nullptr;
@@ -234,6 +251,7 @@ namespace texas::solver::multiway
 		// evaluation and must outlive the synchronous evaluator invocation.
 		MultiwayRolloutScratch* scratch = nullptr;
 	};
+#pragma pack(pop)
 
 	// Evaluates every fixed policy with the same seed batch. Complete all-in
 	// runouts are exactly enumerated whenever their bounded space fits the cap.

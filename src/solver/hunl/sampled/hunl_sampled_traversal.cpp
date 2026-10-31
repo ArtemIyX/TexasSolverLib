@@ -16,12 +16,14 @@ namespace texas::solver::hunl
 
 		constexpr std::size_t kMaxDecisionActions = 16;
 
+#pragma pack(push, 8)
 		struct TraversalReach
 		{
 			std::array<double, 2> player = { 1.0, 1.0 };
 			double chance = 1.0;
 			double sampling = 1.0;
 		};
+#pragma pack(pop)
 
 		std::uint32_t sampled_edge_id(const HUNLSampledNode& node, std::size_t edge_slot)
 		{

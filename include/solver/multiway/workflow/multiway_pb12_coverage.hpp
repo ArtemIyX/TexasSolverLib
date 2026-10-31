@@ -16,6 +16,7 @@ namespace texas::solver::multiway
 	struct MultiwayModelIdentity;
 
 	/** Stable public state, seat, bucket, and menu key for required coverage. */
+#pragma pack(push, 8)
 	struct MultiwayPB12CoverageKey
 	{
 		std::uint64_t public_state_id = 0U;
@@ -23,6 +24,7 @@ namespace texas::solver::multiway
 		std::uint32_t bucket = 0U;
 		std::uint64_t action_menu_id = 0U;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::array<MultiwayPB12CoverageKey, 8U> MULTIWAY_PB12_COVERAGE_KEYS = { {
 		{ 5161244728243252751ULL, 2, 96U, 16789259325962222034ULL },
@@ -36,10 +38,12 @@ namespace texas::solver::multiway
 	} };
 
 	/** Public descriptors admitted for the configured PB-12 coverage targets. */
+#pragma pack(push, 8)
 	struct MultiwayPB12CoverageAdmission
 	{
 		std::array<MultiwayPublicStateDescriptor, MULTIWAY_PB12_COVERAGE_KEYS.size()> target_states{};
 	};
+#pragma pack(pop)
 
 	/** Builds and admits all targeted public states into the coordinator. */
 	[[nodiscard]] MultiwayPB12CoverageAdmission admit_multiway_pb12_coverage(

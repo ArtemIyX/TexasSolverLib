@@ -103,6 +103,7 @@ namespace texas::solver::multiway
 		};
 	} // namespace
 
+#pragma pack(push, 8)
 	struct MultiwayRootBatchRunner::BatchRunContext
 	{
 		std::uint64_t first_trajectory_id = 0U;
@@ -120,6 +121,7 @@ namespace texas::solver::multiway
 		std::optional<MultiwaySearchProfile> batch_profile;
 		std::optional<MultiwayAllocationProbe> coordinator_allocation_probe;
 	};
+#pragma pack(pop)
 
 	MultiwayRootBatchRunner::MultiwayRootBatchRunner(
 		MultiwayRootExternalSamplingTraversal traversal,

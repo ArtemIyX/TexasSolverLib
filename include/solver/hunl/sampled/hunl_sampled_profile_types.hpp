@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#pragma pack(push, 8)
+
 namespace texas::solver::hunl
 {
 	/** @brief Copyable counters and timing values captured from a sampled profile. */
@@ -33,3 +35,5 @@ namespace texas::solver::hunl
 		bool memory_rejected = false;
 	};
 } // namespace texas::solver::hunl
+
+#pragma pack(pop)

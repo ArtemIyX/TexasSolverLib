@@ -20,6 +20,7 @@ namespace texas::solver::multiway
 	// This key deliberately contains only public state, the acting seat, and the
 	// abstract future bucket. It must not acquire private cards or range weights.
 	/** Public information-set identity for continuation-policy selection. */
+#pragma pack(push, 8)
 	struct MultiwayContinuationSelectionKey
 	{
 		MultiwayPublicStateId public_state{};
@@ -32,8 +33,10 @@ namespace texas::solver::multiway
 		/** Returns whether the public identifiers form a valid selection key. */
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** One worker's ordered continuation regret update for an information set. */
+#pragma pack(push, 8)
 	struct MultiwayContinuationDelta
 	{
 		MultiwayContinuationSelectionKey key{};
@@ -43,6 +46,7 @@ namespace texas::solver::multiway
 		std::uint32_t sequence = 0U;
 		double importance_weight = 1.0;
 	};
+#pragma pack(pop)
 
 	/** Bounded per-worker stream of continuation-regret deltas. */
 	class MultiwayContinuationDeltaStream
@@ -131,11 +135,13 @@ namespace texas::solver::multiway
 
 	private:
 		MultiwayContinuationPolicyKind policy_ = MultiwayContinuationPolicyKind::Blueprint;
+#pragma pack(push, 8)
 		struct Row
 		{
 			MultiwayContinuationSelectionKey key{};
 			std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> regrets{};
 		};
+#pragma pack(pop)
 		mutable std::vector<Row> rows_;
 		mutable std::shared_mutex mutex_;
 	};

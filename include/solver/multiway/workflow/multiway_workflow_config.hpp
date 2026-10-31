@@ -31,6 +31,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_BATCHES = 50'000'000U;
 
 	/** Upper limits applied when accepting a workflow configuration. */
+#pragma pack(push, 8)
 	struct MultiwayWorkflowResourceLimits
 	{
 		std::uint32_t max_training_workers = 16U;
@@ -49,8 +50,10 @@ namespace texas::solver::multiway
 		/** Checks that resource ceilings are positive and mutually consistent. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Model, storage, scheduling, capacity, resource, and output settings. */
+#pragma pack(push, 8)
 	struct MultiwayWorkflowConfig
 	{
 		std::uint32_t schema_version = 0U;
@@ -123,15 +126,19 @@ namespace texas::solver::multiway
 		// Parser-only provenance. Zero means the legacy aggregate keys were used.
 		std::uint8_t explicit_stream_capacity_mask = 0U;
 	};
+#pragma pack(pop)
 
 	/** Configured and effective worker counts after batch-size constraints. */
+#pragma pack(push, 8)
 	struct MultiwayTrainingWorkerResolution
 	{
 		std::uint32_t requested = 0U;
 		std::uint32_t effective = 0U;
 	};
+#pragma pack(pop)
 
 	/** Worker resolution, memory estimate, and resource admission result. */
+#pragma pack(push, 8)
 	struct MultiwayWorkflowResourcePreflight
 	{
 		MultiwayTrainingWorkerResolution workers{};
@@ -141,6 +148,7 @@ namespace texas::solver::multiway
 		const char* rejected_category = "none";
 		const char* message = "not run";
 	};
+#pragma pack(pop)
 
 	/** Resolves worker count from config, override, and trajectories per batch. */
 	[[nodiscard]] MultiwayTrainingWorkerResolution resolve_multiway_training_workers(

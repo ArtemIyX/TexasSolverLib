@@ -111,19 +111,23 @@ namespace
 		return result;
 	}
 
+#pragma pack(push, 8)
 	struct OrderedRecordCapture
 	{
 		std::vector<std::uint64_t> keys;
 		std::vector<std::vector<std::uint8_t>> payloads;
 		std::size_t stop_after = std::numeric_limits<std::size_t>::max();
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct OrderedRowCapture
 	{
 		std::vector<std::uint64_t> state_ids;
 		std::vector<std::int32_t> seats;
 		std::vector<texas::solver::multiway::MultiwayExternalRowMetadata> rows;
 	};
+#pragma pack(pop)
 
 	bool capture_ordered_record(void* context, std::uint64_t key,
 		const std::uint8_t* payload, std::size_t payload_size)
@@ -151,11 +155,13 @@ TEST_CASE(multiway_external_publication_observer_reports_exact_run_size)
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	MultiwayExternalRecordStore store(config(directory.path()), 4U);
+#pragma pack(push, 8)
 	struct Capture
 	{
 		MultiwayExternalRecordStore* store;
 		std::array<std::uint64_t, 4U> values{};
 	} capture{ &store, {} };
+#pragma pack(pop)
 	store.set_publication_observer([](void* context, std::uint32_t component,
 									   std::uint64_t generation, std::uint64_t batch, std::uint64_t count) {
 		auto& result = *static_cast<Capture*>(context);

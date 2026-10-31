@@ -47,6 +47,7 @@ namespace texas::solver::multiway
 		PlayerId first_player = 0);
 
 	/** Batch-level CFR weighting, discounting, pruning, and export-window policy. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintIterationSchedule
 	{
 		bool linear_iteration_weighting = true;
@@ -74,8 +75,10 @@ namespace texas::solver::multiway
 		/** Returns a stable identity hash for all schedule settings. */
 		[[nodiscard]] std::uint64_t identity() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Batch-boundary training counters, capacity, worker, memory, and timing telemetry. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintTrainingStatus
 	{
 		std::uint64_t batches = 0;
@@ -203,6 +206,7 @@ namespace texas::solver::multiway
 		bool failed_batch_available = false;
 		MultiwayRootBatchResult failed_batch{};
 	};
+#pragma pack(pop)
 
 	// Called after each clean batch, outside the traversal and merge kernels.
 	/** Callback invoked after each completed batch, outside traversal and merge. */
@@ -213,6 +217,7 @@ namespace texas::solver::multiway
 	// counts remain meaningful: they distinguish an empty sparse table from an
 	// unavailable report without retaining private cards or ranges.
 	/** Public-state coverage totals accumulated during blueprint training. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintCoverageManifest
 	{
 		std::uint64_t visited_public_descriptors = 0;
@@ -227,8 +232,10 @@ namespace texas::solver::multiway
 		std::uint64_t river_rows = 0;
 		std::array<std::uint64_t, 4> street_visits{};
 	};
+#pragma pack(pop)
 
 	/** Complete validated state required to resume blueprint training. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintTrainingCheckpoint
 	{
 		MultiwayModelIdentity identity{};
@@ -241,8 +248,10 @@ namespace texas::solver::multiway
 		/** Checks identity, counters, coordinator state, and late-window values. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Precomputed counts and byte sizes for a full-blueprint export. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintExportPlan
 	{
 		MultiwayModelIdentity identity{};
@@ -257,8 +266,10 @@ namespace texas::solver::multiway
 		/** Checks identity, row/action counts, and serialized-size fields. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Hashes, sizes, scratch use, and publication mode from a full export. */
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintExportResult
 	{
 		MultiwayFullBlueprintExportPlan plan{};
@@ -271,10 +282,12 @@ namespace texas::solver::multiway
 		bool sharded = false;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
+#pragma pack(pop)
 
 	// Production composition boundary. Artifact inputs are non-owning and must
 	// outlive a training session; their model identity is validated on creation.
 	/** Complete rules, model, scheduling, capacity, and memory configuration. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintTrainingConfig
 	{
 		MultiwayGameRules rules = MultiwayGameRules::standard_6max();
@@ -307,6 +320,7 @@ namespace texas::solver::multiway
 		/** Derives the model identity represented by this configuration. */
 		[[nodiscard]] MultiwayModelIdentity identity() const;
 	};
+#pragma pack(pop)
 
 	// Coordinator-owned offline session. Publishing creates an immutable compact
 	// root artifact and never exposes dense sparse-row storage to callers.

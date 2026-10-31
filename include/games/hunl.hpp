@@ -47,33 +47,41 @@ namespace texas::games::hunl
 	};
 
 	/** @brief One private hand and its non-negative range weight. */
+#pragma pack(push, 8)
 	struct HUNLWeightedHand
 	{
 		std::array<std::uint8_t, 2> hole = { 0, 0 }; ///< Two encoded private cards.
 		double weight = 0.0;						 ///< Relative hand weight.
 	};
+#pragma pack(pop)
 
 	/** @brief One abstraction bucket and its non-negative range weight. */
+#pragma pack(push, 8)
 	struct HUNLWeightedBucket
 	{
 		Street street = Street::Preflop; ///< Street for which the bucket is defined.
 		std::uint32_t bucket = 0;		 ///< Bucket index within the street's abstraction.
 		double weight = 0.0;			 ///< Relative bucket weight.
 	};
+#pragma pack(pop)
 
 	/** @brief Hand and/or bucket weights supplied for one player. */
+#pragma pack(push, 8)
 	struct HUNLRangeInput
 	{
 		std::vector<HUNLWeightedHand> hand_weights;		///< Explicit private hands, if provided.
 		std::vector<HUNLWeightedBucket> bucket_weights; ///< Abstract buckets, if provided.
 	};
+#pragma pack(pop)
 
 	/** @brief A two-player private deal with its normalized joint reach weight. */
+#pragma pack(push, 8)
 	struct HUNLJointRangeDeal
 	{
 		std::array<std::array<std::uint8_t, 2>, 2> hole = {}; ///< Private hand by player.
 		double weight = 0.0;								  ///< Normalized joint weight after blocker conditioning.
 	};
+#pragma pack(pop)
 
 	// Joint root reach after board and cross-player blocker conditioning.  This
 	// is intentionally explicit rather than a Cartesian product hidden inside a
@@ -113,6 +121,7 @@ namespace texas::games::hunl
 	bool is_raise(ActionId action);
 
 	/** @brief Fixed-capacity information needed to construct an HUNL infoset key. */
+#pragma pack(push, 8)
 	struct HUNLInfosetEncoding
 	{
 		std::array<std::uint8_t, 2> hole = { 0, 0 };				 ///< Acting player's private cards.
@@ -129,13 +138,16 @@ namespace texas::games::hunl
 			return hole == other.hole && board == other.board && street_lengths == other.street_lengths && history_codes == other.history_codes && board_count == other.board_count && street == other.street && history_count == other.history_count;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Hashes an encoded HUNL information set. */
+#pragma pack(push, 8)
 	struct HUNLInfosetEncodingHash
 	{
 		/** @brief Produces a hash consistent with HUNLInfosetEncoding equality. */
 		std::size_t operator()(const HUNLInfosetEncoding& encoding) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Validates dimensions, cards, street segments and canonical unused storage.
 	 * @throws std::invalid_argument If the encoding is invalid.
@@ -151,6 +163,7 @@ namespace texas::games::hunl
 	 *
 	 * @throws std::invalid_argument from validate() when a setting or initial state is invalid.
 	 */
+#pragma pack(push, 8)
 	struct HUNLConfig
 	{
 		int starting_stack = 10'000;																 ///< Starting chips per player.
@@ -191,6 +204,7 @@ namespace texas::games::hunl
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Resolves an unspecified range policy from the configured ranges.
 	 * @param config Configuration to inspect.
@@ -200,6 +214,7 @@ namespace texas::games::hunl
 	std::size_t configured_bucket_count(const HUNLConfig& config, Street street);
 
 	/** @brief Runtime betting data and action-menu settings for one action enumeration. */
+#pragma pack(push, 8)
 	struct ActionContext
 	{
 		int pot = 0;															   ///< Current pot size in chips.
@@ -225,8 +240,10 @@ namespace texas::games::hunl
 		bool allow_oop_flop_lead = false;										   ///< Whether the out-of-position player may lead first on the flop.
 		std::uint32_t street_action_count = 0;									   ///< Number of actions already taken on this street.
 	};
+#pragma pack(pop)
 
 	/** @brief Hold'em game state used by the solver pipeline. */
+#pragma pack(push, 8)
 	struct HUNLState
 	{
 		std::optional<std::array<std::array<std::uint8_t, 2>, 2>> hole_cards = std::nullopt; ///< Private cards by player, absent while undealt.
@@ -301,6 +318,7 @@ namespace texas::games::hunl
 		bool street_complete(ActionId action, const HUNLState& new_state) const;
 		HUNLState begin_street_transition(HUNLState state) const;
 	};
+#pragma pack(pop)
 
 	/** @brief Reports whether the context is on the preflop street. */
 	bool is_preflop(const ActionContext& ctx);

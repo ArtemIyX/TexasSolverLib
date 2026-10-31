@@ -640,6 +640,7 @@ namespace
 		return EXIT_SUCCESS;
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayDiagnosticProgress
 	{
 		texas::solver::multiway::MultiwayDiagnosticJournal* journal = nullptr;
@@ -654,6 +655,7 @@ namespace
 		std::uint64_t publication_monitor_nanoseconds = 0U;
 		std::uint64_t next_workflow_batch = 0U;
 	};
+#pragma pack(pop)
 
 	void record_component_publication(void* context, std::uint32_t component,
 		std::uint64_t generation, std::uint64_t component_batch, std::uint64_t records)
@@ -753,6 +755,7 @@ namespace
 			std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayTrainingProgressContext
 	{
 		bool enabled = true;
@@ -769,6 +772,7 @@ namespace
 		std::chrono::steady_clock::time_point last_reported_at{};
 		MultiwayDiagnosticProgress* diagnostic = nullptr;
 	};
+#pragma pack(pop)
 
 	void report_multiway_training_progress(
 		const texas::solver::multiway::MultiwayBlueprintTrainingStatus& status,

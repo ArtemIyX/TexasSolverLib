@@ -68,11 +68,13 @@ namespace texas::solver::multiway
 			while (cursor < order.size() && rows[order[cursor]].infoset.public_state.value == state_id)
 				++cursor;
 		}
+#pragma pack(push, 8)
 		struct ExistingRowContext
 		{
 			std::vector<MultiwayExternalRecord>* records = nullptr;
 			std::size_t next_record = 0U;
 		};
+#pragma pack(pop)
 		ExistingRowContext existing_rows{ &records, 0U };
 		const auto copy_existing_row = [](void* raw_context, std::uint64_t state_id,
 										   const std::uint8_t* payload, std::size_t payload_size) -> bool {
@@ -177,12 +179,14 @@ namespace texas::solver::multiway
 		const std::vector<MultiwaySparseRowShape>& rows,
 		std::vector<MultiwayExternalRowMetadata>& output) const
 	{
+#pragma pack(push, 8)
 		struct Query
 		{
 			std::uint64_t state_id = 0U;
 			std::size_t row_index = 0U;
 			std::int32_t seat = -1;
 		};
+#pragma pack(pop)
 		std::vector<Query> queries;
 		queries.reserve(rows.size());
 		output.assign(rows.size(), MultiwayExternalRowMetadata{});
@@ -206,6 +210,7 @@ namespace texas::solver::multiway
 		if (sorted_state_ids.empty())
 			return;
 
+#pragma pack(push, 8)
 		struct LookupContext
 		{
 			const std::vector<Query>* queries = nullptr;
@@ -213,6 +218,7 @@ namespace texas::solver::multiway
 			std::size_t next_query = 0U;
 			std::uint32_t page_width = 0U;
 		};
+#pragma pack(pop)
 		LookupContext context{ &queries, &output, 0U, page_width_ };
 		const auto visit = [](void* raw_context, std::uint64_t state_id,
 							   const std::uint8_t* payload, std::size_t payload_size) -> bool {
@@ -252,6 +258,7 @@ namespace texas::solver::multiway
 	{
 		if (visitor == nullptr)
 			throw std::invalid_argument("external ordered-row visitor is missing");
+#pragma pack(push, 8)
 		struct VisitorContext
 		{
 			OrderedRowVisitor visitor;
@@ -259,6 +266,7 @@ namespace texas::solver::multiway
 			std::uint32_t page_width;
 			const MultiwayExternalRowIndex* owner;
 		};
+#pragma pack(pop)
 		VisitorContext visitor_context{ visitor, context, page_width_, this };
 		const auto visit_record = [](void* opaque, std::uint64_t state_id,
 									  const std::uint8_t* payload, std::size_t payload_size) {

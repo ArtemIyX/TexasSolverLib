@@ -13,6 +13,8 @@
 #include <utility>
 #include <vector>
 
+#pragma pack(push, 8)
+
 namespace texas::core
 {
 	/** @brief Player index used by game-state interfaces; -1 means chance / no player. */
@@ -109,3 +111,5 @@ struct std::hash<texas::core::InfosetId>
 		return std::hash<std::uint32_t>{}(id.value);
 	}
 };
+
+#pragma pack(pop)

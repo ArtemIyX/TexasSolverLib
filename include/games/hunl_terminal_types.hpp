@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#pragma pack(push, 8)
+
 namespace texas::games::hunl
 {
 	/** @brief Tag describing why a HUNL tree node has terminal semantics. */
@@ -37,3 +39,5 @@ namespace texas::games::hunl
 		static TerminalKind showdown(bool board_complete);
 	};
 } // namespace texas::games::hunl
+
+#pragma pack(pop)

@@ -269,6 +269,7 @@ namespace texas::solver::multiway
 		}
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayRootExternalSamplingTraversal::TraversalContext
 	{
 		const MultiwayTerminalAdapter* terminal = nullptr;
@@ -297,7 +298,9 @@ namespace texas::solver::multiway
 		MultiwayDiscoveryStream* discovery_stream = nullptr;
 		bool accepted = true;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct MultiwayRootExternalSamplingTraversal::DecisionNodeContext
 	{
 		const MultiwayPublicStateDescriptor* state = nullptr;
@@ -314,6 +317,7 @@ namespace texas::solver::multiway
 		std::array<std::optional<games::multiway::MultiwayFixedState>, MULTIWAY_MAX_TRAVERSAL_ACTIONS> successors;
 		std::array<Value, MULTIWAY_MAX_TRAVERSAL_ACTIONS> action_values{};
 	};
+#pragma pack(pop)
 
 	Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
 		const MultiwayPublicStateDescriptor& state,

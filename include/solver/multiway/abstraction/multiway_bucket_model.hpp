@@ -168,6 +168,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] static std::size_t hole_index(const std::array<std::uint8_t, 2>& hole);
 
 	private:
+#pragma pack(push, 8)
 		struct OwnedData
 		{
 			MultiwayModelIdentity identity{};
@@ -177,6 +178,7 @@ namespace texas::solver::multiway
 			std::uint64_t table_identity = 0U;
 			std::vector<std::uint32_t> assignments;
 		};
+#pragma pack(pop)
 		MultiwayBucketTable() = default;
 		std::unique_ptr<OwnedData> owned_;
 		const std::uint8_t* mapped_directory_entry_ = nullptr;
@@ -244,6 +246,7 @@ namespace texas::solver::multiway
 		const std::uint8_t* mapped_directory_ = nullptr;
 		std::uint32_t mapped_directory_count_ = 0U;
 		std::unique_ptr<MultiwayModelIdentity> mapped_identity_storage_;
+#pragma pack(push, 8)
 		struct MappedArtifact
 		{
 			const std::uint8_t* data = nullptr;
@@ -252,6 +255,7 @@ namespace texas::solver::multiway
 			void* mapping = nullptr;
 			~MappedArtifact();
 		};
+#pragma pack(pop)
 		std::unique_ptr<MappedArtifact> mapped_artifact_;
 
 		MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables,

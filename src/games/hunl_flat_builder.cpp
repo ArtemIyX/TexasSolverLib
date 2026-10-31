@@ -172,6 +172,7 @@ namespace texas::games::hunl
 			}
 		}
 
+#pragma pack(push, 8)
 		struct HUNLFlatBuildFrame
 		{
 			HUNLState state;
@@ -188,6 +189,7 @@ namespace texas::games::hunl
 			bool is_chance = false;
 			bool collapsed_public_chance = false;
 		};
+#pragma pack(pop)
 
 	} // namespace
 

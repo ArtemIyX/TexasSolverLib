@@ -15,6 +15,7 @@ namespace texas::solver::multiway
 
 	// Quantized action-major policy for every bucket at one public state.
 	/** Model-bound action probabilities for every abstract bucket at a state. */
+#pragma pack(push, 8)
 	struct MultiwayBucketActionPolicy
 	{
 		MultiwayModelIdentity identity{};
@@ -32,5 +33,6 @@ namespace texas::solver::multiway
 		/** Returns the probability assigned to an action in one bucket. */
 		[[nodiscard]] Probability likelihood(std::uint32_t bucket, std::uint8_t action) const;
 	};
+#pragma pack(pop)
 
 } // namespace texas::solver::multiway

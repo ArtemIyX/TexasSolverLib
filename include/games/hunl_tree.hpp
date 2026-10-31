@@ -22,6 +22,7 @@ namespace texas::games::hunl
 	struct MemoKey;
 
 	/** @brief Node and contiguous child data for one recursive tree state. */
+#pragma pack(push, 8)
 	struct HUNLTreeNode
 	{
 		PlayerId player = -1;										  ///< Actor, or sentinel for chance and terminal nodes.
@@ -47,8 +48,10 @@ namespace texas::games::hunl
 			Street street,
 			std::vector<std::uint8_t> board);
 	};
+#pragma pack(pop)
 
 	/** @brief Memoized recursive HUNL game tree and its construction metadata. */
+#pragma pack(push, 8)
 	struct HUNLTree
 	{
 		std::vector<HUNLTreeNode> nodes;		  ///< Nodes indexed by their uint32_t IDs.
@@ -69,8 +72,10 @@ namespace texas::games::hunl
 			std::uint32_t depth,
 			std::uint32_t depth_limit_plies);
 	};
+#pragma pack(pop)
 
 	/** @brief Variable-capacity state key used to deduplicate recursive tree nodes. */
+#pragma pack(push, 8)
 	struct MemoKey
 	{
 		PlayerId cur_player = -1;															 ///< Actor or chance sentinel.
@@ -95,6 +100,7 @@ namespace texas::games::hunl
 		/** @brief Compares all state fields used for memoization. */
 		bool operator==(const MemoKey& other) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Classifies a game state as non-terminal, fold or showdown. */
 	TerminalKind classify_terminal_kind(const HUNLState& state);
@@ -104,11 +110,13 @@ namespace texas::games::hunl
 namespace std
 {
 
+#pragma pack(push, 8)
 	template <>
 	struct hash<texas::MemoKey>
 	{
 		/** @brief Hashes a memo key consistently with its equality operator. */
 		std::size_t operator()(const texas::MemoKey& key) const noexcept;
 	};
+#pragma pack(pop)
 
 } // namespace std

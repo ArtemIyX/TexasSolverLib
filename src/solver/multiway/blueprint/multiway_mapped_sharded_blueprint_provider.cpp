@@ -31,6 +31,7 @@ namespace texas::solver::multiway
 		constexpr std::uint64_t kSparseIndexLimit = 262'144U;
 		constexpr std::size_t kMaxActions = MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW;
 
+#pragma pack(push, 8)
 		struct SortKey
 		{
 			std::uint64_t public_state = 0U;
@@ -38,6 +39,7 @@ namespace texas::solver::multiway
 			std::uint32_t bucket = 0U;
 			std::uint64_t menu = 0U;
 		};
+#pragma pack(pop)
 
 		bool key_less(const SortKey& left, const SortKey& right) noexcept
 		{
@@ -134,6 +136,7 @@ namespace texas::solver::multiway
 			std::size_t offset_ = 0U;
 		};
 
+#pragma pack(push, 8)
 		struct MappedFile
 		{
 			const std::uint8_t* data = nullptr;
@@ -149,6 +152,7 @@ namespace texas::solver::multiway
 #endif
 			}
 		};
+#pragma pack(pop)
 
 		std::unique_ptr<MappedFile> map_readonly(const std::filesystem::path& path)
 		{
@@ -248,6 +252,7 @@ namespace texas::solver::multiway
 
 	} // namespace
 
+#pragma pack(push, 8)
 	struct MultiwayMappedShardedBlueprintProvider::Impl
 	{
 		struct SparseIndexEntry
@@ -270,6 +275,7 @@ namespace texas::solver::multiway
 		std::uint64_t mapped_bytes = 0U;
 		std::uint64_t index_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	MultiwayMappedShardedBlueprintProvider::MultiwayMappedShardedBlueprintProvider(
 		std::unique_ptr<Impl> impl) noexcept

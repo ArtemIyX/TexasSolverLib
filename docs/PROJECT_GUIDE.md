@@ -45,6 +45,12 @@ The navigation skill mentions `include/ranges` and some root-level solver paths 
 
 ## 3. Architecture and contracts
 
+### Struct packing
+
+Project-owned structs use balanced `#pragma pack(push, 8)` and `#pragma pack(pop)` scopes. The value limits member packing; it does not lower an explicit cache-line alignment on a struct. Includes stay outside packing scopes so the rule does not change external declarations. The packing-restoration probe in `tests/test_packing_contract.cpp` deliberately uses packing of 1 to check that a header restores its caller's setting.
+
+Packing is an ABI choice, not a portable serialization format. Rebuild the library and its C++ consumers together after changing packing, and verify layout and member alignment for each supported compiler and platform. Existing artifacts must be handled by their versioned field codecs rather than raw struct layout. Compatibility with binaries built before this policy and cross-platform layout equivalence have not been established.
+
 ### Solver families
 
 - **Kuhn and Leduc:** small deterministic games suitable for checking solver behavior, public APIs, values and exploitability.

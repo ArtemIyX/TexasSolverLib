@@ -52,6 +52,7 @@ namespace texas::solver::multiway
 		1536ULL * 1024ULL * 1024ULL;
 
 	/** Live and retained-capacity bytes attributed to one subsystem component. */
+#pragma pack(push, 8)
 	struct MultiwayMemoryComponent
 	{
 		std::uint64_t live_element_bytes = 0U;
@@ -72,6 +73,7 @@ namespace texas::solver::multiway
 		/** Checks accounting flags and byte totals for internal consistency. */
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Adds byte counts, saturating at the uint64 maximum on overflow. */
 	[[nodiscard]] std::uint64_t multiway_memory_saturating_add(
@@ -81,6 +83,7 @@ namespace texas::solver::multiway
 		std::size_t element_count, std::size_t element_size) noexcept;
 
 	/** Memory breakdown for bucket metadata and mapped artifacts. */
+#pragma pack(push, 8)
 	struct MultiwayBucketRegistryMemorySnapshot
 	{
 		MultiwayMemoryComponent owned_metadata{};
@@ -89,8 +92,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Memory breakdown for public catalog records, indexes, menus, and scratch. */
+#pragma pack(push, 8)
 	struct MultiwayPublicCatalogMemorySnapshot
 	{
 		MultiwayMemoryComponent nodes{};
@@ -102,8 +107,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Memory breakdown for floating-point sparse rows and accumulator cells. */
+#pragma pack(push, 8)
 	struct MultiwaySparseStorageMemorySnapshot
 	{
 		MultiwayMemoryComponent row_metadata{};
@@ -113,8 +120,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Memory breakdown for compact row/page metadata and fixed-point cells. */
+#pragma pack(push, 8)
 	struct MultiwayCompactStorageMemorySnapshot
 	{
 		MultiwayMemoryComponent row_metadata{};
@@ -125,8 +134,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Memory components retained by one traversal worker. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerMemorySnapshot
 	{
 		MultiwayMemoryComponent regret_delta_stream{};
@@ -138,8 +149,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Memory components retained by the solver coordinator. */
+#pragma pack(push, 8)
 	struct MultiwayCoordinatorMemorySnapshot
 	{
 		MultiwayMemoryComponent merge_scratch{};
@@ -148,8 +161,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Per-worker and shared memory used by a root batch runner. */
+#pragma pack(push, 8)
 	struct MultiwayRootBatchMemorySnapshot
 	{
 		std::array<MultiwayWorkerMemorySnapshot, MULTIWAY_MEMORY_MAX_WORKERS> workers{};
@@ -163,8 +178,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Schema-versioned memory accounting for one training lifecycle phase. */
+#pragma pack(push, 8)
 	struct MultiwayMemorySubsystemSnapshot
 	{
 		std::uint32_t schema_version = MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION;
@@ -203,8 +220,10 @@ namespace texas::solver::multiway
 		void recompute_totals() noexcept;
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Bounded ordered collection of subsystem snapshots by lifecycle phase. */
+#pragma pack(push, 8)
 	struct MultiwayMemorySubsystemSnapshotCollection
 	{
 		std::array<MultiwayMemorySubsystemSnapshot, MULTIWAY_MEMORY_PHASE_COUNT> snapshots{};
@@ -217,6 +236,7 @@ namespace texas::solver::multiway
 			MultiwayMemorySubsystemSnapshot snapshot) noexcept;
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Captures accounting from live solver components and retained buffers. */
 	[[nodiscard]] MultiwayMemorySubsystemSnapshot capture_multiway_memory_subsystems(
@@ -229,6 +249,7 @@ namespace texas::solver::multiway
 		MultiwayMemoryComponent export_buffers = {}) noexcept;
 
 	/** Process working-set, commit, virtual-memory, and page-fault sample. */
+#pragma pack(push, 8)
 	struct MultiwayProcessMemorySnapshot
 	{
 		MultiwayMemoryPhase phase_id = MultiwayMemoryPhase::ProcessStart;
@@ -255,8 +276,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Bounded process-memory samples collected at named lifecycle phases. */
+#pragma pack(push, 8)
 	struct MultiwayProcessMemorySnapshotCollection
 	{
 		std::array<MultiwayProcessMemorySnapshot, MULTIWAY_MEMORY_PHASE_COUNT> snapshots{};
@@ -270,6 +293,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool record_current(MultiwayMemoryPhase phase) noexcept;
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Returns a stable name for a memory lifecycle phase. */
 	[[nodiscard]] const char* multiway_memory_phase_name(MultiwayMemoryPhase phase) noexcept;
@@ -277,6 +301,7 @@ namespace texas::solver::multiway
 	[[nodiscard]] MultiwayProcessMemorySnapshot capture_multiway_process_memory_snapshot() noexcept;
 
 	/** Export row/action counts and serialized-size inputs for estimates. */
+#pragma pack(push, 8)
 	struct MultiwayExportPlanMemoryValues
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -290,8 +315,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Estimated temporary allocations needed by an export operation. */
+#pragma pack(push, 8)
 	struct MultiwayExportScratchEstimate
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -306,12 +333,14 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORTER_HEADROOM_BYTES = 64ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORT_ENCODER_BUFFER_BYTES = 1ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES = 64ULL * 1024ULL;
 
 	/** Projected process working set while an export is in progress. */
+#pragma pack(push, 8)
 	struct MultiwayExportProcessEstimate
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -329,6 +358,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Result state shared by process and system export admission checks. */
 	enum class MultiwayExportGateStatus : std::uint8_t
@@ -348,6 +378,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Hard process limit and scratch allowances for export admission. */
+#pragma pack(push, 8)
 	struct MultiwayExportProcessGateConfig
 	{
 		std::uint64_t hard_limit_bytes = MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES;
@@ -357,8 +388,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Process gate decision, rejection cause, and computed estimate. */
+#pragma pack(push, 8)
 	struct MultiwayExportProcessGateResult
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -374,8 +407,10 @@ namespace texas::solver::multiway
 			return status == MultiwayExportGateStatus::Rejected || status == MultiwayExportGateStatus::Unavailable;
 		}
 	};
+#pragma pack(pop)
 
 	/** Physical-memory totals and availability from the current system. */
+#pragma pack(push, 8)
 	struct MultiwaySystemMemorySnapshot
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -387,6 +422,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	enum class MultiwaySystemMemoryGuardStatus : std::uint8_t
 	{
@@ -397,6 +433,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Minimum available physical memory required to start or continue work. */
+#pragma pack(push, 8)
 	struct MultiwaySystemMemoryGuardConfig
 	{
 		bool enabled = false;
@@ -404,8 +441,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** System-memory guard decision and measured available-memory values. */
+#pragma pack(push, 8)
 	struct MultiwaySystemMemoryGuardResult
 	{
 		MultiwaySystemMemoryGuardStatus status = MultiwaySystemMemoryGuardStatus::Disabled;
@@ -422,6 +461,7 @@ namespace texas::solver::multiway
 			return status == MultiwaySystemMemoryGuardStatus::Rejected || status == MultiwaySystemMemoryGuardStatus::Unavailable;
 		}
 	};
+#pragma pack(pop)
 
 	enum class MultiwayExportSystemRejectionReason : std::uint8_t
 	{
@@ -432,6 +472,7 @@ namespace texas::solver::multiway
 	};
 
 	/** System reserve required in addition to serialized and scratch bytes. */
+#pragma pack(push, 8)
 	struct MultiwayExportSystemGateConfig
 	{
 		bool enabled = false;
@@ -439,8 +480,10 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** System-memory gate decision, measured availability, and required allowance. */
+#pragma pack(push, 8)
 	struct MultiwayExportSystemGateResult
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -458,6 +501,7 @@ namespace texas::solver::multiway
 			return status == MultiwayExportGateStatus::Rejected || status == MultiwayExportGateStatus::Unavailable;
 		}
 	};
+#pragma pack(pop)
 
 	enum class MultiwayExportDiskGateStatus : std::uint8_t
 	{
@@ -476,6 +520,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Disk-space gate result and required temporary/output bytes. */
+#pragma pack(push, 8)
 	struct MultiwayExportDiskGateResult
 	{
 		MultiwayExportDiskGateStatus status = MultiwayExportDiskGateStatus::NotChecked;
@@ -491,6 +536,7 @@ namespace texas::solver::multiway
 			return status == MultiwayExportDiskGateStatus::Rejected || status == MultiwayExportDiskGateStatus::Unavailable;
 		}
 	};
+#pragma pack(pop)
 
 	/** Checks disk space for output plus configured reserve. */
 	[[nodiscard]] MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
@@ -503,6 +549,7 @@ namespace texas::solver::multiway
 		std::uint64_t available_free_bytes) noexcept;
 
 	/** Before/after working-set and private-commit deltas for an export. */
+#pragma pack(push, 8)
 	struct MultiwayExportObservedMemoryDelta
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -521,8 +568,10 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Combined process and system memory gate settings for artifact export. */
+#pragma pack(push, 8)
 	struct MultiwayExportMemoryGateConfig
 	{
 		MultiwayExportProcessGateConfig process{};
@@ -530,6 +579,7 @@ namespace texas::solver::multiway
 
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Estimates temporary memory needed from a serialized export plan. */
 	[[nodiscard]] MultiwayExportScratchEstimate make_multiway_export_scratch_estimate(
@@ -569,6 +619,7 @@ namespace texas::solver::multiway
 		MultiwayExportSystemRejectionReason reason) noexcept;
 
 	/** Lookup and page-cache counters from one external export component. */
+#pragma pack(push, 8)
 	struct MultiwayExportStorageCounters
 	{
 		std::uint64_t lookups = 0U;
@@ -579,8 +630,10 @@ namespace texas::solver::multiway
 		std::uint64_t page_hits = 0U;
 		std::uint64_t page_misses = 0U;
 	};
+#pragma pack(pop)
 
 	// Fixed-size, opt-in diagnostics. Times are inclusive unless named otherwise.
+#pragma pack(push, 8)
 	struct MultiwayExternalExportProfile
 	{
 		bool enabled = false;
@@ -629,6 +682,7 @@ namespace texas::solver::multiway
 		MultiwayExportStorageCounters row_index{};
 		MultiwayExportStorageCounters page_store{};
 	};
+#pragma pack(pop)
 
 	// Invoked after a page is unpinned. The view is transient; do not re-enter storage.
 	using MultiwayExternalExportProgressObserver = void (*)(
@@ -636,6 +690,7 @@ namespace texas::solver::multiway
 		void* context) noexcept;
 
 	/** End-to-end export plan, gates, sizes, hashes, timing, and outcome. */
+#pragma pack(push, 8)
 	struct MultiwayExportTelemetry
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -663,8 +718,10 @@ namespace texas::solver::multiway
 		/** Checks schema version, gate outcomes, estimates, and result values. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Warning, operating, and hard rejection byte thresholds for preflight. */
+#pragma pack(push, 8)
 	struct MultiwayMemoryBudget
 	{
 		std::uint64_t warning_bytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
@@ -681,8 +738,10 @@ namespace texas::solver::multiway
 		/** Checks ordering and consistency of the three thresholds. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Measured baselines and optional capacity inputs to memory preflight. */
+#pragma pack(push, 8)
 	struct MultiwayMemoryInputs
 	{
 		// Capacity bounds for the packed public catalog. Zero menu/action bounds
@@ -728,7 +787,9 @@ namespace texas::solver::multiway
 		std::uint64_t export_peak_bytes = 0U;
 		std::uint64_t allocator_overhead_bytes = 0U;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct MultiwayCatalogCapacityEstimate
 	{
 		std::uint64_t node_bytes = 0U;
@@ -739,6 +800,7 @@ namespace texas::solver::multiway
 		std::uint64_t reallocation_peak_bytes = 0U;
 		std::uint64_t total_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	[[nodiscard]] MultiwayCatalogCapacityEstimate estimate_multiway_catalog_capacity(
 		std::uint64_t state_capacity,
@@ -751,6 +813,7 @@ namespace texas::solver::multiway
 		std::uint32_t page_width);
 
 	/** Named memory allocations and peak estimates retained in reports. */
+#pragma pack(push, 8)
 	struct MultiwayMemoryLedger
 	{
 		std::uint32_t schema_version = MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION;
@@ -801,8 +864,10 @@ namespace texas::solver::multiway
 		std::uint64_t reserved_bytes = 0U;
 		std::uint64_t committed_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Estimated solver memory across resident, retained, and transient classes. */
+#pragma pack(push, 8)
 	struct MultiwayMemoryEstimate
 	{
 		MultiwayMemoryLedger ledger{};
@@ -845,6 +910,7 @@ namespace texas::solver::multiway
 		std::uint64_t current_rss_bytes = 0U;
 		std::uint64_t peak_rss_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	enum class MultiwayMemoryStatus : std::uint8_t
 	{
@@ -863,6 +929,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Preflight admission result and capacity stage reached. */
+#pragma pack(push, 8)
 	struct MultiwayMemoryPreflight
 	{
 		MultiwayMemoryStatus status = MultiwayMemoryStatus::Ok;
@@ -873,6 +940,7 @@ namespace texas::solver::multiway
 		const char* rejected_category = "none";
 		const char* message = "ok";
 	};
+#pragma pack(pop)
 
 	enum class MultiwayWorkingSetGatePhase : std::uint8_t
 	{
@@ -890,6 +958,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Process working-set and private-commit limits for training gates. */
+#pragma pack(push, 8)
 	struct MultiwayWorkingSetGateConfig
 	{
 		std::uint64_t hard_limit_bytes = MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES;
@@ -899,8 +968,10 @@ namespace texas::solver::multiway
 		/** Checks that configured byte limits are internally consistent. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Working-set gate outcome and observed or estimated memory values. */
+#pragma pack(push, 8)
 	struct MultiwayWorkingSetGateResult
 	{
 		MultiwayWorkingSetGateStatus status = MultiwayWorkingSetGateStatus::Disabled;
@@ -925,6 +996,7 @@ namespace texas::solver::multiway
 			return status == MultiwayWorkingSetGateStatus::Rejected || status == MultiwayWorkingSetGateStatus::Unavailable;
 		}
 	};
+#pragma pack(pop)
 
 	using MultiwayProcessMemoryObserver = MultiwayProcessMemorySnapshot (*)(const void*) noexcept;
 	using MultiwaySystemMemoryObserver = MultiwaySystemMemorySnapshot (*)(const void*) noexcept;
@@ -932,6 +1004,7 @@ namespace texas::solver::multiway
 		const std::filesystem::path&, std::uint64_t&) noexcept;
 
 	/** Sampling callbacks and gate settings used by training/export monitors. */
+#pragma pack(push, 8)
 	struct MultiwayWorkingSetMonitor
 	{
 		std::uint64_t single_file_blueprint_limit_bytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
@@ -956,6 +1029,7 @@ namespace texas::solver::multiway
 		/** Checks observer and gate settings before attaching the monitor. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Evaluates estimated memory against preflight limits. */
 	[[nodiscard]] MultiwayWorkingSetGateResult evaluate_multiway_working_set_preflight(

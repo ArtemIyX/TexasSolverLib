@@ -16,6 +16,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct ResolverFixture
 	{
 		texas::MultiwayModelIdentity identity;
@@ -62,6 +63,7 @@ namespace
 			return texas::MultiwayResolver(config);
 		}
 	};
+#pragma pack(pop)
 
 	bool contains_action(
 		const std::vector<texas::MultiwayResolverActionProbability>& policy,

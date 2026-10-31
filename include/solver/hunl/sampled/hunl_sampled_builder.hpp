@@ -24,13 +24,16 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Bounds public-state cache and builder memory growth. */
+#pragma pack(push, 8)
 	struct HUNLSampledBuilderConfig
 	{
 		std::size_t max_cached_public_states = 0; ///< Maximum cached states; zero means no count limit.
 		std::uint64_t memory_limit_bytes = 0;	  ///< Maximum estimated bytes; zero means no byte limit.
 	};
+#pragma pack(pop)
 
 	/** @brief Fixed-capacity canonical public-state key for sampled graph lookup. */
+#pragma pack(push, 8)
 	struct HUNLSampledStateKey
 	{
 		std::array<int, HUNL_MAX_HISTORY_CODES> history_codes = {};
@@ -54,15 +57,19 @@ namespace texas::solver::hunl
 			return history_codes == other.history_codes && street_lengths == other.street_lengths && board.cards == other.board.cards && board.count == other.board.count && contributions == other.contributions && stacks == other.stacks && to_call == other.to_call && cur_player == other.cur_player && street_aggressor == other.street_aggressor && street == other.street && street_num_raises == other.street_num_raises && pending_board_deals == other.pending_board_deals && history_count == other.history_count && folded == other.folded && all_in == other.all_in;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Hashes a sampled state key consistently with equality. */
+#pragma pack(push, 8)
 	struct HUNLSampledStateKeyHash
 	{
 		/** @brief Computes the state-key hash. */
 		std::size_t operator()(const HUNLSampledStateKey& key) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief One action or chance edge in the sampled public graph. */
+#pragma pack(push, 8)
 	struct HUNLSampledEdge
 	{
 		ActionId action = 0;
@@ -70,8 +77,10 @@ namespace texas::solver::hunl
 		double probability = 0.0;
 		std::uint32_t multiplicity = 1;
 	};
+#pragma pack(pop)
 
 	/** @brief Memoized node metadata and edge range for a sampled game state. */
+#pragma pack(push, 8)
 	struct HUNLSampledNode
 	{
 		HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
@@ -87,8 +96,10 @@ namespace texas::solver::hunl
 		std::uint16_t edge_count = 0;
 		bool expanded = false;
 	};
+#pragma pack(pop)
 
 	/** @brief Memory and graph-size estimate for a sampled builder. */
+#pragma pack(push, 8)
 	struct HUNLSampledBuilderMemoryEstimate
 	{
 		std::uint64_t nodes_bytes = 0;
@@ -115,6 +126,7 @@ namespace texas::solver::hunl
 			return total;
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Lazily expands and deduplicates public HUNL states for sampled traversal. */
 	class HUNLSampledBuilder

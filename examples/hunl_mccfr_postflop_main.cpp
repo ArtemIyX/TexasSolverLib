@@ -22,6 +22,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct AppConfig
 	{
 		texas::Street street = texas::Street::Flop;
@@ -48,12 +49,15 @@ namespace
 		double as_tau = 1000.0;
 		double as_beta = 1e6;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct RandomScenario
 	{
 		texas::HUNLConfig config;
 		texas::HUNLState state;
 	};
+#pragma pack(pop)
 
 	bool parse_u64(std::string_view text, std::uint64_t& out)
 	{

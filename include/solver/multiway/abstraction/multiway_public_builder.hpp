@@ -17,12 +17,14 @@ namespace texas::solver::multiway
 	class MultiwayResolver;
 
 	/** @brief Identity values and validation outcome for one public descriptor. */
+#pragma pack(push, 8)
 	struct MultiwayPublicIdentityInspection
 	{
 		std::uint64_t canonical_history_id = 0U;
 		MultiwayPublicStateId public_state_id{};
 		bool history_valid = false;
 	};
+#pragma pack(pop)
 
 	// Cold-path factory for coordinator-admitted public descriptors. It owns no
 	// tree storage and never selects strategic bet sizes; Phase 2 supplies target

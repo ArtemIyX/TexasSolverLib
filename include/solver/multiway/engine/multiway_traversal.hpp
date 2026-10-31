@@ -113,6 +113,7 @@ namespace texas::solver::multiway
 			Tournament,
 		};
 
+#pragma pack(push, 8)
 		struct MultiwayDiscoveryMergeScratch
 		{
 			std::vector<std::size_t> cursors;
@@ -124,10 +125,12 @@ namespace texas::solver::multiway
 				tournament.reserve(stream_count);
 			}
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] MultiwayDiscoveryMergePath select_multiway_discovery_merge_path(
 			std::size_t stream_count) noexcept;
 
+#pragma pack(push, 8)
 		struct MultiwayDiscoveryParentOrderScratch
 		{
 			std::vector<std::size_t> order;
@@ -136,6 +139,7 @@ namespace texas::solver::multiway
 			std::vector<std::uint8_t> colors;
 			std::vector<std::size_t> stack;
 		};
+#pragma pack(pop)
 
 		void merge_multiway_discovery_streams(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
@@ -160,6 +164,7 @@ namespace texas::solver::multiway
 	} // namespace detail
 
 	/** Threshold, warmup, recovery, and exploration settings for pruning. */
+#pragma pack(push, 8)
 	struct MultiwayTraversalPruningConfig
 	{
 		bool enabled = false;
@@ -178,6 +183,7 @@ namespace texas::solver::multiway
 			std::uint64_t batch_number, bool below_threshold,
 			bool immediate_terminal, bool river) const noexcept;
 	};
+#pragma pack(pop)
 
 	// Bounded lazy traversal. It samples opponent and public-chance nodes,
 	// enumerates traverser decisions, and stops at exact terminals or the typed
@@ -278,6 +284,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Trajectory, worker, admission, merge, and capacity outcomes for a batch. */
+#pragma pack(push, 8)
 	struct MultiwayRootBatchResult
 	{
 		std::uint64_t trajectories_attempted = 0;
@@ -354,8 +361,10 @@ namespace texas::solver::multiway
 		bool discovery_capacity_exhausted = false;
 		bool clean = false;
 	};
+#pragma pack(pop)
 
 	/** Per-worker bounded capacities for regret, continuation, and discoveries. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerStreamCapacities
 	{
 		std::size_t regret_delta_entries = 0U;
@@ -363,6 +372,7 @@ namespace texas::solver::multiway
 		std::size_t discovery_public_states = 0U;
 		std::size_t discovery_rows = 0U;
 	};
+#pragma pack(pop)
 
 	// Deterministic root-only batch runner. Workers are kept logically separate
 	// until coordinator merge; parallel dispatch can be introduced without
@@ -454,6 +464,7 @@ namespace texas::solver::multiway
 		void finalize_batch_result(BatchRunContext& context);
 		void worker_loop(std::size_t worker_index);
 
+#pragma pack(push, 8)
 		struct alignas(64) WorkerScratch
 		{
 			explicit WorkerScratch(std::size_t worker_index, MultiwayWorkerStreamCapacities capacities)
@@ -521,6 +532,8 @@ namespace texas::solver::multiway
 				profile.reset(profile_mode);
 			}
 		};
+#pragma pack(pop)
+		static_assert(alignof(WorkerScratch) == 64, "WorkerScratch must remain cache-line aligned");
 
 		MultiwayRootExternalSamplingTraversal traversal_;
 		MultiwaySolverCoordinator* coordinator_ = nullptr;

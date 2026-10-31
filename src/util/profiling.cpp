@@ -24,10 +24,12 @@ namespace texas::util::profiling
 
 		using clock = std::chrono::steady_clock;
 
+#pragma pack(push, 8)
 		struct ThreadBucket
 		{
 			std::unordered_map<std::string, std::pair<std::uint64_t, std::uint64_t>> timings_ns;
 		};
+#pragma pack(pop)
 
 		std::mutex& mutex()
 		{

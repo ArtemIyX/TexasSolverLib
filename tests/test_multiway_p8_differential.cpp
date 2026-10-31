@@ -43,6 +43,7 @@ namespace
 		return fixed;
 	}
 
+#pragma pack(push, 8)
 	struct ResolverFixture
 	{
 		texas::MultiwayModelIdentity identity = texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{});
@@ -76,6 +77,7 @@ namespace
 			return result;
 		}
 	};
+#pragma pack(pop)
 
 	void run_terminal_differential_case(std::uint8_t index)
 	{

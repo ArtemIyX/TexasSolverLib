@@ -146,12 +146,14 @@ namespace
 		return texas::MultiwayState::initial(game);
 	}
 
+#pragma pack(push, 8)
 	struct LeafProbe
 	{
 		std::size_t calls = 0U;
 		std::array<texas::Street, 256> streets{};
 		std::array<std::size_t, 256> board_sizes{};
 	};
+#pragma pack(pop)
 
 	texas::Value probe_leaf(
 		const texas::MultiwayLeafEvaluationRequest& request,
@@ -181,6 +183,7 @@ namespace
 		return false;
 	}
 
+#pragma pack(push, 8)
 	struct ChanceTraversalFixture
 	{
 		ChanceTraversalFixture(
@@ -199,7 +202,9 @@ namespace
 		texas::MultiwayLeafEvaluator evaluator;
 		texas::MultiwayRootExternalSamplingTraversal traversal;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct AllInRunoutFixture
 	{
 		AllInRunoutFixture(
@@ -218,6 +223,7 @@ namespace
 		texas::MultiwayLeafEvaluator evaluator;
 		texas::MultiwayRootExternalSamplingTraversal traversal;
 	};
+#pragma pack(pop)
 
 	bool same_deltas(
 		const texas::MultiwayWorkerDeltaStream& left,

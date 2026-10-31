@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#pragma pack(push, 8)
+
 namespace texas::solver::multiway
 {
 	// Fingerprints are stable FNV-1a identities, not security hashes.
@@ -43,3 +45,5 @@ namespace texas::solver::multiway
 		}
 	};
 } // namespace texas::solver::multiway
+
+#pragma pack(pop)

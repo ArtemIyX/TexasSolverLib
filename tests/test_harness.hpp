@@ -18,20 +18,24 @@ namespace test
 {
 
 	/** Exception raised when a test expectation fails. */
+#pragma pack(push, 8)
 	struct Failure : std::runtime_error
 	{
 		using std::runtime_error::runtime_error;
 	};
+#pragma pack(pop)
 
 	/** Function pointer signature for a registered test case. */
 	using TestFn = void (*)();
 
 	/** Name and invoker for one test registration. */
+#pragma pack(push, 8)
 	struct TestCase
 	{
 		std::string name;
 		TestFn fn;
 	};
+#pragma pack(pop)
 
 	/** Returns the process-local collection of registered test cases. */
 	inline std::vector<TestCase>& registry()
@@ -41,6 +45,7 @@ namespace test
 	}
 
 	/** Registers a test function during static initialization. */
+#pragma pack(push, 8)
 	struct Registrar
 	{
 		/** Adds name and fn to the global test registry. */
@@ -49,6 +54,7 @@ namespace test
 			registry().push_back({ std::move(name), fn });
 		}
 	};
+#pragma pack(pop)
 
 	/** Throws Failure when actual and expected compare unequal. */
 	template <class T, class U>

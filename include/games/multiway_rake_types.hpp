@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#pragma pack(push, 8)
+
 namespace texas::games::multiway
 {
 	/** @brief Supported rake calculations for multiway pot settlement. */
@@ -43,3 +45,5 @@ namespace texas::games::multiway
 		[[nodiscard]] std::uint64_t identity() const noexcept;
 	};
 } // namespace texas::games::multiway
+
+#pragma pack(pop)

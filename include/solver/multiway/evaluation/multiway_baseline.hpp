@@ -41,6 +41,7 @@ namespace texas::solver::multiway
 	// The recorder fills elapsed_nanoseconds and, when available, process resident
 	// memory. A supplied nonzero observed_memory_bytes takes precedence.
 	/** Elapsed time, CPU, resident-memory, and allocation observations. */
+#pragma pack(push, 8)
 	struct MultiwayBaselineMeasurements
 	{
 		std::uint64_t elapsed_nanoseconds = 0;
@@ -55,22 +56,26 @@ namespace texas::solver::multiway
 		std::uint64_t allocated_bytes = 0;
 		bool allocation_bytes_available = false;
 	};
+#pragma pack(pop)
 
 	// Fixture inputs may contain private request data while they are executing.
 	// MultiwayResolverBaselineFixtureHarness never retains them after run returns;
 	// its reports are safe for public baseline output.
 	/** Resolver request and measurement inputs for one isolated fixture run. */
+#pragma pack(push, 8)
 	struct MultiwayResolverBaselineFixture
 	{
 		MultiwayBaselineFixtureKind kind = MultiwayBaselineFixtureKind::Valid;
 		MultiwayResolverRequest request{};
 		MultiwayBaselineMeasurements measurements{};
 	};
+#pragma pack(pop)
 
 	// This report intentionally omits hero cards, opponent ranges, and seeds.
 	// It contains only the public action menu, normalized policy, and diagnostics
 	// needed to compare the current resolver implementation with a future path.
 	/** Public-only policy, fallback, counts, and measurement results. */
+#pragma pack(push, 8)
 	struct MultiwayResolverBaselineReport
 	{
 		MultiwayBaselineFixtureKind fixture = MultiwayBaselineFixtureKind::Valid;
@@ -93,8 +98,10 @@ namespace texas::solver::multiway
 		std::uint64_t resolved_public_state_id = 0;
 		MultiwayBaselineMeasurements measurements{};
 	};
+#pragma pack(pop)
 
 	/** Batch-run counts, search profile, and timing measurements. */
+#pragma pack(push, 8)
 	struct MultiwayTraversalBaselineReport
 	{
 		MultiwayBaselineFixtureKind fixture = MultiwayBaselineFixtureKind::Valid;
@@ -107,6 +114,7 @@ namespace texas::solver::multiway
 		MultiwaySearchProfileSnapshot search_profile{};
 		MultiwayBaselineMeasurements measurements{};
 	};
+#pragma pack(pop)
 
 	inline constexpr double MULTIWAY_BASELINE_POLICY_ABSOLUTE_TOLERANCE = 1e-12;
 

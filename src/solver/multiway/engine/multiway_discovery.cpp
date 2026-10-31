@@ -15,6 +15,7 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+#pragma pack(push, 8)
 		struct DiscoveryMergeDiagnosticsDelta
 		{
 			std::uint64_t public_state_merge_nanoseconds = 0U;
@@ -30,6 +31,7 @@ namespace texas::solver::multiway
 			std::uint64_t public_state_duplicate_candidates = 0U;
 			std::uint64_t row_duplicate_candidates = 0U;
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] bool action_descriptor_less(
 			const MultiwayActionDescriptor& left,

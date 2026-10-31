@@ -796,12 +796,14 @@ TEST_CASE(multiway_memory_estimate_saturates_each_peak_on_overflow)
 
 TEST_CASE(multiway_memory_estimate_matches_task_d_f1_a1_and_a3_baselines)
 {
+#pragma pack(push, 8)
 	struct Fixture
 	{
 		std::uint32_t workers;
 		std::uint64_t working_set;
 		std::uint64_t private_committed;
 	};
+#pragma pack(pop)
 	const std::array<Fixture, 2> fixtures = { {
 		{ 1U, 16'575'430'656ULL, 3'441'930'240ULL },
 		{ 4U, 16'586'776'576ULL, 9'948'704'768ULL },

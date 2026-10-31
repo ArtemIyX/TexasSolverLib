@@ -42,11 +42,13 @@ namespace texas::util
 			::operator delete(ptr, std::align_val_t{ Alignment });
 		}
 
+#pragma pack(push, 8)
 		template <class U>
 		struct rebind
 		{
 			using other = AlignedAllocator<U, Alignment>;
 		};
+#pragma pack(pop)
 	};
 
 	/** Aligned allocators with the same alignment compare equal. */

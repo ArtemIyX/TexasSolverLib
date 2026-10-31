@@ -47,6 +47,7 @@ namespace texas::solver::multiway
 		cleanup_orphans();
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayExternalRecordStore::CompactionState
 	{
 		struct Cursor
@@ -135,6 +136,7 @@ namespace texas::solver::multiway
 		Queue queue;
 		std::vector<std::size_t> consumed;
 	};
+#pragma pack(pop)
 
 	bool MultiwayExternalRecordStore::select_compaction_inputs(
 		std::uint64_t base_generation, bool batch_suffix_only,
@@ -417,6 +419,7 @@ namespace texas::solver::multiway
 		if (!select_compaction_inputs(base_generation, batch_suffix_only,
 				cleanup_orphans_before, state))
 			return;
+#pragma pack(push, 8)
 		struct CompactionFailureLatch
 		{
 			bool& failed;
@@ -427,6 +430,7 @@ namespace texas::solver::multiway
 					failed = true;
 			}
 		} failure_latch{ failed_ };
+#pragma pack(pop)
 		prepare_compaction_merge(state);
 		write_compaction_output(state);
 		publish_compaction_result(retain_input_runs, state);

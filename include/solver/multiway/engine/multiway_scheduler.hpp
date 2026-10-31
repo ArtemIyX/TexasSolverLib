@@ -38,6 +38,7 @@ namespace texas::solver::multiway
 	[[nodiscard]] const char* multiway_scheduler_mode_name(MultiwaySchedulerMode mode) noexcept;
 
 	/** Seed, partition, scheduler, and merge versions for one trajectory batch. */
+#pragma pack(push, 8)
 	struct MultiwayRunMetadata
 	{
 		std::uint32_t worker_count = 0U;
@@ -55,6 +56,7 @@ namespace texas::solver::multiway
 		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		bool bitwise_deterministic = true;
 	};
+#pragma pack(pop)
 
 	/** Derives a stable random seed for a trajectory from its id and base seed. */
 	[[nodiscard]] std::uint64_t multiway_deterministic_trajectory_seed(
@@ -78,6 +80,7 @@ namespace texas::solver::multiway
 		std::uint32_t dynamic_chunk_size) noexcept;
 
 	/** Strided half-open range of trajectory identifiers. */
+#pragma pack(push, 8)
 	struct MultiwayTrajectoryRange
 	{
 		std::uint64_t begin = 0;
@@ -89,13 +92,16 @@ namespace texas::solver::multiway
 			return begin >= end ? 0U : (end - begin + stride - 1U) / stride;
 		}
 	};
+#pragma pack(pop)
 
 	/** Assignment of a trajectory range to one worker index. */
+#pragma pack(push, 8)
 	struct MultiwayWorkerBatch
 	{
 		std::size_t worker_index = 0;
 		MultiwayTrajectoryRange trajectories{};
 	};
+#pragma pack(pop)
 
 	/** Builds deterministic worker ranges and dynamic chunk assignments. */
 	class MultiwayScheduler

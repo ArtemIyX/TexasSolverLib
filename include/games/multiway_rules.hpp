@@ -17,6 +17,7 @@ namespace texas::games::multiway
 	 * Chip values are exact integers. Validation accepts profiles without antes,
 	 * straddles or rebuys, with two through six players and a valid rake policy.
 	 */
+#pragma pack(push, 8)
 	struct MultiwayGameRules
 	{
 		std::uint64_t profile_version = 1;									  ///< Nonzero version included in identity().
@@ -53,5 +54,6 @@ namespace texas::games::multiway
 		 */
 		[[nodiscard]] MultiwayGameConfig make_initial_game_config(core::PlayerId first_player = 0) const;
 	};
+#pragma pack(pop)
 
 } // namespace texas::games::multiway

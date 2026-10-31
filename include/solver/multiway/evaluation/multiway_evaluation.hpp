@@ -27,19 +27,24 @@ namespace texas::solver::multiway
 	// objects. Callers keep the candidate registry and callback context alive for
 	// the duration of evaluate().
 	/** Compact identity for a policy candidate supplied by the caller. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationCandidate
 	{
 		std::uint64_t id = 0;
 	};
+#pragma pack(pop)
 
 	/** Deterministic deal identity used by a duplicate-deal evaluation sample. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationDeal
 	{
 		std::uint64_t duplicate_index = 0;
 		std::uint64_t seed = 0;
 	};
+#pragma pack(pop)
 
 	/** Fixed-capacity per-seat value vector and its active length. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationSeatValues
 	{
 		std::array<Value, kMultiwayEvaluationMaxSeats> values = {};
@@ -48,10 +53,12 @@ namespace texas::solver::multiway
 		/** Checks the active seat count and finite value entries. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	// One deterministic evaluation sample. Values and best responses use the same
 	// units. The scalar measurements are the per-sample diagnostic observations.
 	/** One match evaluation with profile values and quality measurements. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationSample
 	{
 		MultiwayEvaluationSeatValues profile_values{};
@@ -66,18 +73,22 @@ namespace texas::solver::multiway
 		/** Checks both seat vectors and scalar diagnostic values. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	// Protected, cold-path input for an external AIVAT implementation. It is not
 	// emitted in public decision logs and is never consumed by runtime traversal.
 	/** Probability and estimated action value for one protected AIVAT decision. */
+#pragma pack(push, 8)
 	struct MultiwayAivatActionValue
 	{
 		MultiwayActionDescriptor action{};
 		double probability = 0.0;
 		Value estimated_value = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Sampled action, seed, and alternatives recorded for one decision. */
+#pragma pack(push, 8)
 	struct MultiwayAivatDecisionRecord
 	{
 		std::uint64_t decision_index = 0U;
@@ -86,8 +97,10 @@ namespace texas::solver::multiway
 		std::uint64_t decision_seed = 0U;
 		std::vector<MultiwayAivatActionValue> action_values;
 	};
+#pragma pack(pop)
 
 	/** Integrity-sealed history and decision data for external AIVAT tooling. */
+#pragma pack(push, 8)
 	struct MultiwayAivatEvaluationRecord
 	{
 		std::uint32_t schema_version = MULTIWAY_AIVAT_EVALUATION_RECORD_SCHEMA_VERSION;
@@ -102,8 +115,10 @@ namespace texas::solver::multiway
 		/** Checks schema, history, action data, and integrity hash. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Corrected per-seat means, uncertainty, and confidence intervals. */
+#pragma pack(push, 8)
 	struct MultiwayAivatEstimate
 	{
 		std::uint64_t samples = 0U;
@@ -116,6 +131,7 @@ namespace texas::solver::multiway
 		/** Checks seat count, sample count, confidence, and finite values. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	// Callback boundary for host-owned protected storage and external AIVAT
 	// tooling. False means the host rejected the record; no estimator is invoked.
@@ -139,6 +155,7 @@ namespace texas::solver::multiway
 		double confidence_level = 0.95);
 
 	/** Candidate ids and seat rotation for one match callback invocation. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationMatchRequest
 	{
 		const MultiwayEvaluationDeal* deal = nullptr;
@@ -146,6 +163,7 @@ namespace texas::solver::multiway
 		std::uint8_t seat_count = 0;
 		std::uint8_t rotation = 0;
 	};
+#pragma pack(pop)
 
 	// Cold-path plain callback boundary. Return false only for an expected sample
 	// rejection; malformed output is rejected by the evaluator.
@@ -156,6 +174,7 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** Candidate, seat, and minimum improvement for one response scenario. */
+#pragma pack(push, 8)
 	struct MultiwayLocalBestResponseScenario
 	{
 		std::uint64_t id = 0;
@@ -163,20 +182,25 @@ namespace texas::solver::multiway
 		PlayerId seat = -1;
 		Value minimum_improvement = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Deal and response scenario passed to a best-response callback. */
+#pragma pack(push, 8)
 	struct MultiwayLocalBestResponseRequest
 	{
 		MultiwayEvaluationDeal deal{};
 		MultiwayLocalBestResponseScenario scenario{};
 	};
+#pragma pack(pop)
 
 	/** Profile and response values returned for one best-response sample. */
+#pragma pack(push, 8)
 	struct MultiwayLocalBestResponseResult
 	{
 		Value profile_value = 0.0;
 		Value response_value = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Callback that measures one local best-response scenario. */
 	using MultiwayLocalBestResponseFn = bool (*)(
@@ -185,20 +209,24 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** Public-state and observed-action input for one off-tree check. */
+#pragma pack(push, 8)
 	struct MultiwayOffTreeGauntlet
 	{
 		std::uint64_t id = 0;
 		MultiwayPublicStateDescriptor public_state{};
 		MultiwayActionDescriptor observed_action{};
 	};
+#pragma pack(pop)
 
 	/** Sampled policy action and normalization from an off-tree callback. */
+#pragma pack(push, 8)
 	struct MultiwayOffTreeGauntletResult
 	{
 		MultiwayActionDescriptor sampled_action{};
 		bool has_sampled_action = false;
 		double policy_total = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Callback that evaluates a policy at one off-tree public state. */
 	using MultiwayOffTreeGauntletFn = bool (*)(
@@ -223,6 +251,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Aggregate uncertainty, timing, memory, and stability measurements. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationMetrics
 	{
 		std::uint64_t samples = 0;
@@ -235,8 +264,10 @@ namespace texas::solver::multiway
 		std::uint64_t total_pruned_negative_regrets = 0;
 		double max_worker_imbalance = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Mean focal-candidate value against one shared opponent candidate. */
+#pragma pack(push, 8)
 	struct MultiwayCrossPlayCell
 	{
 		std::uint64_t focal_candidate_id = 0;
@@ -244,8 +275,10 @@ namespace texas::solver::multiway
 		std::uint64_t samples = 0;
 		Value mean_focal_value = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Sample count and threshold outcome for one response scenario. */
+#pragma pack(push, 8)
 	struct MultiwayLocalBestResponseReport
 	{
 		std::uint64_t scenario_id = 0;
@@ -253,16 +286,20 @@ namespace texas::solver::multiway
 		Value mean_improvement = 0.0;
 		bool passed = false;
 	};
+#pragma pack(pop)
 
 	/** Pass/failure result for one off-tree legality and policy check. */
+#pragma pack(push, 8)
 	struct MultiwayOffTreeGauntletReport
 	{
 		std::uint64_t scenario_id = 0;
 		bool passed = false;
 		MultiwayEvaluationFailure failure = MultiwayEvaluationFailure::None;
 	};
+#pragma pack(pop)
 
 	/** Samples, candidates, checks, units, and callbacks for evaluation. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationConfig
 	{
 		std::uint8_t seat_count = 6;
@@ -282,8 +319,10 @@ namespace texas::solver::multiway
 		/** Checks bounds, required callbacks, and scenario identities. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Cross-play matrices, reduced-game quality, reports, and failures. */
+#pragma pack(push, 8)
 	struct MultiwayEvaluationResult
 	{
 		std::vector<MultiwayCrossPlayCell> cross_play;
@@ -296,6 +335,7 @@ namespace texas::solver::multiway
 		/** Returns true when no validation or evaluation check failed. */
 		[[nodiscard]] bool passed() const noexcept { return failures.empty(); }
 	};
+#pragma pack(pop)
 
 	// Runs every duplicate deal under every cyclic seat rotation. Cross-play cells
 	// use one focal candidate and one shared opposing candidate, which makes the

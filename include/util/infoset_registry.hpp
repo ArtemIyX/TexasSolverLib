@@ -18,10 +18,12 @@ namespace texas::util
 {
 
 	/** Metadata retained for an interned infoset id. */
+#pragma pack(push, 8)
 	struct InfosetMeta
 	{
 		std::size_t action_count = 0;
 	};
+#pragma pack(pop)
 
 	/**
 	 * @brief Stable mapping between external infoset keys and numeric IDs.

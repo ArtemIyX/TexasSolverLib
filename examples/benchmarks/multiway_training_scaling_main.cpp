@@ -27,6 +27,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct BenchmarkConfig
 	{
 		std::vector<std::uint32_t> workers{ 1U, 2U, 4U, 8U };
@@ -39,7 +40,9 @@ namespace
 		std::vector<std::uint32_t> dynamic_chunk_sizes{ texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE };
 		bool pin_workers = true;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct BenchmarkResult
 	{
 		std::uint32_t workers = 0U;
@@ -71,6 +74,7 @@ namespace
 			return elapsed_nanoseconds == 0U ? 0.0 : static_cast<double>(trajectories) * 1.0e9 / static_cast<double>(elapsed_nanoseconds);
 		}
 	};
+#pragma pack(pop)
 
 	constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit)
 	{

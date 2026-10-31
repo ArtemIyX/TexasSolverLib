@@ -9,6 +9,8 @@
 
 #include "core/street_types.hpp"
 
+#pragma pack(push, 8)
+
 namespace texas::solver::multiway
 {
 	// Stable offline-only features contain no opponent private cards or runtime policy state.
@@ -36,3 +38,5 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint32_t bucket_count(core::Street street) const;
 	};
 } // namespace texas::solver::multiway
+
+#pragma pack(pop)

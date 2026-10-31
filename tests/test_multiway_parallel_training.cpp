@@ -103,6 +103,7 @@ namespace
 		return config.identity();
 	}
 
+#pragma pack(push, 8)
 	struct ParallelTrainingFixture
 	{
 		explicit ParallelTrainingFixture(
@@ -155,6 +156,7 @@ namespace
 		texas::MultiwayRootBatchRunner runner;
 		texas::MultiwayBlueprintTrainer trainer;
 	};
+#pragma pack(pop)
 
 	void expect_same_storage(
 		const texas::MultiwayCoordinatorCheckpoint& expected,
@@ -199,11 +201,13 @@ namespace
 		}
 	}
 
+#pragma pack(push, 8)
 	struct BatchProgressCapture
 	{
 		std::vector<std::uint64_t> batches;
 		std::vector<std::uint64_t> trajectories;
 	};
+#pragma pack(pop)
 
 	void capture_batch_progress(
 		const texas::MultiwayBlueprintTrainingStatus& status,

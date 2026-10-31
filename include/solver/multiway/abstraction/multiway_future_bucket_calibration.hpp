@@ -14,6 +14,7 @@ namespace texas::solver::multiway
 {
 
 	/** @brief Target value and hand sample used to evaluate bucket quality. */
+#pragma pack(push, 8)
 	struct MultiwayFutureBucketCalibrationSample
 	{
 		MultiwayBucketBoardRequest board{};
@@ -21,8 +22,10 @@ namespace texas::solver::multiway
 		double target_value = 0.0;
 		bool held_out = false;
 	};
+#pragma pack(pop)
 
 	/** @brief Maximum loss, variance, miss rate and artifact size for calibration. */
+#pragma pack(push, 8)
 	struct MultiwayFutureBucketCalibrationLimits
 	{
 		double maximum_held_out_policy_loss = 1.0;
@@ -32,8 +35,10 @@ namespace texas::solver::multiway
 		/** @brief Validates calibration thresholds. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Measured bucket-quality losses and acceptance result. */
+#pragma pack(push, 8)
 	struct MultiwayFutureBucketCalibrationResult
 	{
 		std::uint64_t profile_identity = 0U;
@@ -45,14 +50,17 @@ namespace texas::solver::multiway
 		std::uint64_t artifact_bytes = 0U;
 		bool within_limits = false;
 	};
+#pragma pack(pop)
 
 	/** @brief Chosen profile and its calibration result. */
+#pragma pack(push, 8)
 	struct MultiwayFutureBucketCalibrationSelection
 	{
 		MultiwayFutureBucketProfile profile{};
 		MultiwayFutureBucketCalibrationResult result{};
 		bool selected = false;
 	};
+#pragma pack(pop)
 
 	/** @brief Deterministically marks a fraction of samples as held out. */
 	[[nodiscard]] std::vector<MultiwayFutureBucketCalibrationSample>

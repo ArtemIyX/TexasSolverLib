@@ -9,6 +9,8 @@
 
 #include <cstdint>
 
+#pragma pack(push, 8)
+
 namespace texas::solver::multiway
 {
 	/** @brief Immutable rules, abstraction sizes and semantic versions for one blueprint.
@@ -43,3 +45,5 @@ namespace texas::solver::multiway
 		void validate() const;
 	};
 } // namespace texas::solver::multiway
+
+#pragma pack(pop)

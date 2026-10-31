@@ -230,6 +230,7 @@ namespace texas::solver::multiway
 			append_u64(hash, training.negative_regret_pruning_enabled);
 		}
 
+#pragma pack(push, 8)
 		struct RowKey
 		{
 			std::uint64_t public_state = 0U;
@@ -237,6 +238,7 @@ namespace texas::solver::multiway
 			std::uint32_t bucket = 0U;
 			std::uint64_t action_menu_id = 0U;
 		};
+#pragma pack(pop)
 
 		RowKey row_key(const MultiwayFullBlueprintRowView& row) noexcept
 		{
@@ -688,6 +690,7 @@ namespace texas::solver::multiway
 		}
 	}
 
+#pragma pack(push, 8)
 	struct TemporaryFileCleanup
 	{
 		explicit TemporaryFileCleanup(std::filesystem::path file) : file(std::move(file)) {}
@@ -702,7 +705,9 @@ namespace texas::solver::multiway
 		std::filesystem::path file;
 		bool active = true;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct TemporaryDirectoryCleanup
 	{
 		explicit TemporaryDirectoryCleanup(std::filesystem::path directory)
@@ -720,7 +725,9 @@ namespace texas::solver::multiway
 		std::filesystem::path directory;
 		bool active = true;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintStreamWriter::Impl
 	{
 		Impl(
@@ -760,6 +767,7 @@ namespace texas::solver::multiway
 		std::uint64_t row_count = 0U;
 		std::uint64_t action_count = 0U;
 	};
+#pragma pack(pop)
 
 	void MultiwayFullBlueprintArtifact::validate() const
 	{
@@ -954,6 +962,7 @@ namespace texas::solver::multiway
 		return { impl_->row_count, impl_->action_count, impl_->encoder.encoded_bytes(), payload_hash, impl_->policy_hasher.finish(), publication_mode };
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayFullBlueprintShardedStreamWriter::Impl
 	{
 		Impl(const std::filesystem::path& destination_path,
@@ -1060,6 +1069,7 @@ namespace texas::solver::multiway
 		std::uint64_t action_count = 0U;
 		std::uint64_t total_serialized_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	MultiwayFullBlueprintShardedStreamWriter::MultiwayFullBlueprintShardedStreamWriter(
 		const std::filesystem::path& manifest_path,

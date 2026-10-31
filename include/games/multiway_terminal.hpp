@@ -23,6 +23,7 @@ namespace texas::games::multiway
 	struct MultiwayGameRules;
 
 	/** @brief Contributions, fold status and hand strengths for a terminal hand. */
+#pragma pack(push, 8)
 	struct MultiwayTerminalInput
 	{
 		std::vector<int> contributions;										  ///< Total chips committed by each seat, including folded seats.
@@ -37,23 +38,29 @@ namespace texas::games::multiway
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief A contribution layer with its eligible non-folded seats. */
+#pragma pack(push, 8)
 	struct MultiwaySidePot
 	{
 		int amount = 0;							///< Chips in this layer; settlement result pots have rake removed.
 		int contribution_cap = 0;				///< Highest per-seat contribution included in this layer.
 		std::vector<PlayerId> eligible_players; ///< Non-folded seats that may win this pot.
 	};
+#pragma pack(pop)
 
 	/** @brief Side-pot layers and uncalled-contribution refunds before settlement. */
+#pragma pack(push, 8)
 	struct MultiwayPotLayout
 	{
 		std::vector<MultiwaySidePot> pots; ///< Contested side pots ordered by contribution cap.
 		std::vector<int> refunds;		   ///< Uncalled contributions returned to each seat.
 	};
+#pragma pack(pop)
 
 	/** @brief Payout, refund, utility and rake results for a settled hand. */
+#pragma pack(push, 8)
 	struct MultiwayTerminalResult
 	{
 		std::vector<MultiwaySidePot> pots;							 ///< Contested pots after rake.
@@ -63,6 +70,7 @@ namespace texas::games::multiway
 		int rake_taken = 0;											 ///< Chips removed from contested pots exactly once by the rake policy.
 		texas::solver::multiway::MultiwayValueUnits utility_units{}; ///< Unit tag for utilities; payouts and refunds remain chips.
 	};
+#pragma pack(pop)
 
 	/** @brief Builds side pots and uncalled-bet refunds from contributions and fold status.
 	 * @param contributions Total chips committed by each seat.

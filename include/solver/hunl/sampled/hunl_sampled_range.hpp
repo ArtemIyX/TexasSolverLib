@@ -22,6 +22,7 @@ namespace texas::solver::hunl
 	// public-node cache. The coordinator owns this object and advances it through
 	// deterministic bounded trajectory subbatches.
 	/** @brief Root strategy outputs and progress from a range-sampled batch run. */
+#pragma pack(push, 8)
 	struct HUNLSampledRangeRunResult
 	{
 		HUNLSampledRootStrategy root_strategy;
@@ -29,8 +30,10 @@ namespace texas::solver::hunl
 		std::uint64_t batches_completed = 0;
 		bool timed_out = false;
 	};
+#pragma pack(pop)
 
 	/** @brief Retained and peak memory components for a structured-range run. */
+#pragma pack(push, 8)
 	struct HUNLSampledRangeMemoryEstimate
 	{
 		std::uint64_t joint_deal_bytes = 0;
@@ -42,6 +45,7 @@ namespace texas::solver::hunl
 		/** @brief Returns a saturating peak estimate including batch scratch and exports. */
 		[[nodiscard]] std::uint64_t peak_bytes() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Estimates memory for a structured-range solve request. */
 	[[nodiscard]] HUNLSampledRangeMemoryEstimate estimate_hunl_sampled_range_memory(

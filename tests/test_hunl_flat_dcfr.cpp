@@ -80,6 +80,7 @@ namespace
 		return std::vector<std::uint8_t>(json.begin(), json.end());
 	}
 
+#pragma pack(push, 8)
 	struct ZipBuilder
 	{
 		struct Entry
@@ -152,6 +153,7 @@ namespace
 			return out;
 		}
 	};
+#pragma pack(pop)
 
 	std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<std::uint8_t>& board)
 	{

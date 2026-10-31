@@ -13,6 +13,7 @@ namespace texas::solver::multiway
 {
 
 	/** Destination, identity, size, and resource values checked before writing. */
+#pragma pack(push, 8)
 	struct MultiwayArtifactPreflightRequest
 	{
 		std::filesystem::path destination;
@@ -26,6 +27,7 @@ namespace texas::solver::multiway
 		std::uint64_t estimated_process_memory_bytes = 0U;
 		std::uint64_t process_memory_limit_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	// Cold-path checks performed before bucket generation or publication. Throws
 	// on an unsafe or internally inconsistent request.

@@ -35,6 +35,7 @@ namespace texas::solver::hunl
 	// A production solver must use this contract for every depth cutoff or reject
 	// the cutoff request; it must never substitute a backend-specific heuristic.
 	/** @brief One public state and exact private deal submitted to a leaf backend. */
+#pragma pack(push, 8)
 	struct HUNLLeafEvaluationRequest
 	{
 		HUNLState public_state; ///< Public state; its hole_cards field is intentionally unset.
@@ -49,8 +50,10 @@ namespace texas::solver::hunl
 		std::string abstraction_version;											  ///< Expected abstraction version label.
 		std::string model_version;													  ///< Expected value-model version label.
 	};
+#pragma pack(pop)
 
 	/** @brief One evaluated leaf result and the metadata needed to validate it. */
+#pragma pack(push, 8)
 	struct HUNLLeafEvaluationResult
 	{
 		std::array<double, 2> values = { 0.0, 0.0 };							  ///< Utility by player.
@@ -62,6 +65,7 @@ namespace texas::solver::hunl
 		std::string abstraction_version; ///< Abstraction version used to compute the result.
 		std::string model_version;		 ///< Model version used to compute the result.
 	};
+#pragma pack(pop)
 
 	// A non-owning, non-virtual batch callback.  Callers submit requests in
 	// deterministic traversal order and must write one same-unit result per
@@ -76,6 +80,7 @@ namespace texas::solver::hunl
 		std::size_t count);
 
 	/** @brief Context and function pointer for batch leaf evaluation. */
+#pragma pack(push, 8)
 	struct HUNLLeafEvaluator
 	{
 		void* context = nullptr;						  ///< Opaque data passed to evaluate_batch.
@@ -87,5 +92,6 @@ namespace texas::solver::hunl
 			return evaluate_batch != nullptr;
 		}
 	};
+#pragma pack(pop)
 
 } // namespace texas::solver::hunl

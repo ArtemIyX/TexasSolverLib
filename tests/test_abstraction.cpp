@@ -80,6 +80,7 @@ namespace
 		return std::vector<std::uint8_t>(json.begin(), json.end());
 	}
 
+#pragma pack(push, 8)
 	struct ZipBuilder
 	{
 		struct Entry
@@ -152,6 +153,7 @@ namespace
 			return out;
 		}
 	};
+#pragma pack(pop)
 
 	std::filesystem::path make_tmp_path(const std::string& name)
 	{

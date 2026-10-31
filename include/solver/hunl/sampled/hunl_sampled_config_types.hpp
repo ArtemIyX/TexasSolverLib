@@ -9,6 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#pragma pack(push, 8)
+
 namespace texas::solver::hunl
 {
 	/** @brief Traversal policy used by sampled flat MCCFR. */
@@ -69,3 +71,5 @@ namespace texas::solver::hunl
 		const char* message = ""; ///< Static validation message when ok is false.
 	};
 } // namespace texas::solver::hunl
+
+#pragma pack(pop)

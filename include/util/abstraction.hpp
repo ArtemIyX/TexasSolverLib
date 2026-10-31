@@ -48,6 +48,7 @@ namespace texas::util
 	} };
 
 	/** Schema, bucket dimensions, feature configuration, and build seed. */
+#pragma pack(push, 8)
 	struct AbstractionMetadata
 	{
 		std::uint8_t schema_version = ABSTRACTION_SCHEMA_VERSION;
@@ -56,8 +57,10 @@ namespace texas::util
 		std::uint16_t feature_bins = 0;
 		std::uint64_t seed = 0;
 	};
+#pragma pack(pop)
 
 	/** Loaded street assignments and canonical board/hand indexes. */
+#pragma pack(push, 8)
 	struct AbstractionTables
 	{
 		std::vector<std::uint8_t> flop_assignments;
@@ -75,6 +78,7 @@ namespace texas::util
 		AbstractionMetadata metadata;
 		std::filesystem::path source_path;
 	};
+#pragma pack(pop)
 
 	/** Error category used while reading an abstraction artifact. */
 	enum class AbstractionErrorCode
@@ -87,11 +91,13 @@ namespace texas::util
 	};
 
 	/** Category and message for an abstraction loading or lookup error. */
+#pragma pack(push, 8)
 	struct AbstractionError
 	{
 		AbstractionErrorCode code = AbstractionErrorCode::Unsupported;
 		std::string message;
 	};
+#pragma pack(pop)
 
 	/** Suit-canonicalizes a board and optionally returns the selected permutation index. */
 	std::string canonicalize_board(const std::vector<std::uint8_t>& board, std::size_t* perm_index = nullptr);

@@ -40,13 +40,16 @@ namespace texas::solver::multiway
 		static_cast<std::size_t>(MultiwaySearchProfileStage::Count);
 
 	/** Total elapsed nanoseconds and call count for one stage. */
+#pragma pack(push, 8)
 	struct MultiwaySearchProfileCheckpoint
 	{
 		std::uint64_t elapsed_nanoseconds = 0U;
 		std::uint64_t calls = 0U;
 	};
+#pragma pack(pop)
 
 	/** Copyable profile mode and per-stage timing totals. */
+#pragma pack(push, 8)
 	struct MultiwaySearchProfileSnapshot
 	{
 		MultiwaySearchProfileMode mode = MultiwaySearchProfileMode::Disabled;
@@ -65,13 +68,16 @@ namespace texas::solver::multiway
 			return checkpoints[static_cast<std::size_t>(stage)];
 		}
 	};
+#pragma pack(pop)
 
 	/** Stage and elapsed time for one ranked profile item. */
+#pragma pack(push, 8)
 	struct MultiwaySearchProfileRankingEntry
 	{
 		MultiwaySearchProfileStage stage = MultiwaySearchProfileStage::PrivateDealSampling;
 		std::uint64_t elapsed_nanoseconds = 0U;
 	};
+#pragma pack(pop)
 
 	/** Mutable stage counters that can aggregate snapshots from workers. */
 	class MultiwaySearchProfile

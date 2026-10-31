@@ -152,11 +152,13 @@ namespace texas::solver::multiway
 				plan.identity = identity;
 				plan.training = training;
 				plan.compact_direct_order = true;
+#pragma pack(push, 8)
 				struct Context
 				{
 					MultiwayFullBlueprintExportPlan* plan;
 					const MultiwayExternalTrainingStorage* storage;
 				};
+#pragma pack(pop)
 				Context context{ &plan, external };
 				const auto visit_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 					auto& current = *static_cast<Context*>(opaque);
@@ -312,6 +314,7 @@ namespace texas::solver::multiway
 
 	} // namespace
 
+#pragma pack(push, 8)
 	struct MultiwayBlueprintTrainer::ExportRunContext
 	{
 		struct ExportFilterGuard
@@ -365,6 +368,7 @@ namespace texas::solver::multiway
 		std::uint64_t result_manifest_bytes = 0U;
 		std::uint64_t result_shard_count = 0U;
 	};
+#pragma pack(pop)
 
 	void MultiwayFullBlueprintExportPlan::validate() const
 	{
@@ -527,10 +531,12 @@ namespace texas::solver::multiway
 			const auto* external_for_plan = lease.external_storage();
 			if (external_for_plan != nullptr)
 			{
+#pragma pack(push, 8)
 				struct ShardPlanContext
 				{
 					const decltype(add_shape)* add_shape_callback;
 				};
+#pragma pack(pop)
 				ShardPlanContext shard_context{ &add_shape };
 				const auto count_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 					auto& current = *static_cast<ShardPlanContext*>(opaque);
@@ -766,6 +772,7 @@ namespace texas::solver::multiway
 				rows_before = external->compact_storage().row_index_stats();
 				pages_before = external->compact_storage().page_store_stats();
 			}
+#pragma pack(push, 8)
 			struct ExternalRowWriteContext
 			{
 				const MultiwayExternalTrainingStorage* storage;
@@ -782,6 +789,7 @@ namespace texas::solver::multiway
 				std::chrono::steady_clock::time_point stream_started;
 				std::uint64_t row_sequence = 0U;
 			};
+#pragma pack(pop)
 			ExternalRowWriteContext external_context{ external, writer.get(), sharded_writer.get(), strategy.data(), actions.data(),
 				&telemetry.external_profile, profile_enabled ? &page_profile : nullptr,
 				profile_enabled ? &writer_profile : nullptr,

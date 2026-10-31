@@ -14,11 +14,13 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Contribution and traversal context for one sampled terminal. */
+#pragma pack(push, 8)
 	struct HUNLSampledTerminalInput
 	{
 		std::array<int, 2> contributions = { 0, 0 }; ///< Total contributions by player.
 		PlayerId traversing_player = 0;				 ///< Player whose utility is returned.
 	};
+#pragma pack(pop)
 
 	/** @brief Evaluates terminal utility from the sampled traversing player's perspective. */
 	class HUNLSampledTerminalEvaluator

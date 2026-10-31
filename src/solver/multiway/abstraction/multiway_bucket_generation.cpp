@@ -24,12 +24,15 @@ namespace texas::solver::multiway
 	namespace
 	{
 
+#pragma pack(push, 8)
 		struct GenerationChunk
 		{
 			std::uint64_t begin_index = 0U;
 			std::vector<MultiwayBucketTable> tables;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct SharedGenerationState
 		{
 			std::mutex mutex;
@@ -39,6 +42,9 @@ namespace texas::solver::multiway
 			std::map<std::uint64_t, GenerationChunk> ready;
 			std::exception_ptr failure;
 		};
+#pragma pack(pop)
+		static_assert(alignof(std::mutex) <= 8 && alignof(std::condition_variable) <= 8,
+			"packed SharedGenerationState requires naturally aligned synchronization members");
 
 		void append_u32(std::vector<std::uint8_t>& payload, std::uint32_t value)
 		{
@@ -52,12 +58,14 @@ namespace texas::solver::multiway
 				*cursor++ = static_cast<std::uint8_t>(value >> (index * 8U));
 		}
 
+#pragma pack(push, 8)
 		struct ComboMetadata
 		{
 			std::array<std::uint8_t, 2U> cards;
 			std::array<std::uint8_t, 2U> ranks;
 			std::array<std::uint8_t, 2U> suits;
 		};
+#pragma pack(pop)
 
 		const std::array<ComboMetadata, MULTIWAY_HOLE_COMBINATION_COUNT>& combo_metadata()
 		{
@@ -538,12 +546,14 @@ namespace texas::solver::multiway
 		const auto capacity = options.queue_capacity == 0U
 			? std::max<std::uint32_t>(2U, threads * 2U)
 			: std::max<std::uint32_t>(2U, options.queue_capacity);
+#pragma pack(push, 8)
 		struct Chunk
 		{
 			std::uint64_t begin = 0U;
 			std::uint64_t count = 0U;
 			std::vector<std::uint8_t> payload;
 		};
+#pragma pack(pop)
 		std::vector<Chunk> slots(capacity);
 		std::vector<std::size_t> free_slots;
 		free_slots.reserve(capacity);

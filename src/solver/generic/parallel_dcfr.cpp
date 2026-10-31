@@ -90,12 +90,15 @@ namespace texas::solver::dcfr
 	namespace
 	{
 
+#pragma pack(push, 8)
 		struct WorkBatch
 		{
 			std::vector<std::size_t> seed_indices;
 			std::size_t estimated_weight = 0;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		template <class G>
 		struct FrontierSeed
 		{
@@ -103,6 +106,7 @@ namespace texas::solver::dcfr
 			double chance_reach = 1.0;
 			std::size_t estimated_weight = 0;
 		};
+#pragma pack(pop)
 
 		template <class G>
 		std::size_t child_count(const G& state)
@@ -745,6 +749,7 @@ namespace texas::solver::dcfr
 			return out;
 		}
 
+#pragma pack(push, 8)
 		struct WorkerPoolState
 		{
 			std::mutex mutex;
@@ -759,6 +764,9 @@ namespace texas::solver::dcfr
 			std::vector<WorkerProfile> worker_profiles;
 			std::exception_ptr error;
 		};
+#pragma pack(pop)
+		static_assert(alignof(std::mutex) <= 8 && alignof(std::condition_variable) <= 8 && alignof(std::atomic<std::size_t>) <= 8,
+			"packed WorkerPoolState requires naturally aligned synchronization members");
 
 		WorkerPoolState pool;
 		pool.results.resize(plan.worker_count);

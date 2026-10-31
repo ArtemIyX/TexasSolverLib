@@ -38,6 +38,7 @@ namespace texas::util
 			return offset <= size && length <= size - offset;
 		}
 
+#pragma pack(push, 8)
 		struct ZipEntry
 		{
 			std::string name;
@@ -47,6 +48,7 @@ namespace texas::util
 			std::uint32_t uncompressed_size = 0;
 			std::uint32_t local_header_offset = 0;
 		};
+#pragma pack(pop)
 
 		std::uint32_t crc32_bytes(const std::uint8_t* data, std::size_t size) noexcept
 		{

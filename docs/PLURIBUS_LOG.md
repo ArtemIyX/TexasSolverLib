@@ -1,5 +1,53 @@
 # Pluribus Roadmap Progress Log
 
+## Struct layout evidence review
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Reordered `HUNLSampledInfosetMeta` fields under pack 8 to remove padding. Static layout analysis predicts 48 bytes to 40 bytes without changing field types or names.
+- Preserved `HUNLSampledNode` state copies, `HUNLFlatNodeMeta` terminal fields, `MultiwayPackedPublicNode` record fields, and multiway IDs because ownership, traversal, exact-mode, external-format, or bounds evidence was insufficient for a safe reduction.
+- Added focused compile-time size, alignment, standard-layout, trivial-copyability, and member-offset contracts for the sampled metadata, sampled row shape, multiway IDs, row shape, and packed record candidates.
+
+### Files
+
+- `include/solver/hunl/sampled/hunl_sampled_storage.hpp`
+- `tests/test_struct_layout_contract.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review only. CMake configuration was run before the user requested no further build or test execution; the build was interrupted and no tests were run.
+
+### Limitations
+
+- Runtime sizeof, vector-capacity, resident-memory, and representative-runtime before/after measurements remain outstanding.
+- AVX2 dispatch remains compile-time selected in `src/util/simd.cpp`; no SIMD code was changed because runtime CPU measurements and a broader dispatch change were outside this static-only continuation.
+
+## Explicit struct packing policy
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Added balanced 8-byte packing scopes around project-owned struct definitions in public headers, implementation files, examples, and tests. The packing restoration probe intentionally uses 1-byte packing.
+- Preserved cache-line aligned worker types and added compile-time checks for their alignment and packed synchronization members. Documented the policy, ABI rebuild requirement, and serialization boundaries.
+
+### Files
+
+- `AGENTS.md`, `docs/PROJECT_GUIDE.md`, `docs/PLURIBUS_LOG.md`
+- Struct-bearing headers under `include/` and implementation files under `src/`
+- Struct-bearing examples under `examples/` and fixtures under `tests/`
+- `tests/test_packing_contract.cpp`
+
+### Validation
+
+- Static source audit checked named struct declarations, balanced packing scopes, preprocessor branch boundaries, and includes within scopes. The only intentionally uncovered declaration is the packing-restoration probe.
+- Reviewed explicit over-alignment declarations, representative layout and serialization code, and the whitespace diff. Build and tests were not run as requested.
+
+### Limitations
+
+- The new compile-time assertions have not been compiled. ABI compatibility with existing binaries and layout behavior across compilers and platforms remain unverified; rebuild consumers with the library.
+
 The user reported that the build and tests passed after the following fixes; commands and test scope were not specified.
 
 ## Multiway boundary checks after source splits

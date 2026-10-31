@@ -146,6 +146,7 @@ namespace texas::solver::multiway
 		if (path != MultiwayDeltaMergePath::Reference && path != MultiwayDeltaMergePath::Tournament)
 			throw std::invalid_argument("multiway merge path is invalid");
 
+#pragma pack(push, 8)
 		struct ExternalMergeAbortGuard
 		{
 			MultiwayExternalTrainingStorage* storage = nullptr;
@@ -162,6 +163,7 @@ namespace texas::solver::multiway
 					}
 			}
 		};
+#pragma pack(pop)
 		ExternalMergeAbortGuard external_abort;
 		if (external_storage_ != nullptr)
 		{

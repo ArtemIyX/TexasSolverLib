@@ -23,48 +23,59 @@ namespace texas::solver::multiway
 	// required for postflop roots and optional for preflop roots. This P1.4
 	// session does not traverse postflop states.
 	/** Non-owning model inputs and continuation settings for one search session. */
+#pragma pack(push, 8)
 	struct MultiwaySearchSessionDependencies
 	{
 		const MultiwayBucketRegistry* buckets = nullptr;
 		std::shared_ptr<const MultiwayFixedContinuationSelector> continuation_selector;
 		bool lossless_current_round_keys = true;
 	};
+#pragma pack(pop)
 
 	/** Public root identity and revision associated with a session. */
+#pragma pack(push, 8)
 	struct MultiwaySearchSessionRootMetadata
 	{
 		MultiwayPublicStateId public_state{};
 		MultiwayActionAbstractionIdentity action_abstraction{};
 		std::uint64_t revision = 0U;
 	};
+#pragma pack(pop)
 
 	/** Counts and root-row presence for an exported session view. */
+#pragma pack(push, 8)
 	struct MultiwaySearchSessionRowView
 	{
 		std::size_t row_count = 0U;
 		std::size_t value_count = 0U;
 		bool has_root_row = false;
 	};
+#pragma pack(pop)
 
 	// A prepared replacement root. Planning it is transactional: the current
 	// session remains unchanged until the runtime owner elects to reroot.
 	/** Candidate root and observed action produced by local expansion planning. */
+#pragma pack(push, 8)
 	struct MultiwayLocalExpansion
 	{
 		MultiwayRootSnapshot root{};
 		MultiwayActionDescriptor observed_action{};
 	};
+#pragma pack(pop)
 
 	// Range-wide policy export remains request-local. Only the selected actual
 	// hand may be frozen; hypothetical rows remain available to range updates.
 	/** Exported root actions for one hero hand in each legal range row. */
+#pragma pack(push, 8)
 	struct MultiwaySearchSessionHeroRow
 	{
 		CanonicalComboId combo{};
 		std::vector<MultiwayRootActionProbability> actions;
 	};
+#pragma pack(pop)
 
 	/** Hero's range policy and optional frozen actual-hand actions. */
+#pragma pack(push, 8)
 	struct MultiwaySearchSessionHeroPolicy
 	{
 		PlayerId hero_seat = -1;
@@ -74,10 +85,12 @@ namespace texas::solver::multiway
 		std::vector<MultiwayRootActionProbability> actual_hand_actions;
 		bool actual_hand_frozen = false;
 	};
+#pragma pack(pop)
 
 	// Immutable export captured only after a fully merged batch. It contains no
 	// private cards, ranges, worker streams, or sampling seed.
 	/** Public root policy and batch identity from a completed clean batch. */
+#pragma pack(push, 8)
 	struct MultiwaySearchSessionCleanSnapshot
 	{
 		MultiwayRootPolicy root_policy{};
@@ -90,6 +103,7 @@ namespace texas::solver::multiway
 		std::uint64_t merged_delta_entries = 0U;
 		std::uint32_t worker_count = 0U;
 	};
+#pragma pack(pop)
 
 	// One request-local owner for mutable runtime search state. It never retains
 	// caller data after construction and does not own immutable artifacts.
@@ -185,6 +199,7 @@ namespace texas::solver::multiway
 		std::optional<MultiwayActionTranslation> action_translation_;
 		MultiwaySearchSessionRootMetadata root_metadata_{};
 		std::optional<MultiwaySearchSessionCleanSnapshot> clean_snapshot_;
+#pragma pack(push, 8)
 		struct ActualHandFreeze
 		{
 			PlayerId hero_seat = -1;
@@ -192,6 +207,7 @@ namespace texas::solver::multiway
 			std::uint64_t root_revision = 0U;
 			std::vector<MultiwayRootActionProbability> actions;
 		};
+#pragma pack(pop)
 		std::optional<ActualHandFreeze> actual_hand_freeze_;
 	};
 

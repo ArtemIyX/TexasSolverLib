@@ -167,18 +167,22 @@ namespace texas::solver::multiway
 			"CHECKPOINT_PAGES.previous", "CHECKPOINT_TRAINING.previous"
 		};
 
+#pragma pack(push, 8)
 		struct ComponentManifestInfo
 		{
 			std::uint64_t generation = 0U;
 			std::uint64_t last_batch_number = 0U;
 			bool exists = false;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct TransactionWal
 		{
 			std::uint32_t previous_flags = 0U;
 			std::uint64_t batch_number = 0U;
 			std::uint64_t merge_fingerprint = 0U;
 		};
+#pragma pack(pop)
 
 		[[maybe_unused]] void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
 		{
@@ -284,10 +288,12 @@ namespace texas::solver::multiway
 			const std::vector<std::uint64_t>& sorted_keys,
 			const char* error_message)
 		{
+#pragma pack(push, 8)
 			struct Context
 			{
 				const char* error_message;
 			};
+#pragma pack(pop)
 			Context context{ error_message };
 			const auto reject_existing = [](void* raw_context, std::uint64_t,
 											 const std::uint8_t*, std::size_t) -> bool {
@@ -438,6 +444,7 @@ namespace texas::solver::multiway
 			const auto temporary = std::filesystem::path(destination.string() + ".tmp");
 			if (std::filesystem::exists(temporary))
 				throw std::runtime_error("external checkpoint pin temporary path already exists");
+#pragma pack(push, 8)
 			struct TemporaryFileCleanup
 			{
 				std::filesystem::path path;
@@ -447,6 +454,7 @@ namespace texas::solver::multiway
 					std::filesystem::remove(path, ignored);
 				}
 			} cleanup{ temporary };
+#pragma pack(pop)
 			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
 			if (!output)
 				throw std::runtime_error("external checkpoint pin cannot be opened");
@@ -507,11 +515,13 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("external component manifest checksum is invalid");
 			return { generation, last_batch_number, true };
 		}
+#pragma pack(push, 8)
 		struct ExternalDiskBudgetSnapshot
 		{
 			std::uint64_t stored_bytes = 0U;
 			std::uint64_t live_segment_bytes = 0U;
 		};
+#pragma pack(pop)
 		[[maybe_unused]] ExternalDiskBudgetSnapshot read_external_disk_budget_snapshot(
 			const std::filesystem::path& root)
 		{
@@ -640,12 +650,14 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("external transaction journal fields are invalid");
 			return result;
 		}
+#pragma pack(push, 8)
 		struct CheckpointRestoreWal
 		{
 			std::uint32_t previous_flags = 0U;
 			MultiwayExternalGenerationManifest target{};
 			std::array<std::uint64_t, 3U> component_manifest_hashes{};
 		};
+#pragma pack(pop)
 		constexpr std::array<std::uint8_t, 8U> kCheckpointRestoreWalMagic = {
 			'T', 'X', 'M', 'W', 'R', 'S', 'T', '1'
 		};
