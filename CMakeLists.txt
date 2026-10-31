@@ -54,6 +54,7 @@ option(TEXASSOLVER_TRACY_CALLSTACKS "Enable Tracy call stacks" OFF)
 option(TEXASSOLVER_TRACY_LOCKS "Enable selected Tracy lock instrumentation" OFF)
 option(TEXASSOLVER_TRACY_MEMORY "Enable explicit Tracy solver allocation events" OFF)
 option(TEXASSOLVER_ENABLE_LOGGING "Build application logging support" OFF)
+option(TEXASSOLVER_ENABLE_AVX2_KERNELS "Compile AVX2 kernels in their owning translation units" ON)
 
 if (TEXASSOLVER_ENABLE_LOGGING)
     find_package(spdlog CONFIG REQUIRED)
@@ -208,6 +209,7 @@ set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
     include/logging/log.hpp
     include/logging/progress.hpp
     include/util/tracy.hpp
+    include/util/restrict.hpp
     include/solver/hunl/sampled/hunl_sampled_trajectory.hpp
     include/solver/multiway/resolver/multiway_resolver_policy.hpp
 )

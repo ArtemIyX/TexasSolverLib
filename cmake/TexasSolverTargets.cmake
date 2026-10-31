@@ -83,6 +83,22 @@ add_library(TexasSolver::texas ALIAS texas)
 texassolver_configure_core_target(texas)
 target_link_libraries(texas PUBLIC texas_types)
 
+if (TEXASSOLVER_ENABLE_AVX2_KERNELS)
+    if (MSVC)
+        set_source_files_properties(
+            "${TEXASSOLVER_SOURCE_DIR}/src/util/simd.cpp"
+            "${TEXASSOLVER_SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_simd.cpp"
+            PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        set_source_files_properties(
+            "${TEXASSOLVER_SOURCE_DIR}/src/util/simd.cpp"
+            "${TEXASSOLVER_SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_simd.cpp"
+            PROPERTIES COMPILE_OPTIONS "-mavx2")
+    else()
+        message(WARNING "TEXASSOLVER_ENABLE_AVX2_KERNELS is unsupported by this compiler; using baseline kernels")
+    endif()
+endif()
+
 if (TEXASSOLVER_ENABLE_LOGGING)
     add_library(texas_logging STATIC ${TEXASSOLVER_APPLICATION_SOURCES})
     add_library(TexasSolver::logging ALIAS texas_logging)

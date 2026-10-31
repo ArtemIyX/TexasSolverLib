@@ -4,6 +4,8 @@
 #include <atomic>
 #include <cmath>
 
+#include "util/restrict.hpp"
+
 #if defined(__AVX2__)
 	#include <immintrin.h>
 #endif
@@ -19,7 +21,8 @@ namespace texas::solver::hunl
 		bool use_sampled_avx2() noexcept
 		{
 #if defined(__AVX2__)
-			return g_hunl_sampled_simd_enabled.load(std::memory_order_relaxed) && detect_simd_backend() == SimdBackend::Avx2;
+			return g_hunl_sampled_simd_enabled.load(std::memory_order_relaxed) &&
+				texas::util::detect_simd_backend() == texas::util::SimdBackend::Avx2;
 #else
 			return false;
 #endif
@@ -137,12 +140,12 @@ namespace texas::solver::hunl
 		}
 
 		void accumulate_average_strategy_action_major_f32_avx2(
-			const float* strategy,
-			const float* reach_or_weight,
+			const float* TEXAS_RESTRICT strategy,
+			const float* TEXAS_RESTRICT reach_or_weight,
 			std::uint32_t action_count,
 			std::uint32_t bucket_count,
 			float scale,
-			float* strategy_sum)
+			float* TEXAS_RESTRICT strategy_sum)
 		{
 			const auto scale_vec = _mm256_set1_ps(scale);
 			for (std::uint32_t action = 0; action < action_count; ++action)
@@ -166,12 +169,12 @@ namespace texas::solver::hunl
 		}
 
 		void add_regret_delta_action_major_f32_avx2(
-			const float* action_values,
-			const float* node_values,
-			const float* cf_reach,
+			const float* TEXAS_RESTRICT action_values,
+			const float* TEXAS_RESTRICT node_values,
+			const float* TEXAS_RESTRICT cf_reach,
 			std::uint32_t action_count,
 			std::uint32_t bucket_count,
-			float* regret)
+			float* TEXAS_RESTRICT regret)
 		{
 			for (std::uint32_t action = 0; action < action_count; ++action)
 			{
@@ -195,12 +198,12 @@ namespace texas::solver::hunl
 		}
 
 		void accumulate_average_strategy_action_major_f64_avx2(
-			const double* strategy,
-			const double* reach_or_weight,
+			const double* TEXAS_RESTRICT strategy,
+			const double* TEXAS_RESTRICT reach_or_weight,
 			std::uint32_t action_count,
 			std::uint32_t bucket_count,
 			double scale,
-			double* strategy_sum)
+			double* TEXAS_RESTRICT strategy_sum)
 		{
 			const auto scale_vec = _mm256_set1_pd(scale);
 			for (std::uint32_t action = 0; action < action_count; ++action)
@@ -224,12 +227,12 @@ namespace texas::solver::hunl
 		}
 
 		void add_regret_delta_action_major_f64_avx2(
-			const double* action_values,
-			const double* node_values,
-			const double* cf_reach,
+			const double* TEXAS_RESTRICT action_values,
+			const double* TEXAS_RESTRICT node_values,
+			const double* TEXAS_RESTRICT cf_reach,
 			std::uint32_t action_count,
 			std::uint32_t bucket_count,
-			double* regret)
+			double* TEXAS_RESTRICT regret)
 		{
 			for (std::uint32_t action = 0; action < action_count; ++action)
 			{
@@ -294,7 +297,7 @@ namespace texas::solver::hunl
 
 	HUNLSampledSimdBackend hunl_sampled_simd_backend() noexcept
 	{
-		return use_sampled_avx2() ? HUNLSampledSimdBackend::Avx2Fma : HUNLSampledSimdBackend::Scalar;
+		return use_sampled_avx2() ? HUNLSampledSimdBackend::Avx2 : HUNLSampledSimdBackend::Scalar;
 	}
 
 	const char* hunl_sampled_simd_backend_name(HUNLSampledSimdBackend backend) noexcept
@@ -303,8 +306,8 @@ namespace texas::solver::hunl
 		{
 			case HUNLSampledSimdBackend::Scalar:
 				return "scalar";
-			case HUNLSampledSimdBackend::Avx2Fma:
-				return "avx2-fma";
+			case HUNLSampledSimdBackend::Avx2:
+				return "avx2";
 		}
 		return "unknown";
 	}

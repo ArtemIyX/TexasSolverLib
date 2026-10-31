@@ -644,7 +644,7 @@ namespace texas::solver::hunl
 	void HUNLFlatMCCFR::add_sampled_kernel_profile(double seconds, HUNLSampledSimdBackend backend) noexcept
 	{
 		profile_.sampled_simd_backend = hunl_sampled_simd_backend();
-		if (backend == HUNLSampledSimdBackend::Avx2Fma)
+		if (backend == HUNLSampledSimdBackend::Avx2)
 		{
 			profile_.sampled_kernel_simd_seconds += seconds;
 			++profile_.sampled_kernel_simd_calls;

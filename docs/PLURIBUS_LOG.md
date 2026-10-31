@@ -1,5 +1,37 @@
 # Pluribus Roadmap Progress Log
 
+## Compiler optimization dispatch and aliasing contracts
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Added runtime AVX2 OS-state and CPU-feature detection for AVX2-compiled kernels.
+- Added runtime guards to utility entry points so an AVX2-enabled build selects SSE2 or scalar code before executing AVX2 instructions.
+- Corrected sampled-HUNL backend reporting from `avx2-fma` to `avx2`; no FMA instructions are used.
+- Added an internal-only restrict macro and applied it to anonymous-namespace sampled-HUNL AVX2 accumulation kernels whose input and output buffers are separate by operation contract. No public API was changed.
+- Added focused backend-name, scalar aliasing, and sampled scalar-versus-selected equivalence contracts.
+
+### Files
+
+- `CMakeLists.txt`
+- `cmake/TexasSolverTargets.cmake`
+- `include/util/restrict.hpp`
+- `include/solver/hunl/sampled/hunl_sampled_simd.hpp`
+- `src/util/simd.cpp`
+- `src/solver/hunl/sampled/hunl_sampled_simd.cpp`
+- `src/solver/hunl/flat/hunl_flat_mccfr.cpp`
+- `tests/test_simd_dispatch_contract.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Not run. The requested process forbids builds and tests.
+
+### Limitations
+
+- No vectorization pragmas, unrolling, or branch hints were retained without compiler/profile evidence.
+- Builds, tests, benchmarks, and compiler vectorization reports were not run per request.
+
 ## Struct layout evidence review
 
 **Status:** Complete

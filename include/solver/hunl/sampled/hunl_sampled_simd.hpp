@@ -16,7 +16,7 @@ namespace texas::solver::hunl
 	enum class HUNLSampledSimdBackend : std::uint8_t
 	{
 		Scalar = 0,	 ///< Portable scalar implementation.
-		Avx2Fma = 1, ///< AVX2 and FMA implementation when supported.
+		Avx2 = 1, ///< AVX2 implementation when supported.
 	};
 
 	/** @brief Enables or disables available SIMD kernels. */
