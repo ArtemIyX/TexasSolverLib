@@ -89,11 +89,28 @@ if (TEXASSOLVER_ENABLE_AVX2_KERNELS)
             "${TEXASSOLVER_SOURCE_DIR}/src/util/simd.cpp"
             "${TEXASSOLVER_SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_simd.cpp"
             PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x86|i[3-6]86)$" OR
+            CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(X86|x64)$")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp"
+                PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning.cpp"
+                PROPERTIES COMPILE_DEFINITIONS TEXASSOLVER_COMPACT_PRUNE_AVX2_COMPILED=1)
+        endif()
     elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         set_source_files_properties(
             "${TEXASSOLVER_SOURCE_DIR}/src/util/simd.cpp"
             "${TEXASSOLVER_SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_simd.cpp"
             PROPERTIES COMPILE_OPTIONS "-mavx2")
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x86|i[3-6]86)$")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp"
+                PROPERTIES COMPILE_OPTIONS "-mavx2")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning.cpp"
+                PROPERTIES COMPILE_DEFINITIONS TEXASSOLVER_COMPACT_PRUNE_AVX2_COMPILED=1)
+        endif()
     else()
         message(WARNING "TEXASSOLVER_ENABLE_AVX2_KERNELS is unsupported by this compiler; using baseline kernels")
     endif()

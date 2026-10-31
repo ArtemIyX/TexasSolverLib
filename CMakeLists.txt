@@ -211,6 +211,7 @@ set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
     include/util/tracy.hpp
     include/util/restrict.hpp
     include/solver/hunl/sampled/hunl_sampled_trajectory.hpp
+    include/solver/multiway/engine/detail/multiway_compact_pruning.hpp
     include/solver/multiway/resolver/multiway_resolver_policy.hpp
 )
 set(TEXASSOLVER_RESEARCH_HEADERS
@@ -257,6 +258,8 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl/sampled/hunl_sampled_range.cpp
     src/solver/hunl/sampled/hunl_sampled_scheduler.cpp
     src/solver/hunl/sampled/hunl_sampled_simd.cpp
+    src/solver/multiway/engine/multiway_compact_pruning.cpp
+    src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp
     src/solver/hunl/sampled/hunl_sampled_solver.cpp
     src/solver/hunl/sampled/hunl_sampled_storage.cpp
     src/solver/hunl/sampled/hunl_sampled_trajectory.cpp

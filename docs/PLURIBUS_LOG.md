@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## Multiway compact regret pruning SIMD
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Added scalar and SSE2 compact regret-pruning kernels with exact integer comparisons and counts.
+- Added an isolated AVX2 kernel with baseline runtime CPU and OS-state dispatch; unsupported builds retain scalar/SSE2 fallback.
+- Preserved existing threshold/floor conversion and strict comparison behavior.
+- Added differential backend coverage for empty and unaligned inputs, boundaries, threshold equality, replacement counts, and tails.
+
+### Files
+
+- `CMakeLists.txt`
+- `cmake/TexasSolverTargets.cmake`
+- `include/solver/multiway/engine/detail/multiway_compact_pruning.hpp`
+- `src/solver/multiway/engine/multiway_compact_pruning.cpp`
+- `src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Builds and tests were not run, per request.
+- Static diff review only; no compiler report or benchmark was run.
+
+### Limitations
+
+- Available profiling evidence does not establish that this scan is material. No performance improvement is claimed. The smallest next step is to record prune calls, cells scanned, and cumulative time in one fixed representative training profile, then inspect the compiler vectorization report.
+- Differential tests are added but unrun.
+
 ## Compiler optimization dispatch and aliasing contracts
 
 **Status:** Complete

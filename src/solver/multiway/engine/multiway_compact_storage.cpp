@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/detail/multiway_compact_pruning.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 
 #include <algorithm>
@@ -315,16 +316,9 @@ namespace texas::solver::multiway
 	{
 		const auto floor_value = std::clamp<long long>(std::llround(regret_floor * 1024.0), kRegretMin, kRegretMax);
 		const auto threshold_value = std::clamp<long long>(std::llround(threshold * 1024.0), kRegretMin, kRegretMax);
-		std::size_t count = 0U;
-		for (auto& regret : regrets_)
-		{
-			if (regret < threshold_value)
-			{
-				regret = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
-				++count;
-			}
-		}
-		return count;
+		const auto replacement = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
+		return detail::prune_compact_regrets_selected(
+			regrets_.data(), regrets_.size(), static_cast<std::int32_t>(threshold_value), replacement);
 	}
 
 	std::vector<Probability> MultiwayCompactStorage::regret_matched_strategy(MultiwayInfosetId infoset, std::uint32_t bucket) const
