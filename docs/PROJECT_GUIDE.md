@@ -89,6 +89,10 @@ The minimum is CMake 3.20 and the project version is 0.1.0. The root `CMakeLists
 
 `texas` is a static library with build-tree alias `TexasSolver::texas`. It requires C++17, links Threads and `pheval`, and links `Cabinet` on Windows. Windows builds use the real abstraction source and non-Windows builds select its stub. The target carries binary provenance tokens for source commit, dirty state, compiler and configuration. Treat provenance as a diagnostic and confirm its acquisition succeeded when it matters.
 
+`TexasSolver::types` is an installable C++17 interface target for the curated, solver-independent value headers. It has no solver, evaluator, thread, logging, or platform-library link requirements. Existing operational headers include their extracted `*_types.hpp` files, retaining their declaration namespaces and include paths. Installed `find_package(TexasSolver CONFIG REQUIRED)` still resolves Threads because the package imports the shared solver export set; use `TexasSolver::types` to compile these types without linking `TexasSolver::texas`.
+
+The extracted headers also include `core/street_types.hpp`, `games/hunl_flat_graph_types.hpp`, `games/hunl_terminal_types.hpp`, `games/multiway_*_types.hpp`, `solver/multiway/blueprint/multiway_blueprint_config_types.hpp`, and `solver/multiway/abstraction/multiway_model_identity_types.hpp`. The value declarations and inline comparisons are available from `TexasSolver::types`; validation, graph construction and other out-of-line operations remain implemented by `TexasSolver::texas` and require that library when called.
+
 ### Option matrix
 
 | Option | Default | Effect and constraints |
@@ -106,7 +110,14 @@ The minimum is CMake 3.20 and the project version is 0.1.0. The root `CMakeLists
 
 The flat MCCFR research library is also constructed when tests or research examples are enabled. This does not make it part of the installed stable package. Logging is a separate internal target even in disabled mode; the installed main library does not require logging. The vendored evaluator's generic option names are saved and restored around its subdirectory; required card evaluators are enabled and unused PLO components, dependency tests and examples are disabled. Preserve parent-project option isolation when changing integration.
 
-The install exports `TexasSolver::texas`, the evaluator target and selected public headers under a relocatable CMake package. Keep build/install include interfaces, transitive dependencies, platform libraries and the installed header list coherent. Validate through a separate consumer after installation and relocation when such execution has been explicitly requested.
+The install exports `TexasSolver::texas`, `TexasSolver::types`, the evaluator target and selected public headers under a relocatable CMake package. A types-only consumer can use:
+
+```cmake
+find_package(TexasSolver CONFIG REQUIRED)
+target_link_libraries(consumer PRIVATE TexasSolver::types)
+```
+
+The package still discovers Threads before importing the shared export set. Keep build/install include interfaces, transitive dependencies, platform libraries and the installed header list coherent. Validate through a separate consumer after installation and relocation when such execution has been explicitly requested.
 
 ### Source and header registration
 

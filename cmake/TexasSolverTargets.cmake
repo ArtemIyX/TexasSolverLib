@@ -68,9 +68,20 @@ foreach(_texassolver_option IN LISTS _texassolver_evaluator_options)
 endforeach()
 unset(_texassolver_evaluator_options)
 
+add_library(texas_types INTERFACE)
+add_library(TexasSolver::types ALIAS texas_types)
+set_target_properties(texas_types PROPERTIES EXPORT_NAME types)
+target_include_directories(texas_types
+    INTERFACE
+        $<BUILD_INTERFACE:${TEXASSOLVER_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_compile_features(texas_types INTERFACE cxx_std_17)
+
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
 texassolver_configure_core_target(texas)
+target_link_libraries(texas PUBLIC texas_types)
 
 if (TEXASSOLVER_ENABLE_LOGGING)
     add_library(texas_logging STATIC ${TEXASSOLVER_APPLICATION_SOURCES})
@@ -154,6 +165,10 @@ if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
     add_library(TexasSolver::hunl_fixed_research ALIAS texas_hunl_fixed_research)
 endif()
+
+install(TARGETS texas_types
+    EXPORT TexasSolverTargets
+)
 
 install(TARGETS texas
     EXPORT TexasSolverTargets

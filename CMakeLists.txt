@@ -66,6 +66,7 @@ if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES AND NOT TEXASSOLVER_BUILD_EXAMPLES)
 endif()
 
 set(TEXASSOLVER_PUBLIC_HEADERS
+    include/core/action_id.hpp
     include/core/arena.hpp
     include/core/atomic_publish.hpp
     include/core/canonical_combo.hpp
