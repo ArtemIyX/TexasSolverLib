@@ -77,7 +77,9 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/poker.hpp
     include/core/portable_binary.hpp
     include/core/types.hpp
+    include/core/value_types.hpp
     include/games/hunl.hpp
+    include/games/hunl_action_types.hpp
     include/games/hunl_eval.hpp
     include/games/hunl_flat_builder.hpp
     include/games/hunl_flat_graph.hpp
@@ -102,10 +104,14 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/hunl/flat/hunl_flat_expected_value.hpp
     include/solver/hunl/flat/hunl_flat_pipeline.hpp
     include/solver/hunl/flat/hunl_flat_state.hpp
+    include/solver/hunl/flat/hunl_flat_types.hpp
     include/solver/hunl/hunl_leaf_evaluator.hpp
     include/solver/hunl/sampled/hunl_sampled_config.hpp
+    include/solver/hunl/sampled/hunl_sampled_config_types.hpp
     include/solver/hunl/sampled/hunl_sampled_export.hpp
+    include/solver/hunl/sampled/hunl_sampled_export_types.hpp
     include/solver/hunl/sampled/hunl_sampled_profile.hpp
+    include/solver/hunl/sampled/hunl_sampled_profile_types.hpp
     include/solver/hunl/sampled/hunl_sampled_range.hpp
     include/solver/hunl/sampled/hunl_sampled_scheduler.hpp
     include/solver/hunl/sampled/hunl_sampled_simd.hpp
@@ -144,6 +150,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/evaluation/multiway_evaluation.hpp
     include/solver/multiway/blueprint/multiway_export.hpp
     include/solver/multiway/abstraction/multiway_future_bucket.hpp
+    include/solver/multiway/abstraction/multiway_future_bucket_types.hpp
     include/solver/multiway/continuation/multiway_leaf_evaluator.hpp
     include/solver/multiway/engine/multiway_memory.hpp
     include/solver/multiway/engine/multiway_allocation_probe.hpp

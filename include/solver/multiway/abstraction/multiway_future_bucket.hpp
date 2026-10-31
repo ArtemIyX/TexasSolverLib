@@ -5,6 +5,7 @@
  */
 
 #include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
+#include "solver/multiway/abstraction/multiway_future_bucket_types.hpp"
 
 #include <array>
 #include <cstdint>
@@ -15,15 +16,6 @@ namespace texas::solver::multiway
 
 	/** @brief Schema version for future-bucket artifacts. */
 	inline constexpr std::uint32_t MULTIWAY_FUTURE_BUCKET_ARTIFACT_SCHEMA_VERSION = 1U;
-
-	// Stable offline-only feature surface. Values intentionally contain no
-	// opponent private cards or runtime policy state.
-	/** @brief Versioned feature vector for offline future-state clustering. */
-	struct MultiwayFutureBucketFeatures
-	{
-		std::array<double, 10U> values{};
-		std::uint64_t feature_version = 1U;
-	};
 
 	/** @brief Feature, clustering and bucket-count settings for an offline model. */
 	struct MultiwayFutureBucketProfile

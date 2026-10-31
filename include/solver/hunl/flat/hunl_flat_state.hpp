@@ -5,6 +5,7 @@
  */
 
 #include "games/hunl_flat_graph.hpp"
+#include "solver/hunl/flat/hunl_flat_types.hpp"
 #include "solver/hunl/bucket/hunl_bucket_map.hpp"
 #include "util/aligned_allocator.hpp"
 
@@ -27,20 +28,6 @@ namespace texas::solver::hunl
 
 	/** @brief Forward declaration of the flat information-set value table. */
 	class HUNLFlatInfosetTable;
-
-	/** @brief Memory order used for an information set's bucket/action values. */
-	enum class HUNLFlatValueLayout : std::uint8_t
-	{
-		InfosetHandAction = 0, ///< Values laid out by hand, then action.
-		InfosetActionHand = 1, ///< Values laid out by action, then hand.
-	};
-
-	/** @brief Scalar precision used for flat regret and strategy storage. */
-	enum class HUNLFlatStoragePrecision : std::uint8_t
-	{
-		Float64 = 0, ///< Store values as double precision.
-		Float32 = 1, ///< Store values as single precision.
-	};
 
 	/** @brief Contiguous storage offsets and dimensions for one information set. */
 	struct HUNLFlatInfosetTableMeta

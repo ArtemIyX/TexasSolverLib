@@ -6,6 +6,7 @@
 
 #include "core/legacy_namespace_compat.hpp"
 #include "core/poker.hpp"
+#include "games/hunl_action_types.hpp"
 
 #include "core/types.hpp"
 
@@ -92,7 +93,6 @@ namespace texas::games::hunl
 	void validate_hunl_joint_range_feasibility(const HUNLConfig& config);
 
 	/** @brief Stable action identifiers used by the HUNL action menu. */
-	inline constexpr ActionId ACTION_FOLD = 0;
 	inline constexpr ActionId ACTION_CHECK = 1;
 	inline constexpr ActionId ACTION_CALL = 2;
 	inline constexpr ActionId ACTION_BET_33 = 3;
