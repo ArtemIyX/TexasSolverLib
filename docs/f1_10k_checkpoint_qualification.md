@@ -56,7 +56,7 @@ The named attempt writes under `tmp/<runName>/resume_attempt_<resumeName>`; choo
 - Peak working set stays at or below 40 GiB, private commit at or below 48 GiB, and available physical memory at or above 3 GiB. Disk amplification stays at or below 3x live bytes in every stable sample, including each checkpoint sample. The configured disk preflight succeeds.
 - The checkpoint-only resume exits 0, retains 10,000 accepted trajectories, has the same model identity, and exports a byte-identical policy. Resume process memory remains within the same memory limits.
 
-Any failed or missing gate blocks scaling. The retry3 run passed the 10K profile gates and supports moving to the next bounded scale-up gate; it does not qualify or authorize a 50M run. Prior diagnostics used a mismatched bucket config, and the 3K observation did not contain enough cycles.
+Any failed or missing gate blocks scaling. The retry3 run passed the 10K profile gates. The next bounded gate is the 50K profile documented in [f1_50k_checkpoint_qualification.md](f1_50k_checkpoint_qualification.md). Neither pass qualifies or authorizes a 50M run. Prior diagnostics used a mismatched bucket config, and the 3K observation did not contain enough cycles.
 
 ## Evidence to retain
 

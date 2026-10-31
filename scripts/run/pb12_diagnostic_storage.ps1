@@ -170,9 +170,14 @@ function Get-ExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = 
     [pscustomobject]@{ live_bytes = $liveBytes; retained_bytes = $retainedBytes; orphan_bytes = $orphanBytes; store_bytes = $storeBytes; control_bytes = $controlBytes; temporary_bytes = $temporaryBytes; compaction_temp_bytes = $compactionTempBytes }
 }
 
-function Get-StableExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = @{}, [switch]$AllowAbsentComponents) {
+function Get-StableExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = @{},
+    [switch]$AllowAbsentComponents, [int]$RetryWindowMilliseconds = 1000) {
+    if ($RetryWindowMilliseconds -lt 0 -or $RetryWindowMilliseconds -gt 25000) {
+        throw 'Storage telemetry retry window must be between 0 and 25,000 milliseconds.'
+    }
+    $retryTimer = [Diagnostics.Stopwatch]::StartNew()
     $lastError = $null
-    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+    while ($true) {
         try {
             $manifests = @('TRAINING_CURRENT', 'catalog/CURRENT', 'rows/CURRENT', 'pages/CURRENT')
             $before = foreach ($name in $manifests) {
@@ -190,10 +195,10 @@ function Get-StableExternalStorageUsage([string]$Path, [hashtable]$OrphanReferen
             return $usage
         } catch {
             $lastError = $_
-            if ($attempt -lt 2) { Start-Sleep -Milliseconds 25 }
+            if ($retryTimer.ElapsedMilliseconds -ge $RetryWindowMilliseconds) { throw $lastError }
+            Start-Sleep -Milliseconds 25
         }
     }
-    throw $lastError
 }
 
 function Get-CheckpointMetadata([string]$Path) {

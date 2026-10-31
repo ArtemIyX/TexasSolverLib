@@ -5,31 +5,46 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($RunName -notmatch '^pb12_diagnostic_f1_10k_[a-zA-Z0-9_-]{1,48}$') { throw 'Invalid qualification run name.' }
+if ($RunName -notmatch '^pb12_diagnostic_f1_(10k|50k)_[a-zA-Z0-9_-]{1,48}$') { throw 'Invalid F1 qualification run name.' }
 if ($ResumeName -and $ResumeName -notmatch '^[a-zA-Z0-9_-]{1,48}$') { throw 'Invalid resume attempt name.' }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot 'pb12_diagnostic_process.ps1')
 $runRoot = Join-Path (Join-Path $repo 'tmp') $RunName
-$exe = Join-Path $repo 'build/Debug/texas_multiway_train.exe'
+$planPath = Join-Path $runRoot 'plan.json'
+$configPath = Join-Path $runRoot 'training.conf'
+$exe = Get-Pb12DiagnosticTrainerExecutable $repo
 $reportPath = Join-Path $runRoot 'report.json'
 $policyPath = Join-Path $runRoot 'policy.mwfb'
 $checkpointPath = Join-Path $runRoot 'checkpoints/latest.bin'
 $storePath = Join-Path $runRoot 'store'
 $monitorPath = Join-Path $runRoot 'monitor.jsonl'
-foreach ($path in @($exe, $reportPath, $policyPath, $checkpointPath, $monitorPath)) {
+foreach ($path in @($exe, $planPath, $configPath, $reportPath, $policyPath, $checkpointPath, $monitorPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Completed qualification input is missing: $path" }
+}
+$plan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
+$runTarget = if ($RunName -match '^pb12_diagnostic_f1_10k_') { [long]10000 } else { [long]50000 }
+$profileByTarget = @{ 10000 = 'F1-QUAL-10K-12-v1'; 50000 = 'F1-QUAL-50K-12-v1' }
+$expectedTarget = [long]$plan.target_trajectories
+$expectedBatches = [int]$plan.batches
+if ($expectedTarget -ne $runTarget -or $expectedBatches -ne ($runTarget / 1000) -or
+    $plan.trajectories_per_batch -ne 1000 -or $plan.checkpoint_interval -ne 1 -or
+    $plan.profile_id -ne $profileByTarget[[int]$runTarget] -or
+    (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash -ne $plan.config_sha256) {
+    throw 'Qualification plan or training configuration does not match the named F1 profile.'
 }
 $finalMonitorLine = Get-Content -LiteralPath $monitorPath -Tail 1 | ConvertFrom-Json
 if ($finalMonitorLine.event -ne 'end' -or $finalMonitorLine.reason -or $finalMonitorLine.exit_code -ne 0 -or
-    $finalMonitorLine.p99_gate -notlike 'pass:*' -or $finalMonitorLine.checkpoints_observed -ne 10 -or
-    $finalMonitorLine.cycles_observed -lt 6 -or $finalMonitorLine.peak_working_set_bytes -gt 40GB -or
+    $finalMonitorLine.p99_gate -notlike 'pass:*' -or $finalMonitorLine.checkpoints_observed -ne $expectedBatches -or
+    $finalMonitorLine.cycles_observed -ne ($expectedBatches - 1) -or $finalMonitorLine.peak_working_set_bytes -gt 40GB -or
     $finalMonitorLine.peak_private_commit_bytes -gt 48GB -or $finalMonitorLine.minimum_available_physical_bytes -lt 3GB -or
     $finalMonitorLine.maximum_disk_amplification -gt 3) {
-    throw 'Training report did not pass the 10K cycle, memory, and disk gates.'
+    throw 'Training report did not pass the checkpoint-cycle, memory, and disk gates.'
 }
 $sourceReport = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
-if ($sourceReport.batches -ne 10 -or $sourceReport.accepted_trajectories -ne 10000 -or
+if ($sourceReport.batches -ne $expectedBatches -or $sourceReport.trajectories -ne $expectedTarget -or
+    $sourceReport.accepted_trajectories -ne $expectedTarget -or
     $sourceReport.discarded_trajectories -ne 0 -or $sourceReport.failed) {
-    throw 'Training report does not show 10,000 clean trajectories.'
+    throw "Training report does not show $expectedTarget clean trajectories."
 }
 $outputRoot = if ($ResumeName) { Join-Path $runRoot "resume_attempt_$ResumeName" } else { $runRoot }
 if ($ResumeName -and (Test-Path -LiteralPath $outputRoot)) { throw "Resume attempt already exists: $outputRoot" }
@@ -126,14 +141,17 @@ if ((Get-Item -LiteralPath $resumePolicy).Length -le 0) { throw 'Checkpoint-only
 $resumedReport = Get-Content -LiteralPath $resumeReportPath -Raw | ConvertFrom-Json
 $originalHash = (Get-FileHash -LiteralPath $policyPath -Algorithm SHA256).Hash
 $resumedHash = (Get-FileHash -LiteralPath $resumePolicy -Algorithm SHA256).Hash
-if ($resumedReport.trajectories -ne 10000 -or $resumedReport.accepted_trajectories -ne 10000 -or
+if ($resumedReport.trajectories -ne $expectedTarget -or $resumedReport.accepted_trajectories -ne $expectedTarget -or
     $resumedReport.discarded_trajectories -ne 0 -or $resumedReport.failed -or
     $resumedReport.evidence.producer.model_identity -ne $sourceReport.evidence.producer.model_identity -or $originalHash -ne $resumedHash) {
-    throw 'Checkpoint-only resume did not reproduce the original 10K policy and model identity.'
+    throw 'Checkpoint-only resume did not reproduce the source policy and model identity.'
 }
 $result = [ordered]@{
     passed = $true
+    target_trajectories = $expectedTarget
     trajectories = $resumedReport.trajectories
+    accepted_trajectories = $resumedReport.accepted_trajectories
+    discarded_trajectories = $resumedReport.discarded_trajectories
     original_policy_sha256 = $originalHash
     resumed_policy_sha256 = $resumedHash
     model_identity = $resumedReport.evidence.producer.model_identity

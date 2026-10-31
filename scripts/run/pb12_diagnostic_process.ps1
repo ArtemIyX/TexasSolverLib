@@ -1,6 +1,24 @@
 # Process identity and resource checks for the PB-12 diagnostic monitor.
 # This file defines functions only; it does not launch or stop a process.
 
+function Get-Pb12DiagnosticTrainerExecutable([string]$RepositoryRoot) {
+    $candidates = @(
+        (Join-Path $RepositoryRoot 'build/examples/Debug/texas_multiway_train.exe'),
+        (Join-Path $RepositoryRoot 'build/Debug/texas_multiway_train.exe'),
+        (Join-Path $RepositoryRoot 'build/examples/texas_multiway_train.exe'),
+        (Join-Path $RepositoryRoot 'build/texas_multiway_train.exe'))
+    $selected = $null
+    foreach ($path in $candidates) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        $candidate = Get-Item -LiteralPath $path
+        if ($null -eq $selected -or $candidate.LastWriteTimeUtc -gt $selected.LastWriteTimeUtc) {
+            $selected = $candidate
+        }
+    }
+    if ($null -eq $selected) { throw 'The multiway trainer executable is missing from the configured build outputs.' }
+    return [IO.Path]::GetFullPath($selected.FullName)
+}
+
 function Get-Pb12DiagnosticProcess([int]$ProcessId, [string]$ExpectedExecutable,
     [DateTime]$ExpectedStartUtc) {
     $process = Get-Process -Id $ProcessId -ErrorAction Stop
@@ -55,6 +73,14 @@ function Get-Pb12DiagnosticDiskStop([long]$LiveBytes, [long]$StoredBytes,
         return 'disk amplification exceeded 3x outside a bounded compaction temporary'
     }
     return $null
+}
+
+function Get-Pb12DiagnosticDiskJobDecision([object]$Job, [double]$ElapsedSeconds) {
+    $state = [string]$Job.State
+    $action = if ($state -eq 'Completed') { 'Complete' }
+        elseif ($state -notin @('NotStarted', 'Running') -or $ElapsedSeconds -gt 30) { 'Stop' }
+        else { 'Wait' }
+    return [pscustomobject]@{ Action = $action; State = $state }
 }
 
 function Get-Pb12ManifestAvailabilityStop([int]$MissingPreviouslySeen, [bool]$StoreHasFiles,

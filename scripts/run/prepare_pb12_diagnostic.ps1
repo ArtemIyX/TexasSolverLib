@@ -7,10 +7,11 @@ if ($RunName -notmatch '^pb12_diagnostic_[a-zA-Z0-9_-]{1,64}$') {
     throw 'RunName must start with pb12_diagnostic_ and contain only letters, digits, underscores, or hyphens.'
 }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot 'pb12_diagnostic_process.ps1')
 $runRoot = Join-Path (Join-Path $repo 'tmp') $RunName
 $template = Join-Path $repo 'tmp/pb12_stage94_20261029T081147Z_stable_checkpoint_sampler/training.conf'
 $baselinePath = Join-Path $repo 'tmp/pb12_stage94_20261029T081147Z_stable_checkpoint_sampler/preflight.json'
-$binaryPath = Join-Path $repo 'build/Debug/texas_multiway_train.exe'
+$binaryPath = Get-Pb12DiagnosticTrainerExecutable $repo
 $bucketPath = Join-Path $repo 'artifacts/f1_sizing_v1/buckets/buckets.bin'
 if (-not (Test-Path -LiteralPath $template -PathType Leaf)) { throw 'Preserved Stage 9.4 configuration is missing.' }
 foreach ($inputPath in @($baselinePath, $binaryPath, $bucketPath)) {

@@ -8,9 +8,10 @@ if ($RunName -notmatch '^pb12_diagnostic_f1_10k_[a-zA-Z0-9_-]{1,48}$') {
     throw 'RunName must start with pb12_diagnostic_f1_10k_ and contain only letters, digits, underscores, or hyphens.'
 }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot 'pb12_diagnostic_process.ps1')
 $runRoot = Join-Path (Join-Path $repo 'tmp') $RunName
 $template = Join-Path $repo 'configs/multiway/f1_checkpoint_qualification_10k_v1.cfg'
-$binary = Join-Path $repo 'build/Debug/texas_multiway_train.exe'
+$binary = Get-Pb12DiagnosticTrainerExecutable $repo
 $bucket = Join-Path $repo 'artifacts/f1_sizing_v1/buckets/buckets.bin'
 foreach ($path in @($template, $binary, $bucket)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required input is missing: $path" }
