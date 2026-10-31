@@ -4,6 +4,7 @@
 #include "test_harness.hpp"
 
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 TEST_CASE(simd_backend_name_is_stable)
@@ -15,8 +16,9 @@ TEST_CASE(simd_backend_name_is_stable)
 
 TEST_CASE(sampled_backend_name_does_not_claim_fma)
 {
-	EXPECT_EQ(texas::solver::hunl::hunl_sampled_simd_backend_name(
-		texas::solver::hunl::HUNLSampledSimdBackend::Avx2), "avx2");
+	EXPECT_TRUE(std::string_view{
+		texas::solver::hunl::hunl_sampled_simd_backend_name(
+			texas::solver::hunl::HUNLSampledSimdBackend::Avx2)} == "avx2");
 }
 
 TEST_CASE(simd_update_strategy_supports_exact_in_place_alias)
