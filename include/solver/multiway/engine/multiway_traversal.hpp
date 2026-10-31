@@ -235,6 +235,16 @@ namespace texas::solver::multiway
 
 	private:
 		struct TraversalContext;
+		struct DecisionNodeContext;
+
+		[[nodiscard]] bool prepare_decision_row(DecisionNodeContext& decision) const;
+		void select_decision_strategy(DecisionNodeContext& decision) const;
+		void build_decision_successors(DecisionNodeContext& decision) const;
+		void adjust_decision_strategy_for_pruning(DecisionNodeContext& decision) const;
+		[[nodiscard]] Value evaluate_decision_action(
+			DecisionNodeContext& decision, std::size_t action) const;
+		[[nodiscard]] Value evaluate_decision_actions(DecisionNodeContext& decision) const;
+		[[nodiscard]] Value emit_decision_deltas(DecisionNodeContext& decision) const;
 
 		[[nodiscard]] Value traverse_decision(
 			const MultiwayPublicStateDescriptor& state,
@@ -426,6 +436,22 @@ namespace texas::solver::multiway
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 
 	private:
+		struct BatchRunContext;
+
+		void prepare_batch_run(
+			BatchRunContext& context,
+			std::uint64_t first_trajectory_id,
+			std::uint64_t trajectory_count,
+			std::uint64_t seed,
+			double iteration_weight,
+			std::chrono::steady_clock::time_point deadline);
+		void dispatch_batch(BatchRunContext& context);
+		void wait_for_batch_workers();
+		void collect_worker_counters(BatchRunContext& context);
+		[[nodiscard]] bool assemble_worker_result(BatchRunContext& context);
+		[[nodiscard]] bool admit_discovery(BatchRunContext& context);
+		void merge_batch_deltas(BatchRunContext& context);
+		void finalize_batch_result(BatchRunContext& context);
 		void worker_loop(std::size_t worker_index);
 
 		struct alignas(64) WorkerScratch

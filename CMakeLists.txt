@@ -313,7 +313,9 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/engine/multiway_external_page_cache.cpp
     src/solver/multiway/engine/multiway_public_catalog.cpp
     src/solver/multiway/abstraction/multiway_terminal_adapter.cpp
-    src/solver/multiway/engine/multiway_traversal.cpp
+    src/solver/multiway/engine/multiway_discovery.cpp
+    src/solver/multiway/engine/multiway_root_traversal.cpp
+    src/solver/multiway/engine/multiway_batch_runner.cpp
     src/solver/generic/parallel_dcfr.cpp
     src/solver/generic/solver.cpp
 )
