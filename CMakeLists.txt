@@ -245,6 +245,8 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl/sampled/hunl_sampled_trajectory.cpp
     src/solver/multiway/abstraction/multiway_action_abstraction.cpp
     src/solver/multiway/blueprint/multiway_artifact.cpp
+    src/solver/multiway/blueprint/multiway_root_policy_artifact.cpp
+    src/solver/multiway/blueprint/multiway_replay_artifact.cpp
     src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp
     src/solver/multiway/blueprint/multiway_blueprint_config.cpp
     src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp
@@ -255,11 +257,14 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_blueprint_checkpoint.cpp
     src/solver/multiway/blueprint/multiway_blueprint_training_loop.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
+    src/solver/multiway/abstraction/multiway_bucket_artifact_codec.cpp
     src/solver/multiway/abstraction/multiway_bucket_catalog.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp
     src/solver/multiway/abstraction/multiway_bucket_generation.cpp
     src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
     src/solver/multiway/workflow/multiway_workflow_config.cpp
+    src/solver/multiway/workflow/multiway_workflow_config_identity.cpp
+    src/solver/multiway/workflow/multiway_workflow_config_io.cpp
     src/solver/multiway/workflow/multiway_workflow_path_policy.cpp
     src/solver/multiway/workflow/multiway_diagnostic_journal.cpp
     src/solver/multiway/workflow/multiway_evidence.cpp
@@ -268,6 +273,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/workflow/multiway_f1_acceptance.cpp
     src/solver/multiway/workflow/multiway_sizing_report.cpp
     src/solver/multiway/workflow/multiway_training_report.cpp
+    src/solver/multiway/workflow/multiway_training_report_json.cpp
     src/solver/multiway/workflow/multiway_lookup_qualification.cpp
     src/solver/multiway/workflow/multiway_pb12_coverage.cpp
     src/solver/multiway/workflow/multiway_staged_qualification.cpp
@@ -276,6 +282,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_checkpoint.cpp
     src/solver/multiway/continuation/multiway_continuation_policy.cpp
     src/solver/multiway/continuation/multiway_continuation_selector.cpp
+    src/solver/multiway/evaluation/multiway_aivat.cpp
     src/solver/multiway/evaluation/multiway_evaluation.cpp
     src/solver/multiway/blueprint/multiway_export.cpp
     src/solver/multiway/abstraction/multiway_future_bucket.cpp
