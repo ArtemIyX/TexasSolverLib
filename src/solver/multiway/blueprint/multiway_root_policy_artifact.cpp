@@ -1,4 +1,5 @@
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
 #include "core/portable_binary.hpp"

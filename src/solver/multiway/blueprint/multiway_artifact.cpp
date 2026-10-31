@@ -64,6 +64,26 @@ namespace texas::solver::multiway
 			return std::string(20U - digits.size(), '0') + digits;
 		}
 
+		void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity)
+		{
+			visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+				portable::write_u64(out, field);
+			});
+		}
+
+		MultiwayModelIdentity read_identity(std::ifstream& in)
+		{
+			MultiwayModelIdentity identity;
+			bool valid = true;
+			visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) {
+				if (valid)
+					valid = portable::read_u64(in, field);
+			});
+			if (!valid)
+				throw std::runtime_error("multiway artifact is truncated");
+			return identity;
+		}
+
 		MultiwayBlueprintTrainingMetadata read_training(std::ifstream& in)
 		{
 			MultiwayBlueprintTrainingMetadata training;

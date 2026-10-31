@@ -1,5 +1,116 @@
 # Pluribus Roadmap Progress Log
 
+The user reported that the build and tests passed after the following fixes; commands and test scope were not specified.
+
+## Multiway boundary checks after source splits
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Updated traversal and batch-runner boundary checks for their current source files.
+- Updated workflow export ordering and report field checks for the split implementation.
+
+### Files
+
+- `tests/cmake/test_multiway_traversal_boundary.cmake`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of checked source locations, call ordering, and report fields.
+- Configuration, builds, and tests not run as requested.
+
+### Limitations
+
+- Boundary scripts were not executed.
+
+## Multiway source compilation fixes
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Fixed bucket codec symbol lookup, AIVAT confidence score lookup, tournament comparator deduction, and local solver detail includes.
+
+### Files
+
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_codec.cpp`
+- `src/solver/multiway/evaluation/multiway_aivat.cpp`
+- `src/solver/multiway/engine/multiway_discovery.cpp`, `multiway_solver.cpp`, `multiway_coordinator_admission.cpp`, `multiway_coordinator_merge.cpp`, `multiway_coordinator_checkpoint.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of declarations, call sites, comparator semantics, confidence levels, and include paths; `git diff --check` passed.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Blueprint training compact storage compile fix
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Included the complete compact storage declaration used by training diagnostics.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_blueprint_training_loop.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of storage declarations, value count types, and the affected maximum calculation.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Root policy artifact declaration compile fix
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Included the checkpoint header that declares the root policy artifact used by blueprint serialization.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_root_policy_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of the declaration, namespace, and call signatures.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Multiway blueprint identity serialization compile fix
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Restored file-local identity serialization helpers for blueprint artifacts, matching the existing portable field order and truncated-input handling.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of helper visibility, field order, and error handling.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
 ## Standalone public types extraction
 
 **Status:** Complete

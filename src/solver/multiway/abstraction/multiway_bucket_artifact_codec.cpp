@@ -11,6 +11,10 @@
 
 namespace texas::solver::multiway
 {
+	using core::canonical_combos;
+	using core::CanonicalComboId;
+	using core::Street;
+
 	std::vector<std::uint8_t> serialize_multiway_bucket_registry(const MultiwayBucketRegistry& registry)
 	{
 		registry.identity().validate();

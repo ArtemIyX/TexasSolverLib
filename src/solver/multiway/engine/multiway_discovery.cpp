@@ -279,6 +279,7 @@ struct DiscoveryMergeDiagnosticsDelta
 			diagnostics.row_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
 		}
 
+		template <typename StreamKeyLess>
 		void tournament_push(
 			std::vector<std::size_t>& tournament,
 			std::size_t& active_count,
@@ -298,6 +299,7 @@ struct DiscoveryMergeDiagnosticsDelta
 			}
 		}
 
+		template <typename StreamKeyLess>
 		void tournament_advance(
 			std::vector<std::size_t>& tournament,
 			std::size_t& active_count,

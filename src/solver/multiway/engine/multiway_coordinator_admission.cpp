@@ -1,7 +1,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
-#include "solver/multiway/engine/multiway_solver_detail.hpp"
+#include "multiway_solver_detail.hpp"
 #include "util/tracy.hpp"
 
 #include <algorithm>

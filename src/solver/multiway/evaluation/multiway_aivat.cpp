@@ -11,6 +11,15 @@ namespace texas::solver::multiway
 	namespace
 	{
 		constexpr double kProbabilityTolerance = 1e-12;
+		double confidence_z_score(double confidence_level) noexcept
+		{
+			if (confidence_level == 0.90)
+				return 1.6448536269514722;
+			if (confidence_level == 0.95)
+				return 1.959963984540054;
+			return 2.5758293035489004;
+		}
+
 		using texas::core::fingerprint::append_u64;
 		void append_double(std::uint64_t& hash, double value) noexcept
 		{
