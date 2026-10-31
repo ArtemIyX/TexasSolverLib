@@ -251,6 +251,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp
     src/solver/multiway/blueprint/multiway_blueprint_store.cpp
     src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_training_loop.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
     src/solver/multiway/abstraction/multiway_bucket_catalog.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp
