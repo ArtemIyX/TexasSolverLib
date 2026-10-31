@@ -745,6 +745,11 @@ namespace texas::solver::multiway
 		std::uint64_t menu_capacity,
 		std::uint64_t action_capacity) noexcept;
 
+	/** Conservative page-id bound and direct-index bytes for external compact storage. */
+	[[nodiscard]] std::uint64_t multiway_external_page_lookup_max_page_id(
+		std::uint64_t maximum_rows, std::uint64_t maximum_values,
+		std::uint32_t page_width);
+
 	/** Named memory allocations and peak estimates retained in reports. */
 	struct MultiwayMemoryLedger
 	{

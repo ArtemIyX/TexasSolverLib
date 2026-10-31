@@ -1248,23 +1248,32 @@ namespace texas::solver::multiway
 		}
 		if (request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 		{
-			constexpr std::uint64_t kRowIndexCacheBytes = 512U;
+			constexpr std::uint64_t kExpandedRowIndexCacheThresholdBytes = 80U * 1024U * 1024U;
+			constexpr std::uint64_t kExpandedRowIndexCacheBytes = 16U * 1024U * 1024U;
+			constexpr std::uint64_t kDefaultRowIndexCacheBytes = 512U;
 			const auto& external = request.limits().external_storage;
-			if (external.row_page_cache_bytes <= kRowIndexCacheBytes)
+			const auto row_index_cache_bytes = external.row_page_cache_bytes >= kExpandedRowIndexCacheThresholdBytes
+				? kExpandedRowIndexCacheBytes
+				: kDefaultRowIndexCacheBytes;
+			if (external.row_page_cache_bytes <= row_index_cache_bytes)
 				throw std::invalid_argument("external row/page cache is below the bounded row-index requirement");
 			auto catalog_config = external_component_config(external, "catalog",
 				external.public_catalog_cache_bytes);
 			auto row_config = external_component_config(external, "rows",
-				kRowIndexCacheBytes);
+				row_index_cache_bytes);
 			auto page_config = external_component_config(external, "pages",
-				external.row_page_cache_bytes - kRowIndexCacheBytes);
+				external.row_page_cache_bytes - row_index_cache_bytes);
 			const auto ancestry_depth = std::min<std::size_t>(
 				request.limits().max_public_states, 4096U);
+			const auto maximum_page_id = multiway_external_page_lookup_max_page_id(
+				static_cast<std::uint64_t>(request.limits().max_sparse_rows),
+				static_cast<std::uint64_t>(checked_sparse_value_capacity(request)),
+				request.limits().compact_page_width);
 			external_storage_ = std::make_unique<MultiwayExternalTrainingStorage>(
 				external.directory, std::move(catalog_config), std::move(row_config),
 				std::move(page_config), request.limits().compact_page_width,
-				external.row_page_cache_bytes - kRowIndexCacheBytes,
-				ancestry_depth, external.synchronous_durability);
+				external.row_page_cache_bytes - row_index_cache_bytes,
+				ancestry_depth, external.synchronous_durability, maximum_page_id);
 		}
 		merge_stream_views_.reserve(request.limits().worker_count);
 		merge_stream_cursors_.reserve(request.limits().worker_count);
@@ -1547,6 +1556,9 @@ namespace texas::solver::multiway
 				++row_index;
 			}
 		}
+		std::vector<MultiwayExternalRowMetadata> external_existing_rows;
+		if (external)
+			external_storage_->compact_storage().lookup_rows(rows, external_existing_rows);
 		std::size_t new_row_count = 0U;
 		std::size_t new_value_count = 0U;
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
@@ -1608,12 +1620,14 @@ namespace texas::solver::multiway
 			if (shape.infoset == request_.root().root_infoset && request_.root().root_bucket >= shape.bucket_count)
 				throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
 			const auto* existing = compact ? compact_storage_->metadata(shape.infoset) : storage_.metadata(shape.infoset);
-			MultiwayExternalRowBinding external_existing;
-			const bool external_row_exists = external && external_storage_->compact_storage().lookup_row(shape.infoset, external_existing);
+			const auto external_existing = external
+				? external_existing_rows[row_index]
+				: MultiwayExternalRowMetadata{};
+			const bool external_row_exists = external && external_existing.action_count != 0U;
 			if (existing != nullptr || external_row_exists)
 			{
-				const auto existing_buckets = external_row_exists ? external_existing.bucket_count() : existing->shape.bucket_count;
-				const auto existing_actions = external_row_exists ? external_existing.action_count() : existing->shape.action_count;
+				const auto existing_buckets = external_row_exists ? external_existing.bucket_count : existing->shape.bucket_count;
+				const auto existing_actions = external_row_exists ? external_existing.action_count : existing->shape.action_count;
 				if (existing_buckets != shape.bucket_count || existing_actions != shape.action_count)
 					throw std::invalid_argument("multiway sparse row shape conflicts");
 				continue;

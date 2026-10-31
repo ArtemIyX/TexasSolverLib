@@ -277,6 +277,24 @@ namespace texas::solver::multiway
 			mixed ^= mixed >> 31U;
 			return static_cast<std::size_t>(mixed % capacity);
 		}
+		void require_external_records_absent(
+			const MultiwayExternalRecordStore& store,
+			const std::vector<std::uint64_t>& sorted_keys,
+			const char* error_message)
+		{
+			struct Context
+			{
+				const char* error_message;
+			};
+			Context context{ error_message };
+			const auto reject_existing = [](void* raw_context, std::uint64_t,
+				const std::uint8_t*, std::size_t) -> bool {
+				const auto& current = *static_cast<Context*>(raw_context);
+				throw std::invalid_argument(current.error_message);
+			};
+			static_cast<void>(store.visit_matching_records(sorted_keys,
+				reject_existing, &context));
+		}
 		std::uint64_t record_bytes(std::uint64_t count, std::size_t payload_bytes)
 		{
 			const auto width = checked_add(8U, payload_bytes);
@@ -2474,6 +2492,7 @@ namespace texas::solver::multiway
 			throw std::runtime_error("external ordered iteration requires bounded run fan-in");
 		if (runs_.empty())
 			return true;
+		const auto scan_started = std::chrono::steady_clock::now();
 
 		struct Cursor
 		{
@@ -2548,7 +2567,13 @@ namespace texas::solver::multiway
 			}
 			const auto& newest = cursors[item.cursor];
 			if (!visitor(context, item.key, newest.payload.data(), payload_bytes_))
+			{
+				stats_.read_nanoseconds = multiway_memory_saturating_add(
+					stats_.read_nanoseconds, static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - scan_started).count()));
 				return false;
+			}
 			for (const auto cursor_index : consumed)
 			{
 				auto& cursor = cursors[cursor_index];
@@ -2559,6 +2584,190 @@ namespace texas::solver::multiway
 					queue.push({ cursor.key, cursor.generation, cursor_index });
 				}
 			}
+		}
+		stats_.read_nanoseconds = multiway_memory_saturating_add(
+			stats_.read_nanoseconds, static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - scan_started).count()));
+		return true;
+	}
+
+	bool MultiwayExternalRecordStore::visit_matching_records(
+		const std::vector<std::uint64_t>& sorted_keys,
+		OrderedRecordVisitor visitor, void* context,
+		MultiwayExternalRecordLookupProfile* profile) const
+	{
+		if (visitor == nullptr)
+			throw std::invalid_argument("external matching-record visitor is missing");
+		for (std::size_t index = 1U; index < sorted_keys.size(); ++index)
+			if (sorted_keys[index - 1U] >= sorted_keys[index])
+				throw std::invalid_argument("external matching-record keys must be sorted and unique");
+		if (sorted_keys.empty())
+			return true;
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (failed_)
+			throw std::runtime_error("external storage is unavailable after a failed batch");
+		if (runs_.size() > config_.compaction_fan_in)
+			throw std::runtime_error("external matching lookup requires bounded run fan-in");
+		if (runs_.empty())
+			return true;
+
+		struct RunReader
+		{
+			std::ifstream index;
+			std::ifstream data;
+			std::vector<std::uint8_t> index_buffer;
+			std::uint64_t position = 0U;
+			std::uint64_t index_buffer_first = 0U;
+			std::size_t index_buffer_entries = 0U;
+			std::uint64_t current_key = 0U;
+			std::uint64_t data_next_position = 0U;
+			bool index_initialized = false;
+			bool has_current = false;
+		};
+		std::vector<RunReader> readers(runs_.size());
+		std::vector<std::uint8_t> payload(payload_bytes_);
+		constexpr std::uint64_t kSequentialDataSkipThresholdBytes = 1024U;
+		constexpr std::size_t kIndexKeysPerChunk = 4096U;
+		const auto load_index_chunk = [profile, kIndexKeysPerChunk](RunReader& reader, const Run& run,
+			std::uint64_t first_position) {
+			if (first_position >= run.record_count)
+				throw std::logic_error("external matching index chunk starts beyond its run");
+			const auto remaining = run.record_count - first_position;
+			const auto entry_count = static_cast<std::size_t>(std::min<std::uint64_t>(
+				remaining, kIndexKeysPerChunk));
+			reader.index_buffer.resize(entry_count * 8U);
+			reader.index_buffer_first = first_position;
+			reader.index_buffer_entries = entry_count;
+			reader.index.read(reinterpret_cast<char*>(reader.index_buffer.data()),
+				static_cast<std::streamsize>(reader.index_buffer.size()));
+			if (profile != nullptr)
+				++profile->index_reads;
+			if (!reader.index || reader.index.gcount() !=
+				static_cast<std::streamsize>(reader.index_buffer.size()))
+				throw std::runtime_error("external matching index run is truncated");
+		};
+		const auto initialize_index = [profile, &load_index_chunk](RunReader& reader, const Run& run) {
+			const auto open_started = std::chrono::steady_clock::now();
+			reader.index.open(run.index_path, std::ios::binary);
+			if (profile != nullptr)
+			{
+				++profile->index_opens;
+				profile->index_open_nanoseconds = multiway_memory_saturating_add(
+					profile->index_open_nanoseconds, static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - open_started).count()));
+			}
+			if (!reader.index)
+				throw std::runtime_error("external matching run cannot be opened");
+			reader.index_initialized = true;
+			if (run.record_count == 0U)
+				return;
+			load_index_chunk(reader, run, 0U);
+			reader.current_key = read_u64(reader.index_buffer.data());
+			reader.has_current = true;
+		};
+		const auto advance_index = [&load_index_chunk](RunReader& reader, const Run& run) {
+			++reader.position;
+			if (reader.position == run.record_count)
+			{
+				reader.has_current = false;
+				return;
+			}
+			if (reader.position >= reader.index_buffer_first + reader.index_buffer_entries)
+				load_index_chunk(reader, run, reader.position);
+			const auto offset = static_cast<std::size_t>(
+				reader.position - reader.index_buffer_first) * 8U;
+			reader.current_key = read_u64(reader.index_buffer.data() + offset);
+		};
+		for (const auto key : sorted_keys)
+		{
+			++stats_.lookups;
+			auto& entry = cache_[external_cache_slot(key, cache_.size())];
+			if (entry.valid && entry.key == key)
+			{
+				++stats_.cache_hits;
+				if (!visitor(context, key, entry.payload.data(), payload_bytes_))
+					return false;
+				continue;
+			}
+			++stats_.cache_misses;
+			if (export_filter_ && !export_filter_maybe_contains(export_filter_.get(), key))
+				continue;
+			const auto started = std::chrono::steady_clock::now();
+			bool found = false;
+			std::size_t checked_runs = 0U;
+			for (std::size_t run_index = runs_.size(); run_index-- > 0U;)
+			{
+				const auto& run = runs_[run_index];
+				++checked_runs;
+				if (key < run.minimum_key || key > run.maximum_key)
+					continue;
+				auto& reader = readers[run_index];
+				if (!reader.index_initialized)
+					initialize_index(reader, run);
+				while (reader.has_current && reader.current_key < key)
+					advance_index(reader, run);
+				if (!reader.has_current || reader.current_key != key)
+					continue;
+
+				if (!reader.data.is_open())
+				{
+					reader.data.open(run.data_path, std::ios::binary);
+					if (!reader.data)
+						throw std::runtime_error("external matching data run cannot be opened");
+					const auto data_offset = record_bytes(reader.position, payload_bytes_);
+					if (data_offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max()))
+						throw std::length_error("external matching data offset exceeds stream limits");
+					reader.data.seekg(static_cast<std::streamoff>(data_offset));
+					if (!reader.data)
+						throw std::runtime_error("external matching data segment is truncated");
+					reader.data_next_position = reader.position;
+				}
+				if (reader.data_next_position > reader.position)
+					throw std::logic_error("external matching data cursor passed its index cursor");
+				const auto skipped_records = reader.position - reader.data_next_position;
+				const auto skipped_bytes = checked_add(record_bytes(skipped_records, payload_bytes_), 8U);
+				if (skipped_bytes > kSequentialDataSkipThresholdBytes)
+				{
+					const auto data_offset = checked_add(record_bytes(reader.position, payload_bytes_), 8U);
+					if (data_offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max()))
+						throw std::length_error("external matching data offset exceeds stream limits");
+					reader.data.clear();
+					reader.data.seekg(static_cast<std::streamoff>(data_offset));
+					if (!reader.data)
+						throw std::runtime_error("external matching data segment is truncated");
+				}
+				else
+				{
+					if (skipped_bytes > static_cast<std::uint64_t>(std::numeric_limits<std::streamsize>::max()))
+						throw std::length_error("external matching data skip exceeds stream limits");
+					reader.data.ignore(static_cast<std::streamsize>(skipped_bytes));
+					if (reader.data.gcount() != static_cast<std::streamsize>(skipped_bytes))
+						throw std::runtime_error("external matching data segment is truncated");
+				}
+				reader.data.read(reinterpret_cast<char*>(payload.data()),
+					static_cast<std::streamsize>(payload.size()));
+				if (!reader.data)
+					throw std::runtime_error("external matching data segment is truncated");
+				reader.data_next_position = reader.position + 1U;
+				found = true;
+				break;
+			}
+			stats_.run_checks = multiway_memory_saturating_add(stats_.run_checks,
+				static_cast<std::uint64_t>(checked_runs));
+			stats_.read_nanoseconds = multiway_memory_saturating_add(stats_.read_nanoseconds,
+				static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started).count()));
+			if (!found)
+				continue;
+			if (entry.valid)
+				++stats_.cache_evictions;
+			entry.key = key;
+			entry.valid = true;
+			std::copy_n(payload.data(), payload_bytes_, entry.payload.data());
+			if (!visitor(context, key, entry.payload.data(), payload_bytes_))
+				return false;
 		}
 		return true;
 	}
@@ -3170,7 +3379,6 @@ namespace texas::solver::multiway
 			if (!cursor.index)
 				return false;
 			cursor.key = read_u64(bytes.data());
-			cursor.data.seekg(static_cast<std::streamoff>(cursor.position * (payload_bytes_ + 8U)));
 			std::array<std::uint8_t, 8U> data_key_bytes{};
 			cursor.data.read(reinterpret_cast<char*>(data_key_bytes.data()), data_key_bytes.size());
 			if (!cursor.data || read_u64(data_key_bytes.data()) != cursor.key)
@@ -3179,6 +3387,13 @@ namespace texas::solver::multiway
 			if (!cursor.data)
 				throw std::runtime_error("external compaction input is truncated");
 			return true;
+		};
+		const auto rewind_data = [&](std::size_t index) {
+			auto& cursor = cursors[index];
+			cursor.data.clear();
+			cursor.data.seekg(0, std::ios::beg);
+			if (!cursor.data)
+				throw std::runtime_error("external compaction data run cannot be rewound");
 		};
 		for (std::size_t index = 0U; index < input_count; ++index)
 		{
@@ -3240,6 +3455,7 @@ namespace texas::solver::multiway
 				cursor.position = 0U;
 				cursor.index.clear();
 				cursor.index.seekg(0);
+				rewind_data(index);
 				if (!cursor.index || !read_next(index))
 					throw std::runtime_error("external compaction input cannot be rewound");
 				queue.push({ cursor.key, cursor.generation, index });
@@ -3276,6 +3492,7 @@ namespace texas::solver::multiway
 		{
 			for (std::size_t index = 0U; index < input_count; ++index)
 			{
+				rewind_data(index);
 				if (!read_next(index))
 					throw std::runtime_error("external compaction input cannot be read");
 				queue.push({ cursors[index].key, cursors[index].generation, index });
@@ -3408,30 +3625,68 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t>& new_state_flags,
 		std::vector<MultiwayPackedPublicNode>& existing_nodes) const
 	{
-		new_state_flags.assign(states.size(), 1U);
-		existing_nodes.assign(states.size(), MultiwayPackedPublicNode{});
-		for (std::size_t index = 0U; index < states.size(); ++index)
-		{
-			if (states[index].id.value == 0U || (index != 0U && states[index - 1U].id.value >= states[index].id.value))
-				throw std::invalid_argument("external public-state classification requires sorted unique nonzero ids");
-			if (lookup(states[index].id, existing_nodes[index]))
-				new_state_flags[index] = 0U;
-		}
+		classify_batch_impl(states, new_state_flags, &existing_nodes);
 	}
 
 	void MultiwayExternalPublicCatalog::classify_batch(
 		const std::vector<MultiwayPublicStateDescriptor>& states,
 		std::vector<std::uint8_t>& new_state_flags) const
 	{
+		classify_batch_impl(states, new_state_flags, nullptr);
+	}
+
+	void MultiwayExternalPublicCatalog::classify_batch_impl(
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		std::vector<std::uint8_t>& new_state_flags,
+		std::vector<MultiwayPackedPublicNode>* existing_nodes) const
+	{
 		new_state_flags.assign(states.size(), 1U);
-		MultiwayPackedPublicNode existing{};
+		if (existing_nodes != nullptr)
+			existing_nodes->assign(states.size(), MultiwayPackedPublicNode{});
+		std::vector<std::uint64_t> sorted_keys;
+		sorted_keys.reserve(states.size());
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
 			if (states[index].id.value == 0U || (index != 0U && states[index - 1U].id.value >= states[index].id.value))
 				throw std::invalid_argument("external public-state classification requires sorted unique nonzero ids");
-			if (lookup(states[index].id, existing))
-				new_state_flags[index] = 0U;
+			sorted_keys.push_back(states[index].id.value);
 		}
+		if (states.empty())
+			return;
+
+		struct ClassificationContext
+		{
+			const std::vector<MultiwayPublicStateDescriptor>* states = nullptr;
+			std::vector<std::uint8_t>* new_state_flags = nullptr;
+			std::vector<MultiwayPackedPublicNode>* existing_nodes = nullptr;
+			std::size_t next_state = 0U;
+		};
+		ClassificationContext context{ &states, &new_state_flags, existing_nodes, 0U };
+		const auto visit = [](void* raw_context, std::uint64_t key,
+			const std::uint8_t* payload, std::size_t payload_size) -> bool {
+			auto& current = *static_cast<ClassificationContext*>(raw_context);
+			while (current.next_state < current.states->size() &&
+				(*current.states)[current.next_state].id.value < key)
+				++current.next_state;
+			if (current.next_state == current.states->size())
+				return false;
+			if ((*current.states)[current.next_state].id.value != key)
+				return true;
+
+			MultiwayPackedPublicNode existing{};
+			const bool found = payload_size == external_public_catalog_record_size() &&
+				decode_external_public_node(payload, external_public_node_record_size(), existing) &&
+				existing.id.value == key;
+			if (found)
+			{
+				(*current.new_state_flags)[current.next_state] = 0U;
+				if (current.existing_nodes != nullptr)
+					(*current.existing_nodes)[current.next_state] = existing;
+			}
+			++current.next_state;
+			return current.next_state < current.states->size();
+		};
+		static_cast<void>(store_.visit_matching_records(sorted_keys, visit, &context));
 	}
 
 	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
@@ -3449,13 +3704,16 @@ namespace texas::solver::multiway
 			throw std::length_error("external public catalog segment cannot hold one record");
 		const auto chunk_capacity = static_cast<std::size_t>(std::min<std::uint64_t>(
 			max_records, std::numeric_limits<std::size_t>::max()));
+		std::vector<std::uint64_t> sorted_keys;
+		sorted_keys.reserve(nodes.size());
 		for (std::size_t index = 0U; index < nodes.size(); ++index)
 		{
 			if (nodes[index].id.value == 0U || nodes[index].legal_menu_handle != 0U || (index != 0U && nodes[index - 1U].id.value >= nodes[index].id.value))
 				throw std::invalid_argument("external menu-less catalog batch requires sorted unique states with menu handle zero");
-			if (contains(nodes[index].id))
-				throw std::invalid_argument("external public catalog cannot append an existing state id");
+			sorted_keys.push_back(nodes[index].id.value);
 		}
+		require_external_records_absent(store_, sorted_keys,
+			"external public catalog cannot append an existing state id");
 		std::vector<MultiwayExternalRecord> records;
 		records.reserve(chunk_capacity);
 		std::vector<std::uint8_t> node_bytes;
@@ -3510,15 +3768,52 @@ namespace texas::solver::multiway
 	{
 		if ((new_state_flags != nullptr && states.size() != new_state_flags->size()) || (packed_nodes != nullptr && packed_nodes->size() != states.size()))
 			throw std::invalid_argument("external public catalog discovery batch dimensions mismatch");
+		std::vector<std::uint64_t> sorted_keys;
+		sorted_keys.reserve(states.size());
 		for (std::size_t index = 0U; index < states.size(); ++index)
+		{
 			if (states[index].id.value == 0U || (index != 0U && states[index - 1U].id.value >= states[index].id.value))
 				throw std::invalid_argument("external public catalog discovery states must be sorted and unique");
+			sorted_keys.push_back(states[index].id.value);
+		}
 		if (new_state_flags != nullptr && std::any_of(new_state_flags->begin(), new_state_flags->end(), [](std::uint8_t flag) { return flag > 1U; }))
 			throw std::invalid_argument("external public catalog discovery flags are invalid");
 		if (new_state_flags != nullptr)
+		{
+			struct ExistingStateContext
+			{
+				const std::vector<MultiwayPublicStateDescriptor>* states = nullptr;
+				const std::vector<std::uint8_t>* new_state_flags = nullptr;
+				std::vector<std::uint8_t>* found_existing = nullptr;
+				std::size_t next_state = 0U;
+			};
+			std::vector<std::uint8_t> found_existing(states.size(), 0U);
+			ExistingStateContext context{ &states, new_state_flags,
+				&found_existing, 0U };
+			const auto validate_existing = [](void* raw_context, std::uint64_t key,
+				const std::uint8_t*, std::size_t) -> bool {
+				auto& current = *static_cast<ExistingStateContext*>(raw_context);
+				while (current.next_state < current.states->size() &&
+					(*current.states)[current.next_state].id.value < key)
+					++current.next_state;
+				if (current.next_state == current.states->size() ||
+					(*current.states)[current.next_state].id.value != key)
+					throw std::logic_error("external catalog lookup returned an unrequested state");
+				if ((*current.new_state_flags)[current.next_state] != 0U)
+					throw std::invalid_argument("external public catalog cannot append an existing state id");
+				(*current.found_existing)[current.next_state] = 1U;
+				++current.next_state;
+				return true;
+			};
+			static_cast<void>(store_.visit_matching_records(sorted_keys,
+				validate_existing, &context));
 			for (std::size_t index = 0U; index < states.size(); ++index)
-				if ((*new_state_flags)[index] == 0U && !contains(states[index].id))
+				if ((*new_state_flags)[index] == 0U && found_existing[index] == 0U)
 					throw std::invalid_argument("external public catalog classified a missing state as existing");
+		}
+		else
+			require_external_records_absent(store_, sorted_keys,
+				"external public catalog cannot append an existing state id");
 		const auto new_count = new_state_flags == nullptr ? states.size() : static_cast<std::size_t>(std::count(new_state_flags->begin(), new_state_flags->end(), 1U));
 		if (new_count == 0U)
 			return;
@@ -3543,8 +3838,6 @@ namespace texas::solver::multiway
 				: (*packed_nodes)[index];
 			if (node.id.value == 0U || descriptor.id != node.id || node.id.value <= previous_id || descriptor.legal_actions.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 				throw std::invalid_argument("external public catalog batch has invalid identity, order, or menu size");
-			if (contains(node.id))
-				throw std::invalid_argument("external public catalog cannot append an existing state id");
 			previous_id = node.id.value;
 			for (std::size_t action = 0U; action < descriptor.legal_actions.size(); ++action)
 			{
@@ -3802,6 +4095,8 @@ namespace texas::solver::multiway
 		if (next_page_id != next_page_id_)
 			throw std::invalid_argument("external row page-id allocator does not match the durable generation");
 		auto candidate_next_page_id = next_page_id;
+		std::vector<std::uint64_t> sorted_state_ids;
+		sorted_state_ids.reserve(rows.size());
 		std::size_t cursor = 0U;
 		while (cursor < order.size())
 		{
@@ -3810,15 +4105,55 @@ namespace texas::solver::multiway
 			if (state_id == 0U)
 				throw std::invalid_argument("external row state id is invalid");
 			std::vector<std::uint8_t> payload(8U + 6U * 24U, 0U);
-			if (!store_.lookup(state_id, payload))
+			for (unsigned shift = 0U; shift < 32U; shift += 8U)
 			{
-				for (unsigned shift = 0U; shift < 32U; shift += 8U)
-				{
-					payload[shift / 8U] = static_cast<std::uint8_t>(row_magic >> shift);
-					payload[4U + shift / 8U] = static_cast<std::uint8_t>(row_schema >> shift);
-				}
+				payload[shift / 8U] = static_cast<std::uint8_t>(row_magic >> shift);
+				payload[4U + shift / 8U] = static_cast<std::uint8_t>(row_schema >> shift);
 			}
-			else if (read_u32(payload.data()) != row_magic || read_u32(payload.data() + 4U) != row_schema)
+			sorted_state_ids.push_back(state_id);
+			records.push_back({ state_id, std::move(payload) });
+			while (cursor < order.size() &&
+				rows[order[cursor]].infoset.public_state.value == state_id)
+				++cursor;
+		}
+		struct ExistingRowContext
+		{
+			std::vector<MultiwayExternalRecord>* records = nullptr;
+			std::size_t next_record = 0U;
+		};
+		ExistingRowContext existing_rows{ &records, 0U };
+		const auto copy_existing_row = [](void* raw_context, std::uint64_t state_id,
+			const std::uint8_t* payload, std::size_t payload_size) -> bool {
+			auto& current = *static_cast<ExistingRowContext*>(raw_context);
+			while (current.next_record < current.records->size() &&
+				(*current.records)[current.next_record].key < state_id)
+				++current.next_record;
+			if (current.next_record == current.records->size() ||
+				(*current.records)[current.next_record].key != state_id)
+				throw std::logic_error("external row lookup returned an unrequested state");
+			constexpr std::size_t row_payload_size = 8U + 6U * 24U;
+			constexpr std::uint32_t expected_magic = 0x3152574dU;
+			constexpr std::uint32_t expected_schema = 1U;
+			if (payload_size != row_payload_size ||
+				read_u32(payload) != expected_magic || read_u32(payload + 4U) != expected_schema)
+				throw std::invalid_argument("external row metadata record schema is invalid");
+			auto& output = (*current.records)[current.next_record].payload;
+			std::copy_n(payload, row_payload_size, output.data());
+			++current.next_record;
+			return true;
+		};
+		static_cast<void>(store_.visit_matching_records(sorted_state_ids,
+			copy_existing_row, &existing_rows));
+
+		cursor = 0U;
+		std::size_t record_index = 0U;
+		while (cursor < order.size())
+		{
+			const auto state_id = rows[order[cursor]].infoset.public_state.value;
+			if (record_index >= records.size() || records[record_index].key != state_id)
+				throw std::logic_error("external row output records are not aligned with sorted rows");
+			auto& payload = records[record_index].payload;
+			if (read_u32(payload.data()) != row_magic || read_u32(payload.data() + 4U) != row_schema)
 				throw std::invalid_argument("external row metadata record schema is invalid");
 			std::int32_t prior_seat = -1;
 			while (cursor < order.size() && rows[order[cursor]].infoset.public_state.value == state_id)
@@ -3846,7 +4181,7 @@ namespace texas::solver::multiway
 				candidate_next_page_id = checked_add(candidate_next_page_id, page_count64);
 				++cursor;
 			}
-			records.push_back({ state_id, std::move(payload) });
+			++record_index;
 		}
 		std::vector<std::uint8_t> allocator_payload(8U + 6U * 24U, 0U);
 		for (unsigned shift = 0U; shift < 32U; shift += 8U)
@@ -3887,6 +4222,86 @@ namespace texas::solver::multiway
 		if (output.page_count != expected_pages || output.page_count > std::numeric_limits<std::uint64_t>::max() - output.first_page_id)
 			throw std::invalid_argument("external row metadata page range is inconsistent");
 		return true;
+	}
+
+	void MultiwayExternalRowIndex::lookup_rows(
+		const std::vector<MultiwaySparseRowShape>& rows,
+		std::vector<MultiwayExternalRowMetadata>& output) const
+	{
+		struct Query
+		{
+			std::uint64_t state_id = 0U;
+			std::size_t row_index = 0U;
+			std::int32_t seat = -1;
+		};
+		std::vector<Query> queries;
+		queries.reserve(rows.size());
+		output.assign(rows.size(), MultiwayExternalRowMetadata{});
+		for (std::size_t index = 0U; index < rows.size(); ++index)
+		{
+			const auto& infoset = rows[index].infoset;
+			if (infoset.public_state.value != 0U && infoset.seat >= 0 && infoset.seat < 6)
+				queries.push_back({ infoset.public_state.value, index, infoset.seat });
+		}
+		std::sort(queries.begin(), queries.end(), [](const Query& left, const Query& right) {
+			return left.state_id != right.state_id
+				? left.state_id < right.state_id
+				: left.seat != right.seat ? left.seat < right.seat : left.row_index < right.row_index;
+		});
+		std::vector<std::uint64_t> sorted_state_ids;
+		sorted_state_ids.reserve(queries.size());
+		for (const auto& query : queries)
+			if (sorted_state_ids.empty() || sorted_state_ids.back() != query.state_id)
+				sorted_state_ids.push_back(query.state_id);
+		if (sorted_state_ids.empty())
+			return;
+
+		struct LookupContext
+		{
+			const std::vector<Query>* queries = nullptr;
+			std::vector<MultiwayExternalRowMetadata>* output = nullptr;
+			std::size_t next_query = 0U;
+			std::uint32_t page_width = 0U;
+		};
+		LookupContext context{ &queries, &output, 0U, page_width_ };
+		const auto visit = [](void* raw_context, std::uint64_t state_id,
+			const std::uint8_t* payload, std::size_t payload_size) -> bool {
+			auto& current = *static_cast<LookupContext*>(raw_context);
+			constexpr std::size_t row_payload_size = 8U + 6U * 24U;
+			if (payload == nullptr || payload_size != row_payload_size ||
+				read_u32(payload) != 0x3152574dU || read_u32(payload + 4U) != 1U)
+				throw std::invalid_argument("external row metadata record schema is invalid");
+			while (current.next_query < current.queries->size() &&
+				(*current.queries)[current.next_query].state_id < state_id)
+				++current.next_query;
+			while (current.next_query < current.queries->size() &&
+				(*current.queries)[current.next_query].state_id == state_id)
+			{
+				const auto& query = (*current.queries)[current.next_query++];
+				const auto slot = 8U + static_cast<std::size_t>(query.seat) * 24U;
+				if (payload[slot] == 0U)
+					continue;
+				if (payload[slot] != 1U || payload[slot + 2U] != 0U ||
+					payload[slot + 3U] != 0U || read_u32(payload + slot + 20U) != 0U)
+					throw std::invalid_argument("external row metadata flags or reserved fields are invalid");
+				auto& row = (*current.output)[query.row_index];
+				row.action_count = payload[slot + 1U];
+				row.bucket_count = read_u32(payload + slot + 4U);
+				row.first_page_id = read_u64(payload + slot + 8U);
+				row.page_count = read_u32(payload + slot + 16U);
+				if (row.action_count == 0U || row.bucket_count == 0U ||
+					row.first_page_id == 0U || row.page_count == 0U)
+					throw std::invalid_argument("external row metadata contains an invalid shape");
+				const auto expected_pages =
+					(static_cast<std::uint64_t>(row.bucket_count) + current.page_width - 1U) /
+					current.page_width;
+				if (row.page_count != expected_pages ||
+					row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
+					throw std::invalid_argument("external row metadata page range is inconsistent");
+			}
+			return true;
+		};
+		static_cast<void>(store_.visit_matching_records(sorted_state_ids, visit, &context));
 	}
 
 	bool MultiwayExternalRowIndex::visit_ordered_rows(
@@ -3994,7 +4409,7 @@ namespace texas::solver::multiway
 
 	MultiwayExternalCompactPages::MultiwayExternalCompactPages(
 		MultiwayExternalStorageConfig config, std::uint32_t page_width,
-		std::uint64_t cache_bytes)
+		std::uint64_t cache_bytes, std::uint64_t maximum_page_id)
 		: page_width_(page_width)
 	{
 		if (page_width_ == 0U || cache_bytes > std::numeric_limits<std::size_t>::max())
@@ -4003,8 +4418,17 @@ namespace texas::solver::multiway
 		if (payload > std::numeric_limits<std::size_t>::max() || payload > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("external compact page payload width overflows");
 		const auto store_cache_bytes = payload + 1024U;
-		if (cache_bytes <= store_cache_bytes + 2U * payload)
+		if (maximum_page_id >= std::numeric_limits<std::size_t>::max())
+			throw std::length_error("external compact page lookup index exceeds size_t");
+		const auto lookup_slot_count = maximum_page_id == 0U ? 0U : maximum_page_id + 1U;
+		if (lookup_slot_count > std::numeric_limits<std::size_t>::max() / sizeof(std::uint32_t))
+			throw std::length_error("external compact page lookup index byte count overflows size_t");
+		const auto lookup_index_bytes = lookup_slot_count * sizeof(std::uint32_t);
+		if (lookup_index_bytes > cache_bytes ||
+			cache_bytes - lookup_index_bytes <= store_cache_bytes + 2U * payload)
 			throw std::invalid_argument("external compact page cache cannot hold one working page");
+		if (lookup_slot_count != 0U)
+			page_lookup_slots_.resize(static_cast<std::size_t>(lookup_slot_count), 0U);
 		config.cache_bytes = store_cache_bytes;
 		store_cache_budget_bytes_ = store_cache_bytes;
 		store_ = std::make_unique<MultiwayExternalRecordStore>(config, static_cast<std::size_t>(payload));
@@ -4021,15 +4445,18 @@ namespace texas::solver::multiway
 		if (publication_memory > std::numeric_limits<std::size_t>::max() - page_memory)
 			throw std::length_error("external compact page publication budget overflows size_t");
 		const auto scratch_bytes = lookup_scratch_.capacity() + encode_scratch_.capacity();
-		if (cache_bytes <= store_cache_bytes + scratch_bytes)
+		if (lookup_index_bytes > cache_bytes ||
+			cache_bytes - lookup_index_bytes <= store_cache_bytes + scratch_bytes)
 			throw std::invalid_argument("external compact page cache cannot hold fixed scratch");
-		const auto page_budget = cache_bytes - store_cache_bytes - scratch_bytes;
+		const auto page_budget = cache_bytes - lookup_index_bytes - store_cache_bytes - scratch_bytes;
 		auto capacity = page_budget / (page_memory + publication_memory);
 		const auto record_width = payload + 8U;
 		capacity = std::min<std::uint64_t>(capacity, (config.maximum_wal_bytes - 48U) / record_width);
 		capacity = std::min<std::uint64_t>(capacity, config.segment_target_bytes / record_width);
 		if (capacity == 0U || capacity > std::numeric_limits<std::size_t>::max())
 			throw std::invalid_argument("external compact page cache cannot hold a committable page");
+		if (capacity > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("external compact page cache slots exceed index width");
 		pages_.resize(static_cast<std::size_t>(capacity));
 		for (auto& page : pages_)
 		{
@@ -4044,10 +4471,50 @@ namespace texas::solver::multiway
 
 	MultiwayExternalCompactPages::Page* MultiwayExternalCompactPages::find(std::uint64_t page_id) noexcept
 	{
+		if (!page_lookup_slots_.empty())
+		{
+			if (page_id >= page_lookup_slots_.size())
+				return nullptr;
+			const auto encoded_slot = page_lookup_slots_[static_cast<std::size_t>(page_id)];
+			if (encoded_slot == 0U)
+				return nullptr;
+			const auto slot = static_cast<std::size_t>(encoded_slot - 1U);
+			if (slot >= pages_.size())
+				return nullptr;
+			auto& page = pages_[slot];
+			return page.valid && page.page_id == page_id ? &page : nullptr;
+		}
 		for (auto& page : pages_)
 			if (page.valid && page.page_id == page_id)
 				return &page;
 		return nullptr;
+	}
+
+	void MultiwayExternalCompactPages::validate_page_id(std::uint64_t page_id) const
+	{
+		if (!page_lookup_slots_.empty() && page_id >= page_lookup_slots_.size())
+			throw std::length_error("external compact page id exceeds lookup index bound");
+	}
+
+	void MultiwayExternalCompactPages::cache_page(Page& page, std::size_t slot)
+	{
+		if (page_lookup_slots_.empty())
+			return;
+		if (page.page_id == 0U || page.page_id >= page_lookup_slots_.size() ||
+			slot >= pages_.size() || slot >= std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("external compact page id or cache slot exceeds lookup index bounds");
+		page_lookup_slots_[static_cast<std::size_t>(page.page_id)] =
+			static_cast<std::uint32_t>(slot + 1U);
+	}
+
+	void MultiwayExternalCompactPages::forget_cached_page(Page& page, std::size_t slot) noexcept
+	{
+		if (page_lookup_slots_.empty() || !page.valid || page.page_id >= page_lookup_slots_.size() ||
+			slot >= std::numeric_limits<std::uint32_t>::max())
+			return;
+		auto& encoded_slot = page_lookup_slots_[static_cast<std::size_t>(page.page_id)];
+		if (encoded_slot == static_cast<std::uint32_t>(slot + 1U))
+			encoded_slot = 0U;
 	}
 
 	void MultiwayExternalCompactPages::decode_page(const std::uint8_t* bytes, Page& page) const
@@ -4142,6 +4609,7 @@ namespace texas::solver::multiway
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (page_id == 0U)
 			throw std::invalid_argument("external compact page id is invalid");
+		validate_page_id(page_id);
 		if (auto* cached = find(page_id))
 		{
 			++page_cache_hits_;
@@ -4170,11 +4638,14 @@ namespace texas::solver::multiway
 			throw std::length_error("external compact page cache has no clean unpinned page");
 		if (selected->valid)
 			++page_cache_evictions_;
+		const auto selected_slot = static_cast<std::size_t>(selected - pages_.data());
+		forget_cached_page(*selected, selected_slot);
 		selected->valid = false;
 		decode_page(lookup_scratch_.data(), *selected);
 		if (selected->page_id != page_id)
 			throw std::invalid_argument("external compact page key disagrees with its record");
 		selected->valid = true;
+		cache_page(*selected, selected_slot);
 		selected->dirty = false;
 		selected->pin_count = 1U;
 		return { page_id, selected->regrets.data(), selected->strategy_masses.data(),
@@ -4188,6 +4659,7 @@ namespace texas::solver::multiway
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U || bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
+		validate_page_id(page_id);
 		if (auto* cached = find(page_id))
 		{
 			++page_cache_hits_;
@@ -4216,6 +4688,8 @@ namespace texas::solver::multiway
 			throw std::length_error("external compact page cache has no clean unpinned page");
 		if (selected->valid)
 			++page_cache_evictions_;
+		const auto selected_slot = static_cast<std::size_t>(selected - pages_.data());
+		forget_cached_page(*selected, selected_slot);
 		selected->valid = false;
 		const auto found = store_->lookup(page_id, lookup_scratch_);
 		if (found)
@@ -4236,6 +4710,7 @@ namespace texas::solver::multiway
 			selected->action_count = action_count;
 		}
 		selected->valid = true;
+		cache_page(*selected, selected_slot);
 		selected->dirty = false;
 		selected->pin_count = 1U;
 		return { page_id, selected->regrets.data(), selected->strategy_masses.data(), bucket_count,
@@ -4250,6 +4725,7 @@ namespace texas::solver::multiway
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U || bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
+		validate_page_id(page_id);
 		Page* cached = nullptr;
 		if (profile != nullptr)
 		{
@@ -4295,6 +4771,8 @@ namespace texas::solver::multiway
 			throw std::length_error("external compact page cache has no clean unpinned page");
 		if (selected->valid)
 			++page_cache_evictions_;
+		const auto selected_slot = static_cast<std::size_t>(selected - pages_.data());
+		forget_cached_page(*selected, selected_slot);
 		selected->valid = false;
 		bool found = false;
 		if (profile != nullptr)
@@ -4342,6 +4820,7 @@ namespace texas::solver::multiway
 				zero();
 		}
 		selected->valid = true;
+		cache_page(*selected, selected_slot);
 		selected->dirty = false;
 		selected->pin_count = 1U;
 		return { page_id, selected->regrets.data(), selected->strategy_masses.data(), bucket_count,
@@ -4467,7 +4946,9 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayExternalCompactPages::memory_bytes() const noexcept
 	{
-		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) + lookup_scratch_.capacity() + encode_scratch_.capacity() + pages_.capacity() * sizeof(Page);
+		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) +
+			lookup_scratch_.capacity() + encode_scratch_.capacity() +
+			page_lookup_slots_.capacity() * sizeof(std::uint32_t) + pages_.capacity() * sizeof(Page);
 		for (const auto& page : pages_)
 			result += page.regrets.capacity() * sizeof(std::int32_t) + page.strategy_masses.capacity() * sizeof(std::uint64_t) + page.before_regrets.capacity() * sizeof(std::int32_t) + page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
 		return result + pages_.size() * (sizeof(Page*) + sizeof(MultiwayExternalRecord) + page_payload_size());
@@ -4512,8 +4993,11 @@ namespace texas::solver::multiway
 
 	MultiwayExternalCompactStorage::MultiwayExternalCompactStorage(
 		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
-		std::uint32_t page_width, std::uint64_t page_cache_bytes)
-		: rows_(std::move(row_config), page_width), pages_(std::move(page_config), page_width, page_cache_bytes), next_page_id_(rows_.next_page_id()), page_width_(page_width)
+		std::uint32_t page_width, std::uint64_t page_cache_bytes,
+		std::uint64_t maximum_page_id)
+		: rows_(std::move(row_config), page_width), pages_(std::move(page_config), page_width,
+			page_cache_bytes, maximum_page_id), next_page_id_(rows_.next_page_id()),
+			page_width_(page_width)
 	{
 		if (page_width_ == 0U)
 			throw std::invalid_argument("external compact storage page width is zero");
@@ -4577,6 +5061,13 @@ namespace texas::solver::multiway
 		output.seat_ = infoset.seat;
 		output.row_ = row;
 		return true;
+	}
+
+	void MultiwayExternalCompactStorage::lookup_rows(
+		const std::vector<MultiwaySparseRowShape>& rows,
+		std::vector<MultiwayExternalRowMetadata>& output) const
+	{
+		rows_.lookup_rows(rows, output);
 	}
 
 	bool MultiwayExternalCompactStorage::visit_ordered_rows(
@@ -4930,8 +5421,14 @@ namespace texas::solver::multiway
 		std::filesystem::path directory, MultiwayExternalStorageConfig catalog_config,
 		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
 		std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
-		std::size_t maximum_ancestry_depth, bool synchronous_durability)
-		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)), row_config_(std::move(row_config)), page_config_(std::move(page_config)), page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes), maximum_ancestry_depth_(maximum_ancestry_depth), synchronous_durability_(synchronous_durability), transaction_(directory_, synchronous_durability)
+		std::size_t maximum_ancestry_depth, bool synchronous_durability,
+		std::uint64_t maximum_page_id)
+		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)),
+			row_config_(std::move(row_config)), page_config_(std::move(page_config)),
+			page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes),
+			maximum_page_id_(maximum_page_id), maximum_ancestry_depth_(maximum_ancestry_depth),
+			synchronous_durability_(synchronous_durability),
+			transaction_(directory_, synchronous_durability)
 	{
 		if (directory_.empty() || page_width_ == 0U || row_page_cache_bytes_ == 0U || maximum_ancestry_depth_ == 0U || catalog_config_.directory.lexically_normal() != (directory_ / "catalog").lexically_normal() || row_config_.directory.lexically_normal() != (directory_ / "rows").lexically_normal() || page_config_.directory.lexically_normal() != (directory_ / "pages").lexically_normal() || catalog_config_.synchronous_durability != synchronous_durability_ || row_config_.synchronous_durability != synchronous_durability_ || page_config_.synchronous_durability != synchronous_durability_)
 			throw std::invalid_argument("external training storage component paths or bounds are invalid");
@@ -4957,7 +5454,7 @@ namespace texas::solver::multiway
 		catalog_ = std::make_unique<MultiwayExternalPublicCatalog>(
 			catalog_config_, maximum_ancestry_depth_);
 		compact_ = std::make_unique<MultiwayExternalCompactStorage>(
-			row_config_, page_config_, page_width_, row_page_cache_bytes_);
+			row_config_, page_config_, page_width_, row_page_cache_bytes_, maximum_page_id_);
 	}
 
 	void MultiwayExternalTrainingStorage::set_publication_observer(

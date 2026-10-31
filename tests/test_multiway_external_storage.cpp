@@ -303,16 +303,30 @@ TEST_CASE(multiway_external_record_store_visits_latest_records_in_bounded_key_or
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	MultiwayExternalRecordStore store(config(directory.path()), 2U);
-	store.append_batch(1U, 0x111U, { { 1U, { 1U, 10U } }, { 4U, { 4U, 10U } } });
-	store.append_batch(2U, 0x222U, { { 3U, { 3U, 20U } }, { 4U, { 4U, 20U } } });
+	store.append_batch(1U, 0x111U, {
+		{ 1U, { 1U, 10U } }, { 4U, { 4U, 10U } }, { 7U, { 7U, 10U } }, { 10U, { 10U, 10U } } });
+	store.append_batch(2U, 0x222U, {
+		{ 3U, { 3U, 20U } }, { 4U, { 4U, 20U } }, { 8U, { 8U, 20U } }, { 10U, { 10U, 20U } } });
 
 	OrderedRecordCapture before_compaction;
 	EXPECT_TRUE(store.visit_ordered_records(capture_ordered_record, &before_compaction));
-	EXPECT_EQ(before_compaction.keys.size(), 3U);
-	EXPECT_EQ(before_compaction.keys[0], 1U);
-	EXPECT_EQ(before_compaction.keys[1], 3U);
-	EXPECT_EQ(before_compaction.keys[2], 4U);
+	EXPECT_EQ(before_compaction.keys,
+		(std::vector<std::uint64_t>{ 1U, 3U, 4U, 7U, 8U, 10U }));
 	EXPECT_EQ(before_compaction.payloads[2][1], 20U);
+	std::vector<std::uint8_t> cached_latest;
+	EXPECT_TRUE(store.lookup(4U, cached_latest));
+	OrderedRecordCapture matching;
+	EXPECT_TRUE(store.visit_matching_records({ 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U },
+		capture_ordered_record, &matching));
+	EXPECT_EQ(matching.keys, before_compaction.keys);
+	EXPECT_EQ(matching.payloads, before_compaction.payloads);
+	EXPECT_THROW(store.visit_matching_records({ 4U, 3U }, capture_ordered_record, &matching),
+		std::invalid_argument);
+	OrderedRecordCapture matching_stopped;
+	matching_stopped.stop_after = 1U;
+	EXPECT_EQ(store.visit_matching_records({ 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U },
+		capture_ordered_record, &matching_stopped), false);
+	EXPECT_EQ(matching_stopped.keys, (std::vector<std::uint64_t>{ 1U }));
 
 	OrderedRecordCapture stopped;
 	stopped.stop_after = 1U;
@@ -328,6 +342,32 @@ TEST_CASE(multiway_external_record_store_visits_latest_records_in_bounded_key_or
 	store.append_batch(4U, 0x444U, { { 6U, { 6U, 40U } } });
 	EXPECT_THROW(store.visit_ordered_records(capture_ordered_record, &after_compaction),
 		std::runtime_error);
+}
+
+TEST_CASE(multiway_external_record_store_seeks_across_large_matching_data_gaps)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto settings = config(directory.path());
+	settings.maximum_wal_bytes = 65536U;
+	settings.segment_target_bytes = 65536U;
+	settings.compaction_scratch_bytes = 131072U;
+	MultiwayExternalRecordStore store(settings, 4U);
+	std::vector<MultiwayExternalRecord> source;
+	source.reserve(5000U);
+	for (std::uint64_t key = 1U; key <= 5000U; ++key)
+		source.push_back({ key, { static_cast<std::uint8_t>(key), 0xa5U, 0x5aU, 0xffU } });
+	store.append_batch(1U, 0x111U, source);
+
+	OrderedRecordCapture matching;
+	MultiwayExternalRecordLookupProfile profile;
+	EXPECT_TRUE(store.visit_matching_records({ 1U, 5000U }, capture_ordered_record, &matching,
+		&profile));
+	EXPECT_EQ(matching.keys, (std::vector<std::uint64_t>{ 1U, 5000U }));
+	EXPECT_EQ(matching.payloads[0], source.front().payload);
+	EXPECT_EQ(matching.payloads[1], source.back().payload);
+	EXPECT_EQ(profile.index_opens, 1U);
+	EXPECT_EQ(profile.index_reads, 2U);
 }
 
 TEST_CASE(multiway_external_record_store_uses_bounded_constant_time_cache_slots)
@@ -1722,6 +1762,17 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 			{ root_candidate, child_candidate, new_candidate }, new_flags);
 		EXPECT_EQ(catalog.record_count(), 3U);
 		EXPECT_TRUE(catalog.contains(new_candidate.id));
+		bool existing_classified_new_rejected = false;
+		try
+		{
+			catalog.append_discovered_batch(3U, 0x48U, { child_candidate }, { 1U });
+		}
+		catch (const std::invalid_argument&)
+		{
+			existing_classified_new_rejected = true;
+		}
+		EXPECT_TRUE(existing_classified_new_rejected);
+		EXPECT_EQ(catalog.record_count(), 3U);
 		MultiwayPublicStateDescriptor missing_candidate{};
 		missing_candidate.id.value = 4U;
 		bool stale_classification_rejected = false;
@@ -1838,6 +1889,21 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		EXPECT_EQ(page.action_count, 2U);
 		EXPECT_TRUE(!rows.locate_bucket({ 10U }, 1, 17U, page));
 		EXPECT_TRUE(!rows.lookup({ 10U }, 5, metadata));
+		const auto lookups_before_batch = rows.stats().lookups;
+		std::vector<MultiwayExternalRowMetadata> batch_metadata;
+		rows.lookup_rows({
+			{ { { 10U }, 0 }, 17U, 3U },
+			{ { { 20U }, 2 }, 16U, 1U },
+			{ { { 10U }, 1 }, 17U, 2U },
+			{ { { 99U }, 0 }, 1U, 1U },
+		}, batch_metadata);
+		EXPECT_EQ(rows.stats().lookups - lookups_before_batch, 3U);
+		EXPECT_EQ(batch_metadata.size(), 4U);
+		EXPECT_EQ(batch_metadata[0].action_count, 3U);
+		EXPECT_EQ(batch_metadata[0].bucket_count, 17U);
+		EXPECT_EQ(batch_metadata[1].first_page_id, 5U);
+		EXPECT_EQ(batch_metadata[2].first_page_id, 3U);
+		EXPECT_EQ(batch_metadata[3].action_count, 0U);
 		std::uint64_t unchanged_page_id = 6U;
 		bool invalid_rejected = false;
 		try
@@ -1860,9 +1926,13 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 									 },
 			next_page_id);
 		EXPECT_EQ(next_page_id, 8U);
+		rows.append_batch(3U, 0x7aU,
+			{ { { { 10U }, 2 }, 5U, 1U } }, next_page_id);
+		EXPECT_EQ(next_page_id, 9U);
+		rows.compact();
 	}
 	MultiwayExternalRowIndex reopened(config(directory.path()), 16U);
-	EXPECT_EQ(reopened.next_page_id(), 8U);
+	EXPECT_EQ(reopened.next_page_id(), 9U);
 	MultiwayExternalRowMetadata metadata{};
 	EXPECT_TRUE(reopened.lookup({ 20U }, 2, metadata));
 	EXPECT_EQ(metadata.first_page_id, 5U);
@@ -1871,17 +1941,25 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 	EXPECT_EQ(metadata.first_page_id, 6U);
 	EXPECT_TRUE(reopened.lookup({ 30U }, 0, metadata));
 	EXPECT_EQ(metadata.first_page_id, 7U);
+	EXPECT_TRUE(reopened.lookup({ 10U }, 0, metadata));
+	EXPECT_EQ(metadata.first_page_id, 1U);
+	EXPECT_TRUE(reopened.lookup({ 10U }, 1, metadata));
+	EXPECT_EQ(metadata.first_page_id, 3U);
+	EXPECT_TRUE(reopened.lookup({ 10U }, 2, metadata));
+	EXPECT_EQ(metadata.first_page_id, 8U);
 	OrderedRowCapture ordered_rows;
 	EXPECT_TRUE(reopened.visit_ordered_rows(capture_ordered_row, &ordered_rows));
-	EXPECT_EQ(ordered_rows.state_ids.size(), 5U);
+	EXPECT_EQ(ordered_rows.state_ids.size(), 6U);
 	EXPECT_EQ(ordered_rows.state_ids[0], 10U);
 	EXPECT_EQ(ordered_rows.seats[0], 0);
 	EXPECT_EQ(ordered_rows.state_ids[1], 10U);
 	EXPECT_EQ(ordered_rows.seats[1], 1);
-	EXPECT_EQ(ordered_rows.state_ids[2], 20U);
+	EXPECT_EQ(ordered_rows.state_ids[2], 10U);
 	EXPECT_EQ(ordered_rows.seats[2], 2);
-	EXPECT_EQ(ordered_rows.state_ids[3], 25U);
-	EXPECT_EQ(ordered_rows.state_ids[4], 30U);
+	EXPECT_EQ(ordered_rows.state_ids[3], 20U);
+	EXPECT_EQ(ordered_rows.seats[3], 2);
+	EXPECT_EQ(ordered_rows.state_ids[4], 25U);
+	EXPECT_EQ(ordered_rows.state_ids[5], 30U);
 	EXPECT_EQ(ordered_rows.rows[1].bucket_count, 17U);
 }
 
@@ -1910,6 +1988,50 @@ TEST_CASE(multiway_external_compact_pages_batch_capacity_and_abort)
 	auto view = pages.pin(1U, { 1U }, 0, 0U, 1U, 2U);
 	EXPECT_EQ(view.regrets[0], 0);
 	pages.unpin(1U);
+}
+
+TEST_CASE(multiway_external_compact_pages_direct_lookup_index_tracks_eviction)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.maximum_wal_bytes = 48U + 2U * 152U;
+	page_config.segment_target_bytes = 2U * 152U;
+	EXPECT_THROW(MultiwayExternalCompactPages(page_config, 1U, 16000U, 5000U),
+		std::invalid_argument);
+	MultiwayExternalCompactPages pages(page_config, 1U, 16000U, 3U);
+	EXPECT_EQ(pages.page_capacity(), 2U);
+	EXPECT_TRUE(pages.memory_bytes() <= 16000U);
+
+	pages.begin_batch(1U, 17U);
+	for (std::uint64_t id : { 1U, 2U })
+	{
+		auto page = pages.pin(id, { id }, 0, 0U, 1U, 2U);
+		pages.mark_dirty(id);
+		page.strategy_masses[0] = id * 10U;
+		pages.unpin(id);
+	}
+	pages.commit_batch();
+
+	pages.begin_batch(2U, 19U);
+	auto inserted = pages.pin(3U, { 3U }, 0, 0U, 1U, 2U);
+	pages.mark_dirty(3U);
+	inserted.strategy_masses[0] = 30U;
+	pages.unpin(3U);
+	pages.commit_batch();
+
+	auto cached = pages.pin(2U, { 2U }, 0, 0U, 1U, 2U);
+	EXPECT_EQ(cached.strategy_masses[0], 20U);
+	pages.unpin(2U);
+	auto reloaded = pages.pin(1U, { 1U }, 0, 0U, 1U, 2U);
+	EXPECT_EQ(reloaded.strategy_masses[0], 10U);
+	pages.unpin(1U);
+	auto still_cached = pages.pin(3U, { 3U }, 0, 0U, 1U, 2U);
+	EXPECT_EQ(still_cached.strategy_masses[0], 30U);
+	pages.unpin(3U);
+	EXPECT_EQ(pages.stats().page_cache_hits, 2U);
+	EXPECT_EQ(pages.stats().page_cache_evictions, 2U);
+	EXPECT_THROW(pages.pin(4U, { 4U }, 0, 0U, 1U, 2U), std::length_error);
 }
 
 TEST_CASE(multiway_external_compact_pages_obey_wal_and_segment_record_limits)
@@ -2596,6 +2718,41 @@ TEST_CASE(multiway_external_record_store_compaction_keeps_newest_page_version)
 	MultiwayExternalRecordStore reopened(config(directory.path()), 4U);
 	EXPECT_TRUE(reopened.lookup(10U, payload));
 	EXPECT_EQ(payload[0], 0xeeU);
+}
+
+TEST_CASE(multiway_external_record_store_compaction_reads_sorted_runs_sequentially)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto storage_config = config(directory.path());
+	MultiwayExternalRecordStore store(storage_config, 4U);
+	store.append_batch(1U, 1U, { { 5U, { 0x05U, 0U, 0U, 0U } } });
+	store.append_batch(2U, 2U, {
+		{ 10U, { 0x10U, 0U, 0U, 0U } },
+		{ 20U, { 0x20U, 0U, 0U, 0U } },
+		{ 30U, { 0x30U, 0U, 0U, 0U } },
+	});
+	store.append_batch(3U, 3U, {
+		{ 10U, { 0xaaU, 0U, 0U, 0U } },
+		{ 25U, { 0x25U, 0U, 0U, 0U } },
+		{ 30U, { 0xbbU, 0U, 0U, 0U } },
+		{ 40U, { 0x40U, 0U, 0U, 0U } },
+	});
+
+	store.compact();
+	const std::vector<std::uint64_t> expected_keys{ 5U, 10U, 20U, 25U, 30U, 40U };
+	OrderedRecordCapture compacted;
+	EXPECT_TRUE(store.visit_ordered_records(capture_ordered_record, &compacted));
+	EXPECT_EQ(compacted.keys, expected_keys);
+	EXPECT_EQ(compacted.payloads[1][0], 0xaaU);
+	EXPECT_EQ(compacted.payloads[4][0], 0xbbU);
+
+	MultiwayExternalRecordStore reopened(storage_config, 4U);
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(reopened.lookup(30U, payload));
+	EXPECT_EQ(payload[0], 0xbbU);
+	EXPECT_TRUE(reopened.lookup(40U, payload));
+	EXPECT_EQ(payload[0], 0x40U);
 }
 
 TEST_CASE(multiway_external_page_cache_pins_bounds_commits_and_rolls_back_pages)
