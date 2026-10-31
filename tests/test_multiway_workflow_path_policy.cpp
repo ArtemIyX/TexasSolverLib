@@ -7,6 +7,7 @@
 
 namespace
 {
+#pragma pack(push, 8)
 	struct TemporaryWorkflowRoot
 	{
 		std::filesystem::path path;
@@ -23,6 +24,7 @@ namespace
 			std::filesystem::remove_all(path, error);
 		}
 	};
+#pragma pack(pop)
 
 	texas::solver::multiway::MultiwayWorkflowPathPolicy policy_for(
 		const std::filesystem::path& root)

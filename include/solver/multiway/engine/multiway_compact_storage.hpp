@@ -22,6 +22,7 @@ namespace texas::solver::multiway
 	{
 	public:
 		/** Non-owning page view used by checkpoint serialization. */
+#pragma pack(push, 8)
 		struct CheckpointPageView
 		{
 			MultiwayInfosetId infoset{};
@@ -30,6 +31,7 @@ namespace texas::solver::multiway
 			const std::int32_t* regrets = nullptr;
 			const std::uint64_t* strategy_masses = nullptr;
 		};
+#pragma pack(pop)
 
 		static constexpr std::int32_t kRegretMin = -2'000'000'000;
 		static constexpr std::int32_t kRegretMax = 2'000'000'000;
@@ -115,6 +117,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayCompactStorageMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
+#pragma pack(push, 8)
 		struct PageMetadata
 		{
 			MultiwayInfosetId infoset{};
@@ -123,6 +126,7 @@ namespace texas::solver::multiway
 			std::size_t regret_offset = 0U;
 			std::size_t strategy_sum_offset = 0U;
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] const PageMetadata* page(
 			MultiwayInfosetId infoset, std::uint32_t page_index) const noexcept;

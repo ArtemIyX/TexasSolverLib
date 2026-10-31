@@ -12,11 +12,13 @@ namespace texas::solver::multiway
 	namespace
 	{
 
+#pragma pack(push, 8)
 		struct FileFingerprint
 		{
 			std::uint64_t bytes = 0U;
 			std::uint64_t hash = 0U;
 		};
+#pragma pack(pop)
 
 		FileFingerprint fingerprint_file(const std::filesystem::path& path)
 		{

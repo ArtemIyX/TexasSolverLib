@@ -1,11 +1,14 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/detail/multiway_compact_pruning.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "test_harness.hpp"
 
 #include <array>
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -18,6 +21,31 @@ namespace
 		return bits;
 	}
 
+} // namespace
+
+namespace
+{
+	using texas::solver::multiway::detail::multiway_compact_prune_backend_available;
+	using texas::solver::multiway::detail::MultiwayCompactPruneBackend;
+	using texas::solver::multiway::detail::prune_compact_regrets_avx2;
+	using texas::solver::multiway::detail::prune_compact_regrets_scalar;
+	using texas::solver::multiway::detail::prune_compact_regrets_sse2;
+
+	std::size_t prune_with_backend(MultiwayCompactPruneBackend backend,
+		std::int32_t* regrets, std::size_t count,
+		std::int32_t threshold, std::int32_t replacement)
+	{
+		switch (backend)
+		{
+			case MultiwayCompactPruneBackend::Scalar:
+				return prune_compact_regrets_scalar(regrets, count, threshold, replacement);
+			case MultiwayCompactPruneBackend::Sse2:
+				return prune_compact_regrets_sse2(regrets, count, threshold, replacement);
+			case MultiwayCompactPruneBackend::Avx2:
+				return prune_compact_regrets_avx2(regrets, count, threshold, replacement);
+		}
+		return 0U;
+	}
 } // namespace
 
 TEST_CASE(multiway_compact_storage_memory_snapshot_attributes_each_storage_array)
@@ -145,6 +173,82 @@ TEST_CASE(multiway_compact_storage_pruning_keeps_configured_floor)
 	const auto policy = storage.regret_matched_strategy(infoset, 0U);
 	EXPECT_NEAR(policy[0], 0.0, 1e-12);
 	EXPECT_NEAR(policy[1], 1.0, 1e-12);
+}
+
+TEST_CASE(multiway_compact_prune_simd_matches_scalar_for_boundaries_and_tails)
+{
+	using namespace texas::solver::multiway::detail;
+	const std::array backends{
+		MultiwayCompactPruneBackend::Scalar,
+		MultiwayCompactPruneBackend::Sse2,
+		MultiwayCompactPruneBackend::Avx2,
+	};
+	const std::array<std::int32_t, 7U> values{
+		std::numeric_limits<std::int32_t>::min(),
+		-5,
+		-1,
+		0,
+		1,
+		5,
+		std::numeric_limits<std::int32_t>::max(),
+	};
+	for (const auto backend : backends)
+	{
+		if (!multiway_compact_prune_backend_available(backend))
+			continue;
+		for (std::size_t length = 0U; length <= 19U; ++length)
+		{
+			std::vector<std::int32_t> expected(length + 3U, 0);
+			std::vector<std::int32_t> actual(length + 3U, 0);
+			const auto start = reinterpret_cast<std::uintptr_t>(actual.data() + 1U) % 32U == 0U ? 2U : 1U;
+			for (std::size_t i = 0U; i < length; ++i)
+				expected[start + i] = actual[start + i] = values[i % values.size()];
+			const auto expected_count = prune_compact_regrets_scalar(
+				expected.data() + start, length, 0, 8);
+			const auto actual_count = prune_with_backend(
+				backend, actual.data() + start, length, 0, 8);
+			EXPECT_EQ(actual_count, expected_count);
+			EXPECT_EQ(actual[start - 1U], 0);
+			EXPECT_EQ(actual[start + length], 0);
+			for (std::size_t i = 0U; i < length; ++i)
+				EXPECT_EQ(actual[start + i], expected[start + i]);
+		}
+	}
+}
+
+TEST_CASE(multiway_compact_prune_simd_counts_unchanged_replacements_and_full_ranges)
+{
+	using namespace texas::solver::multiway::detail;
+	texas::solver::multiway::MultiwayCompactStorage empty_storage(1U, 1U);
+	EXPECT_EQ(empty_storage.prune_negative_regrets(), 0U);
+	const std::array backends{
+		MultiwayCompactPruneBackend::Scalar,
+		MultiwayCompactPruneBackend::Sse2,
+		MultiwayCompactPruneBackend::Avx2,
+	};
+	for (const auto backend : backends)
+	{
+		if (!multiway_compact_prune_backend_available(backend))
+			continue;
+		std::array<std::int32_t, 9U> all_below{};
+		all_below.fill(-10);
+		EXPECT_EQ(prune_with_backend(backend, all_below.data(), all_below.size(), 0, 0), 9U);
+		for (const auto value : all_below)
+			EXPECT_EQ(value, 0);
+
+		std::array<std::int32_t, 9U> none_below{};
+		none_below.fill(0);
+		EXPECT_EQ(prune_with_backend(backend, none_below.data(), none_below.size(), 0, 10), 0U);
+
+		std::array<std::int32_t, 3U> same_replacement{ -4, -5, 0 };
+		EXPECT_EQ(prune_with_backend(backend, same_replacement.data(), same_replacement.size(), 0, -4), 2U);
+		EXPECT_EQ(same_replacement[0], -4);
+		EXPECT_EQ(same_replacement[1], -4);
+		EXPECT_EQ(same_replacement[2], 0);
+	}
+	EXPECT_EQ(prune_compact_regrets_scalar(nullptr, 0U, 0, 0), 0U);
+	EXPECT_EQ(prune_compact_regrets_sse2(nullptr, 0U, 0, 0), 0U);
+	EXPECT_EQ(prune_compact_regrets_avx2(nullptr, 0U, 0, 0), 0U);
 }
 
 TEST_CASE(multiway_compact_storage_saturates_extreme_finite_deltas)

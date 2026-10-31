@@ -26,11 +26,13 @@ namespace texas::preflop
 	inline constexpr std::size_t PREFLOP_NUM_VARIANTS = 3;
 
 	/** @brief Concrete hero and villain private cards for one class-pair variant. */
+#pragma pack(push, 8)
 	struct HoleRep
 	{
 		std::array<std::uint8_t, 2> hero{};	   ///< Hero's encoded private cards.
 		std::array<std::uint8_t, 2> villain{}; ///< Villain's encoded private cards.
 	};
+#pragma pack(pop)
 
 	/** @brief Maps ranks and suitedness to one of the 169 canonical hand classes. */
 	std::uint16_t class_index(std::uint8_t rank_hi, std::uint8_t rank_lo, bool suited);

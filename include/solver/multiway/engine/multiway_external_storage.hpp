@@ -39,6 +39,7 @@ namespace texas::solver::multiway
 	[[nodiscard]] bool decode_external_public_node(const std::uint8_t* bytes,
 		std::size_t size, MultiwayPackedPublicNode& output) noexcept;
 	/** Directory, cache, durability, compaction, and observer settings for a store. */
+#pragma pack(push, 8)
 	struct MultiwayExternalStorageConfig
 	{
 		std::filesystem::path directory;
@@ -61,15 +62,19 @@ namespace texas::solver::multiway
 		/** Validates storage limits against the record payload size. */
 		void validate(std::size_t payload_bytes) const;
 	};
+#pragma pack(pop)
 
 	/** Keyed byte payload appended to or retrieved from a record store. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRecord
 	{
 		std::uint64_t key = 0U;
 		std::vector<std::uint8_t> payload;
 	};
+#pragma pack(pop)
 
 	/** Cumulative lookup, I/O, cache, compaction, and publication counters. */
+#pragma pack(push, 8)
 	struct MultiwayExternalStorageStats
 	{
 		std::uint64_t lookups = 0U;
@@ -92,8 +97,10 @@ namespace texas::solver::multiway
 		std::uint64_t compactions = 0U;
 		std::uint64_t compaction_nanoseconds = 0U;
 	};
+#pragma pack(pop)
 
 	/** Detailed timing and byte counts for external-record lookup operations. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRecordLookupProfile
 	{
 		std::uint64_t index_opens = 0U;
@@ -108,15 +115,19 @@ namespace texas::solver::multiway
 		std::uint64_t data_open_nanoseconds = 0U;
 		std::uint64_t data_read_nanoseconds = 0U;
 	};
+#pragma pack(pop)
 
 	/** On-disk bytes retained by live and obsolete storage segments. */
+#pragma pack(push, 8)
 	struct MultiwayExternalDiskUsage
 	{
 		std::uint64_t live_segment_bytes = 0U;
 		std::uint64_t retained_segment_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Aggregate and per-component external storage metrics for training. */
+#pragma pack(push, 8)
 	struct MultiwayExternalStorageTelemetry
 	{
 		MultiwayExternalStorageStats stats{};
@@ -128,8 +139,10 @@ namespace texas::solver::multiway
 		std::uint64_t aggregate_commit_nanoseconds = 0U;
 		MultiwayExternalDiskUsage disk_usage{};
 	};
+#pragma pack(pop)
 
 	/** Published catalog, row, and page generations for one committed batch. */
+#pragma pack(push, 8)
 	struct MultiwayExternalGenerationManifest
 	{
 		std::uint64_t generation = 0U;
@@ -144,9 +157,11 @@ namespace texas::solver::multiway
 		std::uint64_t logical_value_count = 0U;
 		std::uint64_t content_hash = 0U;
 	};
+#pragma pack(pop)
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA = 6U;
 	/** Resume metadata and pinned external segment references for training. */
+#pragma pack(push, 8)
 	struct MultiwayExternalCheckpointManifest
 	{
 		struct SegmentReference
@@ -183,20 +198,25 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 3U> component_last_batch_numbers{};
 		std::array<std::vector<SegmentReference>, 3U> segments;
 	};
+#pragma pack(pop)
 
 	/** Optional publication failure injection for checkpoint writing. */
+#pragma pack(push, 8)
 	struct MultiwayExternalCheckpointWriteOptions
 	{
 		bool fail_before_publication = false;
 	};
+#pragma pack(pop)
 
 	/** Optional transaction failure controls used by restore verification. */
+#pragma pack(push, 8)
 	struct MultiwayExternalCheckpointRestoreOptions
 	{
 		std::uint32_t fail_after_component_publications = 0U;
 		bool fail_before_aggregate_publication = false;
 		bool leave_pending_journal_for_recovery_test = false;
 	};
+#pragma pack(pop)
 
 	// Captures the currently published aggregate generation without exporting
 	// catalog, row, or cell data into process memory.
@@ -326,6 +346,10 @@ namespace texas::solver::multiway
 		/** Visits unique records in key order using borrowed payload memory. */
 		[[nodiscard]] bool visit_ordered_records(OrderedRecordVisitor visitor,
 			void* context) const;
+		// Visits matches for sorted unique keys using buffered index reads.
+		[[nodiscard]] bool visit_matching_records(const std::vector<std::uint64_t>& sorted_keys,
+			OrderedRecordVisitor visitor, void* context,
+			MultiwayExternalRecordLookupProfile* profile = nullptr) const;
 		// During a multi-store transaction, retain old input runs until the
 		// aggregate manifest commits. Call compact(false) afterward to reclaim them.
 		void compact(bool retain_input_runs = false);
@@ -346,6 +370,7 @@ namespace texas::solver::multiway
 			std::uint32_t component);
 
 	private:
+#pragma pack(push, 8)
 		struct Run
 		{
 			std::uint64_t generation = 0U;
@@ -356,18 +381,50 @@ namespace texas::solver::multiway
 			std::uint64_t minimum_key = 0U;
 			std::uint64_t maximum_key = 0U;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct CacheEntry
 		{
 			std::uint64_t key = 0U;
 			bool valid = false;
 			std::vector<std::uint8_t> payload;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
+		struct AppendBatchContext
+		{
+			std::size_t first = 0U;
+			std::size_t count = 0U;
+			std::uint64_t next_generation = 0U;
+			std::uint64_t batch_bytes = 0U;
+			std::uint64_t index_bytes = 0U;
+			std::uint64_t wal_bytes = 0U;
+			std::filesystem::path data_path;
+			std::filesystem::path data_temp;
+			std::filesystem::path index_path;
+			std::filesystem::path index_temp;
+		};
+#pragma pack(pop)
 
 		void load_manifest();
 		void append_batch_impl(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch);
+		[[nodiscard]] std::uint64_t validate_append_batch_input(std::uint64_t batch_number,
+			const std::vector<MultiwayExternalRecord>& records) const;
+		[[nodiscard]] AppendBatchContext prepare_append_batch_chunk(std::uint64_t batch_number,
+			const std::vector<MultiwayExternalRecord>& records, std::size_t first,
+			std::uint64_t maximum_static_records, bool allow_same_batch) const;
+		void publish_append_batch_chunk(std::uint64_t batch_number,
+			std::uint64_t merge_fingerprint, const std::vector<MultiwayExternalRecord>& records,
+			const AppendBatchContext& context);
 		void compact_impl(bool retain_input_runs, std::uint64_t base_generation,
 			bool batch_suffix_only, bool cleanup_orphans_before);
+		struct CompactionState;
+		[[nodiscard]] bool select_compaction_inputs(std::uint64_t base_generation,
+			bool batch_suffix_only, bool cleanup_orphans_before, CompactionState& state);
+		void prepare_compaction_merge(CompactionState& state);
+		void write_compaction_output(CompactionState& state);
+		void publish_compaction_result(bool retain_input_runs, CompactionState& state);
 		void cleanup_orphans();
 		void recover_wal();
 		void publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number);
@@ -454,6 +511,9 @@ namespace texas::solver::multiway
 		}
 
 	private:
+		void classify_batch_impl(const std::vector<MultiwayPublicStateDescriptor>& states,
+			std::vector<std::uint8_t>& new_state_flags,
+			std::vector<MultiwayPackedPublicNode>* existing_nodes) const;
 		void append_discovered_batch_impl(std::uint64_t batch_number,
 			std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayPublicStateDescriptor>& states,
@@ -464,6 +524,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Bucket/action dimensions and page range for one external row. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRowMetadata
 	{
 		std::uint32_t bucket_count = 0U;
@@ -471,8 +532,10 @@ namespace texas::solver::multiway
 		std::uint64_t first_page_id = 0U;
 		std::uint32_t page_count = 0U;
 	};
+#pragma pack(pop)
 
 	/** Page id and local dimensions for one bucket range. */
+#pragma pack(push, 8)
 	struct MultiwayExternalRowPage
 	{
 		std::uint64_t page_id = 0U;
@@ -480,6 +543,7 @@ namespace texas::solver::multiway
 		std::uint32_t bucket_count = 0U;
 		std::uint8_t action_count = 0U;
 	};
+#pragma pack(pop)
 
 	/** Stable non-owning row handle bound to its owning external row index. */
 	class MultiwayExternalRowBinding
@@ -518,6 +582,8 @@ namespace texas::solver::multiway
 			const std::vector<MultiwaySparseRowShape>& rows, std::uint64_t& next_page_id);
 		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
 			MultiwayExternalRowMetadata& output) const;
+		void lookup_rows(const std::vector<MultiwaySparseRowShape>& rows,
+			std::vector<MultiwayExternalRowMetadata>& output) const;
 		[[nodiscard]] bool visit_ordered_rows(OrderedRowVisitor visitor,
 			void* context) const;
 		[[nodiscard]] bool locate_bucket(MultiwayPublicStateId state, std::int32_t seat,
@@ -545,6 +611,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Per-operation timing and lookup counters for a compact page request. */
+#pragma pack(push, 8)
 	struct MultiwayExternalPageProfile
 	{
 		std::uint64_t locate_nanoseconds = 0U;
@@ -557,12 +624,14 @@ namespace texas::solver::multiway
 		std::uint64_t zero_pages = 0U;
 		MultiwayExternalRecordLookupProfile record_lookup{};
 	};
+#pragma pack(pop)
 
 	/** Bounded cache of fixed-point pages backed by an external record store. */
 	class MultiwayExternalCompactPages
 	{
 	public:
 		/** Pinned mutable cell view; valid only until the page is unpinned. */
+#pragma pack(push, 8)
 		struct PageView
 		{
 			// Cell pointers remain valid only until the matching unpin. Action stride
@@ -574,10 +643,12 @@ namespace texas::solver::multiway
 			std::uint8_t action_count = 0U;
 			std::uint32_t action_stride = 0U;
 		};
+#pragma pack(pop)
 
 		/** Opens a fixed-width page store with a bounded decoded-page cache. */
 		MultiwayExternalCompactPages(MultiwayExternalStorageConfig config,
-			std::uint32_t page_width, std::uint64_t cache_bytes);
+			std::uint32_t page_width, std::uint64_t cache_bytes,
+			std::uint64_t maximum_page_id = 0U);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
 		[[nodiscard]] std::uint64_t next_batch_number() const;
 		// Returns an empty view for allocated but untouched pages.
@@ -613,6 +684,7 @@ namespace texas::solver::multiway
 		}
 
 	private:
+#pragma pack(push, 8)
 		struct Page
 		{
 			std::uint64_t page_id = 0U;
@@ -629,13 +701,23 @@ namespace texas::solver::multiway
 			std::vector<std::int32_t> before_regrets;
 			std::vector<std::uint64_t> before_strategy_masses;
 		};
+#pragma pack(pop)
 		[[nodiscard]] Page* find(std::uint64_t page_id) noexcept;
+		void validate_page_id(std::uint64_t page_id) const;
+		void cache_page(Page& page, std::size_t slot);
+		void forget_cached_page(Page& page, std::size_t slot) noexcept;
 		[[nodiscard]] std::size_t page_payload_size() const noexcept;
 		void decode_page(const std::uint8_t* bytes, Page& page) const;
 		void encode_page(const Page& page, std::vector<std::uint8_t>& bytes) const;
+		[[nodiscard]] std::vector<Page*> collect_dirty_pages();
+		void encode_dirty_pages(const std::vector<Page*>& dirty,
+			std::vector<MultiwayExternalRecord>& records);
+		void rollback_dirty_pages(const std::vector<Page*>& dirty) noexcept;
+		void clear_dirty_pages(const std::vector<Page*>& dirty) noexcept;
 		std::unique_ptr<MultiwayExternalRecordStore> store_;
 		std::uint32_t page_width_ = 0U;
 		std::vector<Page> pages_;
+		std::vector<std::uint32_t> page_lookup_slots_;
 		std::vector<std::uint8_t> lookup_scratch_;
 		std::vector<std::uint8_t> encode_scratch_;
 		std::uint64_t store_cache_budget_bytes_ = 0U;
@@ -657,6 +739,7 @@ namespace texas::solver::multiway
 	{
 	public:
 		/** Move-only pinned page and bucket index used for accumulator access. */
+#pragma pack(push, 8)
 		struct PinnedBucket
 		{
 			PinnedBucket() = default;
@@ -670,11 +753,12 @@ namespace texas::solver::multiway
 			std::uint32_t local_bucket = 0U;
 			bool writable = false;
 		};
+#pragma pack(pop)
 
 		/** Opens the external row index and bounded compact-page cache. */
 		MultiwayExternalCompactStorage(MultiwayExternalStorageConfig row_config,
 			MultiwayExternalStorageConfig page_config, std::uint32_t page_width,
-			std::uint64_t page_cache_bytes);
+			std::uint64_t page_cache_bytes, std::uint64_t maximum_page_id = 0U);
 		void admit_rows(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwaySparseRowShape>& rows);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
@@ -683,6 +767,8 @@ namespace texas::solver::multiway
 		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
 			MultiwayExternalRowBinding& output) const;
+		void lookup_rows(const std::vector<MultiwaySparseRowShape>& rows,
+			std::vector<MultiwayExternalRowMetadata>& output) const;
 		[[nodiscard]] bool visit_ordered_rows(
 			MultiwayExternalRowIndex::OrderedRowVisitor visitor, void* context) const;
 		[[nodiscard]] PinnedBucket pin_bucket(const MultiwayExternalRowBinding& row,
@@ -757,7 +843,8 @@ namespace texas::solver::multiway
 			MultiwayExternalStorageConfig row_config,
 			MultiwayExternalStorageConfig page_config,
 			std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
-			std::size_t maximum_ancestry_depth, bool synchronous_durability);
+			std::size_t maximum_ancestry_depth, bool synchronous_durability,
+			std::uint64_t maximum_page_id = 0U);
 		void initialize_root(const MultiwayPublicStateDescriptor& root);
 		[[nodiscard]] std::uint64_t next_batch_number() const;
 		void begin_batch(std::uint64_t batch_number);
@@ -795,6 +882,7 @@ namespace texas::solver::multiway
 		MultiwayExternalStorageConfig page_config_;
 		std::uint32_t page_width_ = 0U;
 		std::uint64_t row_page_cache_bytes_ = 0U;
+		std::uint64_t maximum_page_id_ = 0U;
 		std::size_t maximum_ancestry_depth_ = 0U;
 		std::uint64_t batch_number_ = 0U;
 		std::array<std::uint64_t, 3U> batch_base_generations_{};
@@ -813,12 +901,14 @@ namespace texas::solver::multiway
 	{
 	public:
 		/** Mutable byte view valid only while its cache page remains pinned. */
+#pragma pack(push, 8)
 		struct PageView
 		{
 			std::uint64_t key = 0U;
 			std::uint8_t* bytes = nullptr;
 			std::size_t size = 0U;
 		};
+#pragma pack(pop)
 
 		/** Creates a bounded cache over the supplied record store. */
 		MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes);
@@ -839,6 +929,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 
 	private:
+#pragma pack(push, 8)
 		struct Page
 		{
 			std::uint64_t key = 0U;
@@ -848,6 +939,7 @@ namespace texas::solver::multiway
 			std::vector<std::uint8_t> bytes;
 			std::vector<std::uint8_t> before_batch;
 		};
+#pragma pack(pop)
 		[[nodiscard]] Page* find(std::uint64_t key) noexcept;
 		MultiwayExternalRecordStore* store_ = nullptr;
 		std::size_t payload_bytes_ = 0U;

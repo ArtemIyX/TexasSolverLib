@@ -17,6 +17,7 @@ namespace texas::solver::multiway
 	// One canonical public chance outcome. The board is complete through this
 	// edge, so consumers never need to reconstruct a runout from a card label.
 	/** @brief Canonical public chance outcome with its complete resulting board. */
+#pragma pack(push, 8)
 	struct MultiwayBoardChanceEdge
 	{
 		std::uint8_t dealt_card = 0;
@@ -25,39 +26,47 @@ namespace texas::solver::multiway
 		MultiwayBoardRunoutState board_runout{};
 		Probability probability = 0.0;
 	};
+#pragma pack(pop)
 
 	// Result of a root-owned non-runout street transition. Board chance must have
 	// been applied before calling this operation.
 	/** @brief Betting and board state after a non-runout street transition. */
+#pragma pack(push, 8)
 	struct MultiwayStreetTransition
 	{
 		MultiwayBettingSnapshot betting;
 		std::vector<std::uint8_t> board;
 		MultiwayBoardRunoutState board_runout{};
 	};
+#pragma pack(pop)
 
 	// Admission-ready binding for a canonical public chance successor. The caller
 	// assigns its coordinator id/history/action menu, while retaining this parent
 	// identity and typed edge unchanged.
 	/** @brief Chance successor bound to its public parent identity and typed edge. */
+#pragma pack(push, 8)
 	struct MultiwayPublicBoardChanceEdge
 	{
 		MultiwayPublicStateId parent_id{};
 		MultiwayPublicParentEdge incoming_edge{};
 		MultiwayBoardChanceEdge chance{};
 	};
+#pragma pack(pop)
 
 	/** @brief Street-transition successor bound to parent identity and edge. */
+#pragma pack(push, 8)
 	struct MultiwayPublicStreetTransition
 	{
 		MultiwayPublicStateId parent_id{};
 		MultiwayPublicParentEdge incoming_edge{};
 		MultiwayStreetTransition transition{};
 	};
+#pragma pack(pop)
 
 	// One directly sampled public chance edge. Fixed storage avoids materializing
 	// the complete chance menu in traversal. Flop cards are canonical sorted.
 	/** @brief Fixed-capacity sampled public chance outcome for traversal. */
+#pragma pack(push, 8)
 	struct MultiwaySampledPublicBoardChance
 	{
 		MultiwayPublicStateId parent_id{};
@@ -68,13 +77,16 @@ namespace texas::solver::multiway
 		MultiwayBoardRunoutState board_runout{};
 		Probability probability = 0.0;
 	};
+#pragma pack(pop)
 
 	/** @brief Chance and proposal reach probabilities for one private deal. */
+#pragma pack(push, 8)
 	struct MultiwayPrivateSamplingReach
 	{
 		Probability chance_reach = 0.0;
 		Probability proposal_reach = 0.0;
 	};
+#pragma pack(pop)
 
 	// An opaque private deal issued only by a coordinator-bound terminal adapter.
 	// It cannot be constructed or inspected by traversal callers.

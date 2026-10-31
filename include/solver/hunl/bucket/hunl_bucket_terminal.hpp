@@ -16,6 +16,7 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Pairwise win/tie counts between two players' abstraction buckets. */
+#pragma pack(push, 8)
 	struct HUNLBucketShowdownMatrix
 	{
 		std::uint32_t bucket_count_p0 = 0;				  ///< Number of player-zero buckets.
@@ -35,15 +36,19 @@ namespace texas::solver::hunl
 		/** @brief Estimates memory occupied by matrix vectors. */
 		[[nodiscard]] std::uint64_t estimated_bytes() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Terminal-node reference to a cached board and contribution vector. */
+#pragma pack(push, 8)
 	struct HUNLBucketTerminalBinding
 	{
 		std::uint32_t cache_index = 0;				 ///< Index into the showdown matrix cache.
 		std::array<int, 2> contributions = { 0, 0 }; ///< Contributions used to compute terminal payoff.
 	};
+#pragma pack(pop)
 
 	/** @brief Board and bucket dimensions identifying a cached showdown matrix. */
+#pragma pack(push, 8)
 	struct HUNLBucketTerminalCacheKey
 	{
 		HUNLFlatPackedBoard board{};	   ///< Board shared by the cached matrix.
@@ -53,6 +58,7 @@ namespace texas::solver::hunl
 		/** @brief Compares the board and both bucket dimensions. */
 		bool operator==(const HUNLBucketTerminalCacheKey& other) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Cached showdown matrices and payoff bindings indexed by terminal node. */
 	class HUNLBucketTerminalTable
@@ -93,11 +99,13 @@ namespace texas::solver::hunl
 namespace std
 {
 
+#pragma pack(push, 8)
 	template <>
 	struct hash<texas::HUNLBucketTerminalCacheKey>
 	{
 		/** @brief Hashes a cache key consistently with its equality operator. */
 		std::size_t operator()(const texas::HUNLBucketTerminalCacheKey& key) const noexcept;
 	};
+#pragma pack(pop)
 
 } // namespace std

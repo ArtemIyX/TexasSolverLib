@@ -13,6 +13,7 @@
 namespace texas::games::multiway
 {
 	/** @brief Public decision event, including the policy seed used by its producer. */
+#pragma pack(push, 8)
 	struct MultiwayReplayDecision
 	{
 		core::PlayerId acting_seat = -1;			  ///< Seat that made the decision.
@@ -20,6 +21,7 @@ namespace texas::games::multiway
 		int target_street_contribution = 0;			  ///< Actor's total contribution on the current street after the action.
 		std::uint64_t decision_seed = 0;			  ///< Seed retained for reproducing upstream policy sampling.
 	};
+#pragma pack(pop)
 
 	/** @brief Kind of event in a public multiway hand history. */
 	enum class MultiwayReplayEventKind : std::uint8_t
@@ -29,6 +31,7 @@ namespace texas::games::multiway
 	};
 
 	/** @brief One decision or street-transition event in replay order. */
+#pragma pack(push, 8)
 	struct MultiwayReplayEvent
 	{
 		MultiwayReplayEventKind kind = MultiwayReplayEventKind::Decision; ///< Which payload is active.
@@ -37,8 +40,10 @@ namespace texas::games::multiway
 		core::PlayerId first_player = -1;								  ///< First actor after a transition.
 		std::vector<std::uint8_t> board;								  ///< Canonical board dealt at transition; empty is accepted for legacy histories.
 	};
+#pragma pack(pop)
 
 	/** @brief Versioned public configuration and ordered event stream for one hand. */
+#pragma pack(push, 8)
 	struct MultiwayHandHistory
 	{
 		std::uint64_t schema_version = 1;		 ///< Serialization schema version; currently only version 1 is accepted.
@@ -60,6 +65,7 @@ namespace texas::games::multiway
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Applies one event after checking that it matches the current state.
 	 * @param state Current public betting state.

@@ -107,6 +107,7 @@ namespace
 		return result;
 	}
 
+#pragma pack(push, 8)
 	struct AdapterFixture
 	{
 		explicit AdapterFixture(texas::MultiwayRootSnapshot root)
@@ -165,6 +166,7 @@ namespace
 		texas::MultiwaySolverCoordinator coordinator;
 		texas::MultiwayTerminalAdapter adapter;
 	};
+#pragma pack(pop)
 
 } // namespace
 

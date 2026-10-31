@@ -9,6 +9,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct FakeQualification
 	{
 		std::uint64_t trajectories = 0U;
@@ -50,6 +51,7 @@ namespace
 			return snapshot;
 		}
 	};
+#pragma pack(pop)
 
 	texas::solver::multiway::MultiwayStagedQualificationPlan small_plan()
 	{

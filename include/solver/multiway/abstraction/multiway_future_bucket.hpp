@@ -5,6 +5,7 @@
  */
 
 #include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
+#include "solver/multiway/abstraction/multiway_future_bucket_types.hpp"
 
 #include <array>
 #include <cstdint>
@@ -15,32 +16,6 @@ namespace texas::solver::multiway
 
 	/** @brief Schema version for future-bucket artifacts. */
 	inline constexpr std::uint32_t MULTIWAY_FUTURE_BUCKET_ARTIFACT_SCHEMA_VERSION = 1U;
-
-	// Stable offline-only feature surface. Values intentionally contain no
-	// opponent private cards or runtime policy state.
-	/** @brief Versioned feature vector for offline future-state clustering. */
-	struct MultiwayFutureBucketFeatures
-	{
-		std::array<double, 10U> values{};
-		std::uint64_t feature_version = 1U;
-	};
-
-	/** @brief Feature, clustering and bucket-count settings for an offline model. */
-	struct MultiwayFutureBucketProfile
-	{
-		std::uint64_t feature_version = 1U;
-		std::uint64_t clustering_version = 1U;
-		std::uint64_t seed = 1U;
-		std::uint32_t lloyd_iterations = 4U;
-		std::uint32_t flop_bucket_count = 96U;
-		std::uint32_t turn_bucket_count = 128U;
-		std::uint32_t river_bucket_count = 192U;
-
-		/** @brief Validates profile versions, iterations and bucket counts. */
-		void validate() const;
-		/** @brief Returns the configured bucket count for a street. */
-		[[nodiscard]] std::uint32_t bucket_count(core::Street street) const;
-	};
 
 	/** @brief Extracts a stable feature vector for one compact private hand and board. */
 	[[nodiscard]] MultiwayFutureBucketFeatures make_multiway_future_bucket_features(

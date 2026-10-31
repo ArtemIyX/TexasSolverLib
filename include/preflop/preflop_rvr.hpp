@@ -19,6 +19,7 @@ namespace texas::preflop
 {
 
 	/** @brief Enumerated concrete hole-card combinations grouped by canonical class. */
+#pragma pack(push, 8)
 	struct Class169Combos
 	{
 		std::array<std::vector<std::array<std::uint8_t, 2>>, PREFLOP_NUM_CLASSES> combos; ///< Valid concrete hands by class index.
@@ -26,6 +27,7 @@ namespace texas::preflop
 		/** @brief Enumerates all concrete two-card combinations for each class. */
 		static Class169Combos build();
 	};
+#pragma pack(pop)
 
 	/** @brief Maps a concrete non-overlapping deal to one of three suit-equivalence variants. */
 	std::size_t classify_suit_variant(const std::array<std::uint8_t, 2>& hero, const std::array<std::uint8_t, 2>& villain);
@@ -33,6 +35,7 @@ namespace texas::preflop
 	std::array<std::vector<double>, 2> build_class169_blocker_mass(const Class169Combos& combos);
 
 	/** @brief Cached class-vector payoff data for one leaf. */
+#pragma pack(push, 8)
 	struct Class169LeafEntry
 	{
 		/** @brief Interpretation of this leaf's payoff data. */
@@ -46,8 +49,10 @@ namespace texas::preflop
 		std::array<double, 2> payoff = { 0.0, 0.0 };														///< Constant payoff by player for fixed-payoff leaves.
 		std::array<std::vector<double>, 2> payoff_table = { std::vector<double>{}, std::vector<double>{} }; ///< Payoff vectors by player for equity leaves.
 	};
+#pragma pack(pop)
 
 	/** @brief Betting tree specialized for class-169 range solving. */
+#pragma pack(push, 8)
 	struct PreflopBettingTree
 	{
 		/** @brief Category of a node in the preflop betting tree. */
@@ -78,8 +83,10 @@ namespace texas::preflop
 		/** @brief Builds the class-169 preflop tree from a validated HUNL configuration. */
 		static PreflopBettingTree build(const HUNLConfig& config);
 	};
+#pragma pack(pop)
 
 	/** @brief Cached terminal payoffs and shared blocker masses for one tree and equity table. */
+#pragma pack(push, 8)
 	struct Class169TerminalCache
 	{
 		std::vector<Class169LeafEntry> leaves;					///< Leaf data indexed by tree node.
@@ -91,6 +98,7 @@ namespace texas::preflop
 			const Class169Combos& combos,
 			const PreflopEquityTable& table);
 	};
+#pragma pack(pop)
 
 	/** @brief Computes both players' class-vector payoff for an equity terminal. */
 	std::array<std::vector<double>, 2> build_class169_leaf_payoff(
@@ -102,6 +110,7 @@ namespace texas::preflop
 		const Class169Combos& class_combos);
 
 	/** @brief Average strategy and execution metadata for a class-169 RvR solve. */
+#pragma pack(push, 8)
 	struct Class169RvrOutput
 	{
 		std::unordered_map<std::string, std::vector<double>> average_strategy; ///< Probabilities by information-set key.
@@ -111,6 +120,7 @@ namespace texas::preflop
 		std::array<std::size_t, 2> hand_count_per_player = { 0, 0 };		   ///< Active concrete hands by player.
 		double wallclock_seconds = 0.0;										   ///< Total elapsed time in seconds.
 	};
+#pragma pack(pop)
 
 	/** @brief Solves a preflop configuration using the vector DCFR implementation. */
 	VectorSolveOutput solve_hunl_vector_dcfr(

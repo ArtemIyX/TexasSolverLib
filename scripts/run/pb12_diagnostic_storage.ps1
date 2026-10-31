@@ -17,6 +17,29 @@ public static class Pb12DiagnosticChecksum {
 function Read-U32([byte[]]$Bytes, [int]$Offset) { return [BitConverter]::ToUInt32($Bytes, $Offset) }
 function Read-U64([byte[]]$Bytes, [int]$Offset) { return [BitConverter]::ToUInt64($Bytes, $Offset) }
 
+# Atomic publication replaces these files while telemetry reads them.
+function Open-Pb12SharedRead([string]$Path) {
+    return [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+        [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+}
+function Read-Pb12SharedBytes([string]$Path) {
+    $stream = Open-Pb12SharedRead $Path
+    $buffer = [IO.MemoryStream]::new()
+    try { $stream.CopyTo($buffer); return ,$buffer.ToArray() }
+    finally { $buffer.Dispose(); $stream.Dispose() }
+}
+function Get-Pb12SharedSha256([string]$Path) {
+    $stream = Open-Pb12SharedRead $Path
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+    finally { $sha.Dispose(); $stream.Dispose() }
+}
+function Get-Pb12BytesSha256([byte[]]$Bytes) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($Bytes)).Replace('-', '') }
+    finally { $sha.Dispose() }
+}
+
 function Get-Pb12CheckpointHeader([string]$Path) {
     $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read,
         [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
@@ -60,7 +83,7 @@ function Get-ExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = 
             if ($AllowAbsentComponents) { continue }
             throw "Missing storage telemetry manifest: $manifestPath"
         }
-        $bytes = [IO.File]::ReadAllBytes($manifestPath)
+        $bytes = Read-Pb12SharedBytes $manifestPath
         if ($bytes.Length -lt 48 -or [Text.Encoding]::ASCII.GetString($bytes, 0, 8) -ne 'TXMWEXT1' -or (Read-U32 $bytes 8) -ne 1) {
             throw "Invalid storage telemetry manifest: $manifestPath"
         }
@@ -87,7 +110,7 @@ function Get-ExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = 
         }
 
         foreach ($pinPath in [IO.Directory]::EnumerateFiles($componentPath, 'CHECKPOINT_*.PIN', [IO.SearchOption]::TopDirectoryOnly)) {
-            $pin = [IO.File]::ReadAllBytes($pinPath)
+            $pin = Read-Pb12SharedBytes $pinPath
             if ($pin.Length -lt 28 -or [Text.Encoding]::ASCII.GetString($pin, 0, 8) -ne 'TXMWPIN1' -or (Read-U32 $pin 8) -ne 1) { throw "Invalid checkpoint pin manifest: $pinPath" }
             if (-not [Pb12DiagnosticChecksum]::Valid($pin)) { throw "Checkpoint pin checksum mismatch: $pinPath" }
             $pinCount = [int64](Read-U64 $pin 12)
@@ -147,34 +170,39 @@ function Get-ExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = 
     [pscustomobject]@{ live_bytes = $liveBytes; retained_bytes = $retainedBytes; orphan_bytes = $orphanBytes; store_bytes = $storeBytes; control_bytes = $controlBytes; temporary_bytes = $temporaryBytes; compaction_temp_bytes = $compactionTempBytes }
 }
 
-function Get-StableExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = @{}, [switch]$AllowAbsentComponents) {
+function Get-StableExternalStorageUsage([string]$Path, [hashtable]$OrphanReferences = @{},
+    [switch]$AllowAbsentComponents, [int]$RetryWindowMilliseconds = 1000) {
+    if ($RetryWindowMilliseconds -lt 0 -or $RetryWindowMilliseconds -gt 25000) {
+        throw 'Storage telemetry retry window must be between 0 and 25,000 milliseconds.'
+    }
+    $retryTimer = [Diagnostics.Stopwatch]::StartNew()
     $lastError = $null
-    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+    while ($true) {
         try {
             $manifests = @('TRAINING_CURRENT', 'catalog/CURRENT', 'rows/CURRENT', 'pages/CURRENT')
             $before = foreach ($name in $manifests) {
                 $manifestPath = Join-Path $Path $name
                 if ($AllowAbsentComponents -and $name -ne 'TRAINING_CURRENT' -and -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { 'ABSENT' }
-                else { (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256 -ErrorAction Stop).Hash }
+                else { Get-Pb12SharedSha256 $manifestPath }
             }
             $usage = Get-ExternalStorageUsage $Path $OrphanReferences -AllowAbsentComponents:$AllowAbsentComponents
             $after = foreach ($name in $manifests) {
                 $manifestPath = Join-Path $Path $name
                 if ($AllowAbsentComponents -and $name -ne 'TRAINING_CURRENT' -and -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { 'ABSENT' }
-                else { (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256 -ErrorAction Stop).Hash }
+                else { Get-Pb12SharedSha256 $manifestPath }
             }
             if (($before -join ',') -ne ($after -join ',')) { throw 'Storage manifests changed during sampling' }
             return $usage
         } catch {
             $lastError = $_
-            if ($attempt -lt 2) { Start-Sleep -Milliseconds 25 }
+            if ($retryTimer.ElapsedMilliseconds -ge $RetryWindowMilliseconds) { throw $lastError }
+            Start-Sleep -Milliseconds 25
         }
     }
-    throw $lastError
 }
 
 function Get-CheckpointMetadata([string]$Path) {
-    $bytes = [IO.File]::ReadAllBytes($Path)
+    $bytes = Read-Pb12SharedBytes $Path
     if ($bytes.Length -lt 196 -or [Text.Encoding]::ASCII.GetString($bytes, 0, 8) -ne 'TXMWCP61' -or (Read-U32 $bytes 8) -ne 6 -or (Read-U32 $bytes 12) -ne 1) {
         throw "Invalid external checkpoint manifest: $Path"
     }
@@ -200,7 +228,7 @@ function Get-CheckpointMetadata([string]$Path) {
     if ($baselineCount -gt 1000000 -or $cursor -ne ($bytes.Length - 8)) { throw "Invalid checkpoint training extension length: $Path" }
     [pscustomobject]@{
         bytes = $bytes.Length
-        sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+        sha256 = Get-Pb12BytesSha256 $bytes
         training_generation = (Read-U64 $bytes 72)
         committed_batch = (Read-U64 $bytes 80)
         segment_references = @($segmentReferences)

@@ -30,6 +30,7 @@ namespace texas::solver::hunl
 	// request's range/configuration metadata is rebound before private deals are
 	// attached, so callers cannot mutate a live state after admission.
 	/** @brief Immutable public-game snapshot used as a structured resolver root. */
+#pragma pack(push, 8)
 	struct HUNLLiveRootSnapshot
 	{
 		HUNLState public_state;				  ///< Public state with private cards omitted.
@@ -46,8 +47,10 @@ namespace texas::solver::hunl
 		 */
 		[[nodiscard]] HUNLState bind_config(std::shared_ptr<const HUNLConfig> config) const;
 	};
+#pragma pack(pop)
 
 	/** @brief Configuration, public root and private-hand contract for a structured solve. */
+#pragma pack(push, 8)
 	struct HUNLStructuredRootRequest
 	{
 		HUNLConfig config; ///< Game and solver configuration.
@@ -86,8 +89,10 @@ namespace texas::solver::hunl
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Solver metrics, quality values and average strategy output. */
+#pragma pack(push, 8)
 	struct HUNLSolveOutput
 	{
 		std::unordered_map<std::string, std::vector<double>> average_strategy;		   ///< Average action probabilities by infoset key.
@@ -104,6 +109,7 @@ namespace texas::solver::hunl
 		bool used_parallel = false;													   ///< Whether the parallel solver path ran.
 		SolveProfile profile;														   ///< Solver and traversal profile counters.
 	};
+#pragma pack(pop)
 
 	/** @brief Structured error categories used by postflop HUNL validation. */
 	enum class HUNLSolveError

@@ -35,6 +35,7 @@ namespace texas::solver::multiway
 	// Single validated owner for all bounded release-search admission and
 	// execution limits. Resolver budget state is derived from this snapshot.
 	/** Bounded solver, memory, depth, seat, and cache limits for runtime search. */
+#pragma pack(push, 8)
 	struct MultiwayRuntimeSearchLimits
 	{
 		MultiwaySolverLimits solver{ 1U, 1U, 1U, 1'024U, 1'024U, 8'192U, 8'192U, 64U };
@@ -52,20 +53,24 @@ namespace texas::solver::multiway
 		/** Checks all runtime search limits and nested solver settings. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	// A range supplied by a resolver caller for one non-hero seat. Seat ids are
 	// explicit so the request remains valid after players have folded.
 	/** Weighted private hands supplied for one non-hero seat. */
+#pragma pack(push, 8)
 	struct MultiwayResolverSeatRange
 	{
 		PlayerId seat = -1;
 		std::vector<MultiwayWeightedHole> hands;
 	};
+#pragma pack(pop)
 
 	// Immutable in-process resolver boundary. public_state must describe the
 	// exact current public game state; generic ranges are intentionally separate
 	// from the known hero hole cards.
 	/** Immutable public state, private ranges, seat order, and deadline input. */
+#pragma pack(push, 8)
 	struct MultiwayResolverRequest
 	{
 		MultiwayModelIdentity blueprint_identity{};
@@ -83,13 +88,16 @@ namespace texas::solver::multiway
 		std::chrono::steady_clock::time_point deadline{};
 		std::uint64_t sampling_seed = 1;
 	};
+#pragma pack(pop)
 
 	/** Legal root action and its normalized resolver probability. */
+#pragma pack(push, 8)
 	struct MultiwayResolverActionProbability
 	{
 		MultiwayActionDescriptor action{};
 		double probability = 0.0;
 	};
+#pragma pack(pop)
 
 	/** Completion or rejection outcome returned by a resolver invocation. */
 	enum class MultiwayResolverStatus : std::uint8_t
@@ -165,6 +173,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Public model, search, memory, fallback, and deadline diagnostics. */
+#pragma pack(push, 8)
 	struct MultiwayResolverDiagnostics
 	{
 		MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
@@ -214,8 +223,10 @@ namespace texas::solver::multiway
 		MultiwayResolverSearchEligibility search_eligibility =
 			MultiwayResolverSearchEligibility::NotRequested;
 	};
+#pragma pack(pop)
 
 	/** Sampled root action, normalized policy, and resolver diagnostics. */
+#pragma pack(push, 8)
 	struct MultiwayResolverResult
 	{
 		MultiwayActionDescriptor sampled_action{};
@@ -223,6 +234,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwayResolverActionProbability> policy;
 		MultiwayResolverDiagnostics diagnostics{};
 	};
+#pragma pack(pop)
 
 	// Host-owned fallback storage. The resolver never keeps a private cache, so
 	// cache lifetime and sharing policy remain explicit at the service boundary.
@@ -248,6 +260,7 @@ namespace texas::solver::multiway
 			std::vector<MultiwayResolverActionProbability> policy);
 
 	private:
+#pragma pack(push, 8)
 		struct Entry
 		{
 			MultiwayModelIdentity identity{};
@@ -256,6 +269,7 @@ namespace texas::solver::multiway
 			std::uint32_t exact_hand = 0U;
 			std::vector<MultiwayResolverActionProbability> policy;
 		};
+#pragma pack(pop)
 
 		mutable std::mutex mutex_;
 		Entry entry_;
@@ -265,6 +279,7 @@ namespace texas::solver::multiway
 	// bucket registry is valid only for preflop roots; postflop roots then return
 	// a validated static fallback with BucketUnavailable diagnostics.
 	/** Artifact, search, bucket, and fallback dependencies for a resolver. */
+#pragma pack(push, 8)
 	struct MultiwayResolverConfig
 	{
 		const MultiwayBucketRegistry* buckets = nullptr;
@@ -289,6 +304,7 @@ namespace texas::solver::multiway
 		/** Checks dependencies, artifacts, limits, and compatibility identities. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	// In-process deadline-safe resolver. A successful solve retains its root
 	// policy for a later compatible deadline fallback. No private request data is

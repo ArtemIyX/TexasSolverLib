@@ -18,6 +18,7 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Bucket IDs, hand counts and range weights for one information set. */
+#pragma pack(push, 8)
 	struct HUNLFlatBucketEntry
 	{
 		InfosetId infoset_id{};						   ///< Owning information-set ID.
@@ -29,6 +30,7 @@ namespace texas::solver::hunl
 		std::vector<std::uint32_t> bucket_hand_counts; ///< Concrete-hand count by dense bucket.
 		std::vector<double> bucket_weights;			   ///< Optional range mass by dense bucket.
 	};
+#pragma pack(pop)
 
 	/** @brief Abstraction tables and per-information-set dense bucket metadata. */
 	class HUNLFlatBucketMap

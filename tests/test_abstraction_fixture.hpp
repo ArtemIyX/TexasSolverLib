@@ -90,6 +90,7 @@ namespace test_support
 	}
 
 	/** Minimal stored-entry ZIP writer for deterministic test archives. */
+#pragma pack(push, 8)
 	struct ZipBuilder
 	{
 		struct Entry
@@ -164,6 +165,7 @@ namespace test_support
 			return out;
 		}
 	};
+#pragma pack(pop)
 
 	/** Returns the platform temporary directory joined with name. */
 	inline std::filesystem::path make_tmp_path(const std::string& name)
@@ -210,6 +212,7 @@ namespace test_support
 	}
 
 	/** Metadata and omission settings for a generated abstraction archive. */
+#pragma pack(push, 8)
 	struct AbstractionFixtureOptions
 	{
 		std::vector<std::uint16_t> bucket_counts = { 1, 1, 1 };
@@ -217,14 +220,17 @@ namespace test_support
 		std::string version = "v1";
 		std::optional<std::string> omit_entry = std::nullopt;
 	};
+#pragma pack(pop)
 
 	/** Assignment and canonical indexes for one street's test archive data. */
+#pragma pack(push, 8)
 	struct StreetFixtureData
 	{
 		std::vector<std::uint8_t> assignments;
 		std::string board_index_json = "{}";
 		std::string hand_index_json = "{}";
 	};
+#pragma pack(pop)
 
 	/** Builds assignment and index data for one optional board fixture. */
 	inline StreetFixtureData make_street_fixture_data(

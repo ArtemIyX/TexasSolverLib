@@ -13,6 +13,7 @@ namespace texas::games::hunl
 {
 
 	/** @brief Comparable strength value for a Hold'em hand; larger values are stronger. */
+#pragma pack(push, 8)
 	struct Strength
 	{
 		std::uint64_t value = 0; ///< Evaluator-derived value used for strength ordering.
@@ -74,6 +75,7 @@ namespace texas::games::hunl
 		 */
 		static Strength evaluate_7(const std::array<std::uint8_t, 7>& cards);
 	};
+#pragma pack(pop)
 	/** @brief Compares two seven-card hands by evaluated strength.
 	 * @param lhs First seven-card hand.
 	 * @param rhs Second seven-card hand.

@@ -19,13 +19,16 @@ namespace texas::games::multiway
 {
 
 	/** @brief One private hand and its non-negative range weight. */
+#pragma pack(push, 8)
 	struct MultiwayWeightedHole
 	{
 		std::array<std::uint8_t, 2> hole = { 0, 0 }; ///< Unordered pair of encoded card indices.
 		double weight = 0.0;						 ///< Relative mass assigned to this hand.
 	};
+#pragma pack(pop)
 
 	/** @brief Public board and one weighted private-hand range per seat. */
+#pragma pack(push, 8)
 	struct MultiwayPrivateConfig
 	{
 		std::vector<std::uint8_t> board;					   ///< Known public cards, from zero through five.
@@ -35,6 +38,7 @@ namespace texas::games::multiway
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Result of checking whether configured ranges admit a joint deal. */
 	enum class MultiwayPrivateRangeFeasibilityStatus : std::uint8_t
@@ -45,6 +49,7 @@ namespace texas::games::multiway
 	};
 
 	/** @brief Bounded-search status and counters for a private-range preflight. */
+#pragma pack(push, 8)
 	struct MultiwayPrivateRangeFeasibilityResult
 	{
 		MultiwayPrivateRangeFeasibilityStatus status = MultiwayPrivateRangeFeasibilityStatus::Infeasible; ///< Search conclusion.
@@ -52,6 +57,7 @@ namespace texas::games::multiway
 		std::uint64_t node_budget = 0;																	  ///< Maximum nodes requested for the search.
 		std::string reason;																				  ///< Human-readable explanation matching status.
 	};
+#pragma pack(pop)
 
 	/** @brief Checks for a compatible joint private deal before worker sampling.
 	 * @param config Validated board and seat ranges to check.
@@ -64,6 +70,7 @@ namespace texas::games::multiway
 		std::uint64_t node_budget = 1'000'000U);
 
 	/** @brief Fixed-capacity collection of up to six two-card private hands. */
+#pragma pack(push, 8)
 	struct MultiwayFixedPrivateHoles
 	{
 		std::array<std::array<std::uint8_t, 2>, 6> values = {}; ///< Active hole pairs occupy entries [0, count).
@@ -116,8 +123,10 @@ namespace texas::games::multiway
 			return left.count == right.count && std::equal(left.begin(), left.end(), right.begin());
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Blocker-compatible private deal and sampling-probability diagnostics. */
+#pragma pack(push, 8)
 	struct MultiwayJointPrivateSample
 	{
 		MultiwayFixedPrivateHoles holes{}; ///< Accepted private hand by seat, if any.
@@ -142,8 +151,10 @@ namespace texas::games::multiway
 		/** @brief Returns an iterator past the last accepted hand. */
 		[[nodiscard]] auto end() const noexcept { return holes.end(); }
 	};
+#pragma pack(pop)
 
 	/** @brief Reusable fixed-size scratch state for one private-range draw. */
+#pragma pack(push, 8)
 	struct MultiwayPrivateWorkerScratch
 	{
 		std::array<std::array<std::uint8_t, 2>, 6> holes = {}; ///< Sampled hand by seat.
@@ -158,6 +169,7 @@ namespace texas::games::multiway
 		std::uint32_t rejected_trajectories = 0;			   ///< Rejected trajectory count.
 		std::uint32_t discarded_trajectories = 0;			   ///< Discarded trajectory count.
 	};
+#pragma pack(pop)
 
 	/** @brief Canonicalized weighted ranges for blocker-aware worker sampling.
 	 *
@@ -210,6 +222,7 @@ namespace texas::games::multiway
 		std::uint64_t seed);
 
 	/** @brief Complete board, private cards and betting data for showdown evaluation. */
+#pragma pack(push, 8)
 	struct MultiwayShowdownInput
 	{
 		std::vector<std::uint8_t> board;									  ///< Five distinct community-card indices.
@@ -225,6 +238,7 @@ namespace texas::games::multiway
 		 */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Evaluates each seat's seven-card hand, then settles the pots.
 	 * @param input Complete board, private hands, contributions and settlement policy.

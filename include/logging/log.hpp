@@ -25,12 +25,15 @@
 namespace texas::logging
 {
 	/** @brief Result of initializing the logging runtime. */
+#pragma pack(push, 8)
 	struct InitializeResult
 	{
 		bool ok = true;		 ///< Whether initialization succeeded.
 		std::string message; ///< Failure detail when initialization fails.
 	};
+#pragma pack(pop)
 	/** @brief Runtime resources and injectable behavior used by logging initialization. */
+#pragma pack(push, 8)
 	struct RuntimeDependencies
 	{
 		std::ostream* console_stream = nullptr;						///< Console destination, or null for the default stream.
@@ -39,6 +42,7 @@ namespace texas::logging
 		std::function<std::chrono::steady_clock::time_point()> now; ///< Clock source used by progress display.
 		bool fail_file_sink = false;								///< Test hook that forces file-sink creation to fail.
 	};
+#pragma pack(pop)
 	/** @brief RAII lifetime for a configured logging runtime. */
 	class LoggingSession
 	{

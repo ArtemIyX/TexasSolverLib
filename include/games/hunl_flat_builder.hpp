@@ -15,6 +15,7 @@ namespace texas::games::hunl
 {
 
 	/** @brief Canonical fixed-storage key used to memoize flat-graph construction. */
+#pragma pack(push, 8)
 	struct HUNLFlatBuilderMemoKey
 	{
 		PlayerId cur_player = -1;										  ///< Acting player or chance sentinel.
@@ -48,6 +49,7 @@ namespace texas::games::hunl
 		/** @brief Compares memoized state fields, including active counts and canonical storage. */
 		bool operator==(const HUNLFlatBuilderMemoKey& other) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Builds a memoized flat solve graph from an HUNL configuration. */
 	class HUNLFlatBuilder
@@ -66,11 +68,13 @@ namespace texas::games::hunl
 namespace std
 {
 
+#pragma pack(push, 8)
 	template <>
 	struct hash<texas::HUNLFlatBuilderMemoKey>
 	{
 		/** @brief Hashes a flat-builder memo key consistently with equality. */
 		std::size_t operator()(const texas::HUNLFlatBuilderMemoKey& key) const noexcept;
 	};
+#pragma pack(pop)
 
 } // namespace std

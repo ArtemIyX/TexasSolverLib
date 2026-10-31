@@ -23,12 +23,14 @@ namespace texas::solver::multiway
 	};
 
 	/** Target trajectories and authorization requirement for one stage. */
+#pragma pack(push, 8)
 	struct MultiwayQualificationStageSpec
 	{
 		MultiwayQualificationStageId id = MultiwayQualificationStageId::FiftyThousand;
 		std::uint64_t target_trajectories = 0U;
 		bool requires_explicit_authorization = false;
 	};
+#pragma pack(pop)
 
 	[[nodiscard]] constexpr std::array<MultiwayQualificationStageSpec, 4U>
 	/** Returns the four repository-defined qualification targets. */
@@ -43,6 +45,7 @@ namespace texas::solver::multiway
 	}
 
 	/** Ordered stage list, authorization, and working-set gate settings. */
+#pragma pack(push, 8)
 	struct MultiwayStagedQualificationPlan
 	{
 		std::array<MultiwayQualificationStageSpec, 4U> stages = multiway_default_qualification_stages();
@@ -53,8 +56,10 @@ namespace texas::solver::multiway
 		/** Checks stage ordering, target counts, and authorization settings. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Training counters sampled before or after a qualification stage. */
+#pragma pack(push, 8)
 	struct MultiwayQualificationProgress
 	{
 		std::uint64_t trajectories = 0U;
@@ -63,6 +68,7 @@ namespace texas::solver::multiway
 		std::uint64_t deterministic_fingerprint = 0U;
 		std::uint64_t discarded_trajectories = 0U;
 	};
+#pragma pack(pop)
 
 	/** Callback that reads current qualification progress. */
 	using MultiwayQualificationProgressObserver =
@@ -71,6 +77,7 @@ namespace texas::solver::multiway
 	using MultiwayQualificationBatchRunner = bool (*)(void*) noexcept;
 
 	/** Host-owned callbacks for progress, batch execution, and memory sampling. */
+#pragma pack(push, 8)
 	struct MultiwayStagedQualificationCallbacks
 	{
 		void* context = nullptr;
@@ -82,6 +89,7 @@ namespace texas::solver::multiway
 		/** Checks that the required callbacks are installed. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Outcome assigned to one attempted qualification stage. */
 	enum class MultiwayQualificationStageStatus : std::uint8_t
@@ -95,6 +103,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Stage status, progress delta, and working-set gate result. */
+#pragma pack(push, 8)
 	struct MultiwayQualificationStageResult
 	{
 		MultiwayQualificationStageSpec stage{};
@@ -103,8 +112,10 @@ namespace texas::solver::multiway
 		MultiwayQualificationProgress after{};
 		MultiwayWorkingSetGateResult gate{};
 	};
+#pragma pack(pop)
 
 	/** Ordered stage results and final stop/completion state. */
+#pragma pack(push, 8)
 	struct MultiwayStagedQualificationResult
 	{
 		std::array<MultiwayQualificationStageResult, 4U> stages{};
@@ -115,6 +126,7 @@ namespace texas::solver::multiway
 		/** Returns true when all configured stages completed. */
 		[[nodiscard]] bool completed() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** Runs configured training stages after preflight and runtime gate checks. */
 	class MultiwayStagedQualificationRunner

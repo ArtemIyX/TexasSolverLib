@@ -5,6 +5,7 @@
  */
 
 #include "core/types.hpp"
+#include "core/street_types.hpp"
 
 #include <array>
 #include <cstddef>
@@ -15,16 +16,6 @@
 
 namespace texas::core
 {
-
-	/** @brief Betting and resolution stages in a Hold'em hand. */
-	enum class Street : std::uint8_t
-	{
-		Preflop = 0,  ///< Before community cards are dealt.
-		Flop = 1,	  ///< Three community cards are available.
-		Turn = 2,	  ///< Four community cards are available.
-		River = 3,	  ///< Five community cards are available.
-		Showdown = 4, ///< Hand resolution after betting is complete.
-	};
 
 	/** @brief Encodes a rank and suit as the deck index used by TexasSolver.
 	 *

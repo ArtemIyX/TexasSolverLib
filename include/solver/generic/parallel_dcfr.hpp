@@ -17,30 +17,36 @@ namespace texas::solver::dcfr
 {
 
 	/** @brief One subproblem assigned to a worker. */
+#pragma pack(push, 8)
 	struct ParallelWorkItem
 	{
 		std::size_t root_node = 0;	///< Root state index represented by this work item.
 		std::size_t node_begin = 0; ///< Beginning of the assigned node interval.
 		std::size_t node_end = 0;	///< One past the end of the assigned node interval.
 	};
+#pragma pack(pop)
 
 	/** @brief Worker count and work items selected for one solve. */
+#pragma pack(push, 8)
 	struct ParallelSolvePlan
 	{
 		bool enabled = false;				 ///< Whether parallel traversal is enabled.
 		std::size_t worker_count = 1;		 ///< Number of workers in the plan.
 		std::vector<ParallelWorkItem> items; ///< Work ranges assigned by the planner.
 	};
+#pragma pack(pop)
 
 	namespace detail
 	{
 
+#pragma pack(push, 8)
 		struct WorkerInfosetAccumRow
 		{
 			InfosetId id{};
 			double* regret_sum = nullptr;
 			double* strategy_sum = nullptr;
 		};
+#pragma pack(pop)
 
 		class WorkerInfosetAccumTable
 		{
@@ -60,10 +66,12 @@ namespace texas::solver::dcfr
 	} // namespace detail
 
 	/** @brief Accumulators owned by one parallel traversal worker. */
+#pragma pack(push, 8)
 	struct ParallelWorkerState
 	{
 		detail::WorkerInfosetAccumTable accum; ///< Worker-local regret and strategy sums.
 	};
+#pragma pack(pop)
 
 	/** @brief DCFR solver that partitions traversal work among worker threads. */
 	template <class G>

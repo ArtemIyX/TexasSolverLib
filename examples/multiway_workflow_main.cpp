@@ -574,6 +574,12 @@ namespace
 		if (!authorized_report_path.empty() && authorized_report_path == authorized_input_path)
 			throw std::invalid_argument("inspection input and report paths must differ");
 		const auto workflow = load_multiway_workflow_config(config_path);
+		MultiwayBucketBaselineProfile bucket_profile;
+		bucket_profile.feature_version = workflow.model.bucket_model_version;
+		bucket_profile.flop_bucket_count = workflow.model.flop_bucket_count;
+		bucket_profile.turn_bucket_count = workflow.model.turn_bucket_count;
+		bucket_profile.river_bucket_count = workflow.model.river_bucket_count;
+		const auto expected_bucket_identity = make_multiway_model_identity(workflow.model);
 		auto progress_phase = hash_mode == MultiwayBucketInspectionHashMode::Legacy || requested_threads == 1U
 			? "legacy-stream"
 			: "parallel-tree";
@@ -598,7 +604,9 @@ namespace
 		{
 			throw std::runtime_error("bucket artifact has incomplete street coverage");
 		}
-		const auto text = std::string("{\n  \"identity\": ") + std::to_string(report.identity.combined_hash) + ",\n  \"evidence\": " + serialize_multiway_evidence_header(make_evidence_header(MULTIWAY_BUCKET_INSPECTION_REPORT_SCHEMA_VERSION, make_multiway_model_identity(workflow.model), workflow.fingerprint())) + ",\n  \"flop_tables\": " + std::to_string(report.flop_tables) + ",\n  \"turn_tables\": " + std::to_string(report.turn_tables) + ",\n  \"river_tables\": " + std::to_string(report.river_tables) + ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) + ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) + ",\n  \"parallel_payload_hash\": " + std::to_string(report.parallel_payload_hash) + ",\n  \"hash_algorithm\": \"" + std::string(hash_algorithm) + "\"" + ",\n  \"effective_threads\": " + std::to_string(report.effective_threads) + ",\n  \"identity_matches\": " + (report.identity == make_multiway_model_identity(workflow.model) ? "true" : "false") + ",\n  \"payload_hash_matches\": " + (report.payload_hash != 0U ? "true" : "false") + "\n}\n";
+		if (report.flop_bucket_count != bucket_profile.flop_bucket_count || report.turn_bucket_count != bucket_profile.turn_bucket_count || report.river_bucket_count != bucket_profile.river_bucket_count)
+			throw std::invalid_argument("bucket artifact profile does not match workflow configuration");
+		const auto text = std::string("{\n  \"identity\": ") + std::to_string(report.identity.combined_hash) + ",\n  \"evidence\": " + serialize_multiway_evidence_header(make_evidence_header(MULTIWAY_BUCKET_INSPECTION_REPORT_SCHEMA_VERSION, expected_bucket_identity, workflow.fingerprint())) + ",\n  \"flop_tables\": " + std::to_string(report.flop_tables) + ",\n  \"turn_tables\": " + std::to_string(report.turn_tables) + ",\n  \"river_tables\": " + std::to_string(report.river_tables) + ",\n  \"flop_bucket_count\": " + std::to_string(report.flop_bucket_count) + ",\n  \"turn_bucket_count\": " + std::to_string(report.turn_bucket_count) + ",\n  \"river_bucket_count\": " + std::to_string(report.river_bucket_count) + ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) + ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) + ",\n  \"parallel_payload_hash\": " + std::to_string(report.parallel_payload_hash) + ",\n  \"hash_algorithm\": \"" + std::string(hash_algorithm) + "\"" + ",\n  \"effective_threads\": " + std::to_string(report.effective_threads) + ",\n  \"identity_matches\": " + (report.identity == expected_bucket_identity ? "true" : "false") + ",\n  \"payload_hash_matches\": " + (report.payload_hash != 0U ? "true" : "false") + "\n}\n";
 		if (!authorized_report_path.empty())
 		{
 			if (!authorized_report_path.parent_path().empty())
@@ -624,6 +632,7 @@ namespace
 		std::cout << "flop_tables=" << report.flop_tables << "\n"
 				  << "turn_tables=" << report.turn_tables << "\n"
 				  << "river_tables=" << report.river_tables << "\n"
+				  << "bucket_counts=" << report.flop_bucket_count << '/' << report.turn_bucket_count << '/' << report.river_bucket_count << "\n"
 				  << "live_assignments=" << report.live_assignments << "\n"
 				  << "payload_hash=" << report.payload_hash << "\n"
 				  << "parallel_payload_hash=" << report.parallel_payload_hash << "\n"
@@ -631,6 +640,7 @@ namespace
 		return EXIT_SUCCESS;
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayDiagnosticProgress
 	{
 		texas::solver::multiway::MultiwayDiagnosticJournal* journal = nullptr;
@@ -645,6 +655,7 @@ namespace
 		std::uint64_t publication_monitor_nanoseconds = 0U;
 		std::uint64_t next_workflow_batch = 0U;
 	};
+#pragma pack(pop)
 
 	void record_component_publication(void* context, std::uint32_t component,
 		std::uint64_t generation, std::uint64_t component_batch, std::uint64_t records)
@@ -744,6 +755,7 @@ namespace
 			std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 	}
 
+#pragma pack(push, 8)
 	struct MultiwayTrainingProgressContext
 	{
 		bool enabled = true;
@@ -760,6 +772,7 @@ namespace
 		std::chrono::steady_clock::time_point last_reported_at{};
 		MultiwayDiagnosticProgress* diagnostic = nullptr;
 	};
+#pragma pack(pop)
 
 	void report_multiway_training_progress(
 		const texas::solver::multiway::MultiwayBlueprintTrainingStatus& status,
@@ -1069,6 +1082,13 @@ namespace
 		if (!memory_subsystem_snapshots.record(MultiwayMemoryPhase::BeforeBucketMap, {}))
 			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		const auto buckets = load_multiway_bucket_registry(input_path, &process_memory_snapshots);
+		MultiwayBucketBaselineProfile bucket_profile;
+		bucket_profile.feature_version = workflow.model.bucket_model_version;
+		bucket_profile.flop_bucket_count = workflow.model.flop_bucket_count;
+		bucket_profile.turn_bucket_count = workflow.model.turn_bucket_count;
+		bucket_profile.river_bucket_count = workflow.model.river_bucket_count;
+		const auto identity = make_multiway_model_identity(workflow.model);
+		validate_multiway_bucket_registry_profile(buckets, identity, bucket_profile);
 		if (!memory_subsystem_snapshots.record(
 				MultiwayMemoryPhase::AfterBucketMapMetadata,
 				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
@@ -1081,7 +1101,6 @@ namespace
 		log_line("training initialization: preparing output and model identity");
 		if (!output_path.parent_path().empty())
 			std::filesystem::create_directories(output_path.parent_path());
-		const auto identity = make_multiway_model_identity(workflow.model);
 		const auto estimated_blueprint_bytes = estimate_full_blueprint_bytes(workflow);
 		MultiwayExportPlanMemoryValues export_scratch_plan;
 		export_scratch_plan.shape_count = 1U;

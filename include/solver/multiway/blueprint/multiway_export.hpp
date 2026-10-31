@@ -14,11 +14,13 @@ namespace texas::solver::multiway
 {
 
 	/** Root action paired with its quantized policy probability. */
+#pragma pack(push, 8)
 	struct MultiwayQuantizedRootAction
 	{
 		MultiwayActionDescriptor action{};
 		std::uint16_t probability = 0;
 	};
+#pragma pack(pop)
 
 	/** Selects which accumulated strategy is exported from training. */
 	enum class MultiwayBlueprintPolicyKind : std::uint8_t
@@ -31,6 +33,7 @@ namespace texas::solver::multiway
 	// Persisted resume boundary. It intentionally stores no row data: a compact
 	// root artifact may resume only when a caller also retains its live trainer.
 	/** Training counters and schedule metadata persisted with a root snapshot. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintTrainingMetadata
 	{
 		std::uint64_t batches = 0;
@@ -47,10 +50,12 @@ namespace texas::solver::multiway
 		std::uint8_t negative_regret_pruning_enabled = 0;
 		std::uint8_t reserved = 0;
 	};
+#pragma pack(pop)
 
 	// Immutable root-only artifact for deployment. It intentionally excludes
 	// global rows, reach tables, and worker scratch.
 	/** Compact policy snapshot for one public root infoset and bucket. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintSnapshot
 	{
 		MultiwayModelIdentity identity{};
@@ -65,6 +70,7 @@ namespace texas::solver::multiway
 		/** Checks identity, action, probability, and metadata invariants. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Exports one root policy from the coordinator in the selected average mode. */
 	[[nodiscard]] MultiwayBlueprintSnapshot export_multiway_root_snapshot(

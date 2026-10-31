@@ -1200,26 +1200,44 @@ namespace texas::solver::multiway
 		return preflight_multiway_memory(limits, budget, MultiwayMemoryInputs{});
 	}
 
+	std::uint64_t multiway_external_page_lookup_max_page_id(
+		std::uint64_t maximum_rows, std::uint64_t maximum_values,
+		std::uint32_t page_width)
+	{
+		if (page_width == 0U)
+			throw std::invalid_argument("external page lookup index requires a positive page width");
+		const auto additional_pages = maximum_values / page_width;
+		if (additional_pages > std::numeric_limits<std::uint64_t>::max() - maximum_rows)
+			throw std::length_error("external page lookup index bound overflows");
+		return maximum_rows + additional_pages;
+	}
+
 	MultiwayCatalogCapacityEstimate estimate_multiway_catalog_capacity(
 		std::uint64_t state_capacity,
 		std::uint64_t menu_capacity,
 		std::uint64_t action_capacity) noexcept
 	{
+#pragma pack(push, 8)
 		struct StateIndexLayout
 		{
 			MultiwayPublicStateId id;
 			std::size_t node_index;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct MenuIndexLayout
 		{
 			std::uint64_t key;
 			std::uint32_t handle;
 		};
+#pragma pack(pop)
+#pragma pack(push, 8)
 		struct PendingMenuIndexLayout
 		{
 			std::uint64_t key;
 			std::uint32_t pending_index;
 		};
+#pragma pack(pop)
 		MultiwayCatalogCapacityEstimate result;
 		if (state_capacity > std::numeric_limits<std::size_t>::max() || menu_capacity > std::numeric_limits<std::size_t>::max() || action_capacity > std::numeric_limits<std::size_t>::max())
 		{

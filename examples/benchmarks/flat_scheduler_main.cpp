@@ -22,6 +22,7 @@ namespace
 	constexpr std::uint64_t kMemoryWarningBytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
 	constexpr std::uint64_t kMemoryFailBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 
+#pragma pack(push, 8)
 	struct BenchConfig
 	{
 		enum class Preset : std::uint8_t
@@ -36,6 +37,7 @@ namespace
 		texas::HUNLFlatValueLayout layout = texas::HUNLFlatValueLayout::InfosetActionHand;
 		Preset preset = Preset::None;
 	};
+#pragma pack(pop)
 
 	bool parse_uint32(std::string_view text, std::uint32_t& out)
 	{

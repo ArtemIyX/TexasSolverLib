@@ -164,6 +164,7 @@ namespace texas::solver::hunl
 			return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 		}
 
+#pragma pack(push, 8)
 		struct DenseTraversalRowView
 		{
 			const double* current_strategy = nullptr;
@@ -180,6 +181,7 @@ namespace texas::solver::hunl
 				return current_strategy != nullptr && regret_delta != nullptr && strategy_delta != nullptr && action_stride == bucket_count;
 			}
 		};
+#pragma pack(pop)
 
 		DenseTraversalRowView build_dense_traversal_row_view(
 			const HUNLFlatInfosetTable& infoset_table,
@@ -642,7 +644,7 @@ namespace texas::solver::hunl
 	void HUNLFlatMCCFR::add_sampled_kernel_profile(double seconds, HUNLSampledSimdBackend backend) noexcept
 	{
 		profile_.sampled_simd_backend = hunl_sampled_simd_backend();
-		if (backend == HUNLSampledSimdBackend::Avx2Fma)
+		if (backend == HUNLSampledSimdBackend::Avx2)
 		{
 			profile_.sampled_kernel_simd_seconds += seconds;
 			++profile_.sampled_kernel_simd_calls;

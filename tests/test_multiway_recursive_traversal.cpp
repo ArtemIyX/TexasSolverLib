@@ -161,6 +161,7 @@ namespace
 		return root;
 	}
 
+#pragma pack(push, 8)
 	struct LeafProbe
 	{
 		std::size_t calls = 0U;
@@ -169,6 +170,7 @@ namespace
 		std::vector<texas::MultiwayContinuationPolicyKind> policies;
 		std::size_t requests_with_private_context = 0U;
 	};
+#pragma pack(pop)
 
 	texas::Value probe_leaf(
 		const texas::MultiwayLeafEvaluationRequest& request,
@@ -203,6 +205,7 @@ namespace
 		return static_cast<texas::Value>(request.continuation_policy);
 	}
 
+#pragma pack(push, 8)
 	struct ParallelRunnerFixture
 	{
 		explicit ParallelRunnerFixture(
@@ -219,7 +222,9 @@ namespace
 		texas::MultiwayRootExternalSamplingTraversal traversal;
 		texas::MultiwayRootBatchRunner runner;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct TraversalFixture
 	{
 		explicit TraversalFixture(
@@ -237,6 +242,7 @@ namespace
 		texas::MultiwayLeafEvaluator evaluator;
 		texas::MultiwayRootExternalSamplingTraversal traversal;
 	};
+#pragma pack(pop)
 
 	void expect_same_delta(
 		const texas::MultiwayWorkerDelta& left,

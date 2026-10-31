@@ -54,6 +54,7 @@ option(TEXASSOLVER_TRACY_CALLSTACKS "Enable Tracy call stacks" OFF)
 option(TEXASSOLVER_TRACY_LOCKS "Enable selected Tracy lock instrumentation" OFF)
 option(TEXASSOLVER_TRACY_MEMORY "Enable explicit Tracy solver allocation events" OFF)
 option(TEXASSOLVER_ENABLE_LOGGING "Build application logging support" OFF)
+option(TEXASSOLVER_ENABLE_AVX2_KERNELS "Compile AVX2 kernels in their owning translation units" ON)
 
 if (TEXASSOLVER_ENABLE_LOGGING)
     find_package(spdlog CONFIG REQUIRED)
@@ -66,6 +67,7 @@ if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES AND NOT TEXASSOLVER_BUILD_EXAMPLES)
 endif()
 
 set(TEXASSOLVER_PUBLIC_HEADERS
+    include/core/action_id.hpp
     include/core/arena.hpp
     include/core/atomic_publish.hpp
     include/core/canonical_combo.hpp
@@ -76,21 +78,28 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/namespaces.hpp
     include/core/poker.hpp
     include/core/portable_binary.hpp
+    include/core/street_types.hpp
     include/core/types.hpp
+    include/core/value_types.hpp
     include/games/hunl.hpp
+    include/games/hunl_action_types.hpp
     include/games/hunl_eval.hpp
     include/games/hunl_flat_builder.hpp
     include/games/hunl_flat_graph.hpp
+    include/games/hunl_flat_graph_types.hpp
     include/games/hunl_solver.hpp
+    include/games/hunl_terminal_types.hpp
     include/games/hunl_tree.hpp
     include/games/kuhn.hpp
     include/games/leduc.hpp
     include/games/multiway_fixed.hpp
     include/games/multiway_private.hpp
     include/games/multiway_rake.hpp
+    include/games/multiway_rake_types.hpp
     include/games/multiway_replay.hpp
     include/games/multiway_rules.hpp
     include/games/multiway_state.hpp
+    include/games/multiway_state_types.hpp
     include/games/multiway_terminal.hpp
     include/preflop/preflop.hpp
     include/preflop/preflop_equity.hpp
@@ -102,10 +111,14 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/hunl/flat/hunl_flat_expected_value.hpp
     include/solver/hunl/flat/hunl_flat_pipeline.hpp
     include/solver/hunl/flat/hunl_flat_state.hpp
+    include/solver/hunl/flat/hunl_flat_types.hpp
     include/solver/hunl/hunl_leaf_evaluator.hpp
     include/solver/hunl/sampled/hunl_sampled_config.hpp
+    include/solver/hunl/sampled/hunl_sampled_config_types.hpp
     include/solver/hunl/sampled/hunl_sampled_export.hpp
+    include/solver/hunl/sampled/hunl_sampled_export_types.hpp
     include/solver/hunl/sampled/hunl_sampled_profile.hpp
+    include/solver/hunl/sampled/hunl_sampled_profile_types.hpp
     include/solver/hunl/sampled/hunl_sampled_range.hpp
     include/solver/hunl/sampled/hunl_sampled_scheduler.hpp
     include/solver/hunl/sampled/hunl_sampled_simd.hpp
@@ -114,6 +127,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_action_abstraction.hpp
     include/solver/multiway/blueprint/multiway_artifact.hpp
     include/solver/multiway/blueprint/multiway_blueprint_config.hpp
+    include/solver/multiway/blueprint/multiway_blueprint_config_types.hpp
     include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp
     include/solver/multiway/blueprint/multiway_blueprint_store.hpp
     include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp
@@ -144,11 +158,13 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/evaluation/multiway_evaluation.hpp
     include/solver/multiway/blueprint/multiway_export.hpp
     include/solver/multiway/abstraction/multiway_future_bucket.hpp
+    include/solver/multiway/abstraction/multiway_future_bucket_types.hpp
     include/solver/multiway/continuation/multiway_leaf_evaluator.hpp
     include/solver/multiway/engine/multiway_memory.hpp
     include/solver/multiway/engine/multiway_allocation_probe.hpp
     include/solver/multiway/engine/multiway_worker_topology.hpp
     include/solver/multiway/abstraction/multiway_model_identity.hpp
+    include/solver/multiway/abstraction/multiway_model_identity_types.hpp
     include/solver/multiway/abstraction/multiway_public_builder.hpp
     include/solver/multiway/session/multiway_range_belief.hpp
     include/solver/multiway/session/multiway_range_update.hpp
@@ -193,7 +209,9 @@ set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
     include/logging/log.hpp
     include/logging/progress.hpp
     include/util/tracy.hpp
+    include/util/restrict.hpp
     include/solver/hunl/sampled/hunl_sampled_trajectory.hpp
+    include/solver/multiway/engine/detail/multiway_compact_pruning.hpp
     include/solver/multiway/resolver/multiway_resolver_policy.hpp
 )
 set(TEXASSOLVER_RESEARCH_HEADERS
@@ -240,23 +258,33 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl/sampled/hunl_sampled_range.cpp
     src/solver/hunl/sampled/hunl_sampled_scheduler.cpp
     src/solver/hunl/sampled/hunl_sampled_simd.cpp
+    src/solver/multiway/engine/multiway_compact_pruning.cpp
+    src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp
     src/solver/hunl/sampled/hunl_sampled_solver.cpp
     src/solver/hunl/sampled/hunl_sampled_storage.cpp
     src/solver/hunl/sampled/hunl_sampled_trajectory.cpp
     src/solver/multiway/abstraction/multiway_action_abstraction.cpp
     src/solver/multiway/blueprint/multiway_artifact.cpp
+    src/solver/multiway/blueprint/multiway_root_policy_artifact.cpp
+    src/solver/multiway/blueprint/multiway_replay_artifact.cpp
     src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp
     src/solver/multiway/blueprint/multiway_blueprint_config.cpp
     src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp
     src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp
     src/solver/multiway/blueprint/multiway_blueprint_store.cpp
     src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_export.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_checkpoint.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_training_loop.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
+    src/solver/multiway/abstraction/multiway_bucket_artifact_codec.cpp
     src/solver/multiway/abstraction/multiway_bucket_catalog.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp
     src/solver/multiway/abstraction/multiway_bucket_generation.cpp
     src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
     src/solver/multiway/workflow/multiway_workflow_config.cpp
+    src/solver/multiway/workflow/multiway_workflow_config_identity.cpp
+    src/solver/multiway/workflow/multiway_workflow_config_io.cpp
     src/solver/multiway/workflow/multiway_workflow_path_policy.cpp
     src/solver/multiway/workflow/multiway_diagnostic_journal.cpp
     src/solver/multiway/workflow/multiway_evidence.cpp
@@ -265,6 +293,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/workflow/multiway_f1_acceptance.cpp
     src/solver/multiway/workflow/multiway_sizing_report.cpp
     src/solver/multiway/workflow/multiway_training_report.cpp
+    src/solver/multiway/workflow/multiway_training_report_json.cpp
     src/solver/multiway/workflow/multiway_lookup_qualification.cpp
     src/solver/multiway/workflow/multiway_pb12_coverage.cpp
     src/solver/multiway/workflow/multiway_staged_qualification.cpp
@@ -273,6 +302,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_checkpoint.cpp
     src/solver/multiway/continuation/multiway_continuation_policy.cpp
     src/solver/multiway/continuation/multiway_continuation_selector.cpp
+    src/solver/multiway/evaluation/multiway_aivat.cpp
     src/solver/multiway/evaluation/multiway_evaluation.cpp
     src/solver/multiway/blueprint/multiway_export.cpp
     src/solver/multiway/abstraction/multiway_future_bucket.cpp
@@ -296,11 +326,26 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/engine/multiway_scheduler.cpp
     src/solver/multiway/session/multiway_search_session.cpp
     src/solver/multiway/engine/multiway_solver.cpp
+    src/solver/multiway/engine/multiway_coordinator_admission.cpp
+    src/solver/multiway/engine/multiway_coordinator_merge.cpp
+    src/solver/multiway/engine/multiway_coordinator_checkpoint.cpp
     src/solver/multiway/engine/multiway_compact_storage.cpp
-    src/solver/multiway/engine/multiway_external_storage.cpp
+    src/solver/multiway/engine/multiway_external_checkpoint.cpp
+    src/solver/multiway/engine/multiway_external_transaction.cpp
+    src/solver/multiway/engine/multiway_external_storage_config.cpp
+    src/solver/multiway/engine/multiway_external_record_store.cpp
+    src/solver/multiway/engine/multiway_external_compaction.cpp
+    src/solver/multiway/engine/multiway_external_public_catalog.cpp
+    src/solver/multiway/engine/multiway_external_row_index.cpp
+    src/solver/multiway/engine/multiway_external_compact_pages.cpp
+    src/solver/multiway/engine/multiway_external_compact_storage.cpp
+    src/solver/multiway/engine/multiway_external_training_storage.cpp
+    src/solver/multiway/engine/multiway_external_page_cache.cpp
     src/solver/multiway/engine/multiway_public_catalog.cpp
     src/solver/multiway/abstraction/multiway_terminal_adapter.cpp
-    src/solver/multiway/engine/multiway_traversal.cpp
+    src/solver/multiway/engine/multiway_discovery.cpp
+    src/solver/multiway/engine/multiway_root_traversal.cpp
+    src/solver/multiway/engine/multiway_batch_runner.cpp
     src/solver/generic/parallel_dcfr.cpp
     src/solver/generic/solver.cpp
 )

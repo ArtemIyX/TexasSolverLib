@@ -27,6 +27,7 @@ namespace texas::solver::multiway
 
 		constexpr double kMinimumProbability = 1e-12;
 
+#pragma pack(push, 8)
 		struct RuntimeSearchMeasurement
 		{
 			explicit RuntimeSearchMeasurement(MultiwayResolverDiagnostics* diagnostics) noexcept
@@ -44,6 +45,7 @@ namespace texas::solver::multiway
 			MultiwayResolverDiagnostics* diagnostics = nullptr;
 			std::chrono::steady_clock::time_point started{};
 		};
+#pragma pack(pop)
 
 		enum class RuntimeSearchOutcome : std::uint8_t
 		{
@@ -765,6 +767,275 @@ namespace texas::solver::multiway
 			}
 		}
 
+		MultiwayState validate_resolver_request(
+			const MultiwayResolverRequest& request,
+			const MultiwayResolverConfig& config,
+			MultiwayResolverDiagnostics* diagnostics)
+		{
+			config.validate();
+			request.blueprint_identity.validate();
+			diagnostics->artifact_identity = request.blueprint_identity;
+			diagnostics->has_artifact_identity = true;
+			if (request.public_state.id.value == 0U || request.public_state.canonical_history_id == 0U || request.hero_seat < 0 || !are_valid_and_distinct_cards(request.hero_cards.data(), request.hero_cards.size()) || request.public_state.board.size() != board_count_for(request.public_state.betting.street) || !are_valid_and_distinct_cards(request.public_state.board.data(), request.public_state.board.size()) || contains_card(request.public_state.board, request.hero_cards[0]) || contains_card(request.public_state.board, request.hero_cards[1]))
+			{
+				throw std::invalid_argument("multiway resolver request has invalid public or hero cards");
+			}
+			auto state = MultiwayState::from_snapshot(request.public_state.betting);
+			if (state.current_player() != request.hero_seat || static_cast<std::size_t>(request.hero_seat) >= state.stacks().size() || state.folded()[static_cast<std::size_t>(request.hero_seat)] || state.legal_actions().empty())
+			{
+				throw std::invalid_argument("multiway resolver hero is not the current legal actor");
+			}
+			return state;
+		}
+
+#pragma pack(push, 8)
+		struct PreparedResolverRoot
+		{
+			std::vector<std::uint8_t> canonical_board;
+			const MultiwayBlueprintSnapshot* blueprint = nullptr;
+			std::vector<MultiwayActionDescriptor> menu;
+			std::uint32_t bucket = 0U;
+			std::uint64_t public_state_id = 0U;
+		};
+#pragma pack(pop)
+
+		PreparedResolverRoot prepare_resolver_root(
+			const MultiwayResolverRequest& request,
+			const MultiwayState& state,
+			const MultiwayResolverConfig& config,
+			MultiwayResolverDiagnostics* diagnostics)
+		{
+			PreparedResolverRoot root;
+			root.canonical_board = request.public_state.board;
+			std::sort(root.canonical_board.begin(), root.canonical_board.end());
+			root.blueprint = config.verified_blueprint == nullptr
+				? nullptr
+				: &config.verified_blueprint->snapshot;
+			if (config.verified_blueprint != nullptr && config.verified_blueprint->snapshot.identity != request.blueprint_identity)
+			{
+				throw std::invalid_argument("multiway resolver verified blueprint identity does not match request");
+			}
+			validate_ranges(request, state, diagnostics);
+			root.menu = reconstruct_root_menu(request, state, config);
+			if (root.menu.empty() || root.menu.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+			{
+				throw std::invalid_argument("multiway resolver reconstructed an invalid root menu");
+			}
+			root.public_state_id = MultiwayPublicBuilder::stable_public_state_id(
+				request.public_state.betting, root.canonical_board, request.public_state.history, root.menu);
+			diagnostics->root_menu_size = static_cast<std::uint32_t>(root.menu.size());
+			diagnostics->resolved_public_state_id = root.public_state_id;
+
+			if (is_postflop(state.street()))
+			{
+				if (config.buckets == nullptr)
+				{
+					diagnostics->status = MultiwayResolverStatus::BucketUnavailable;
+				}
+				else if (config.buckets->identity() != request.blueprint_identity)
+				{
+					diagnostics->status = MultiwayResolverStatus::ArtifactMismatch;
+				}
+				else
+				{
+					try
+					{
+						root.bucket = config.buckets->lookup(
+							state.street(), root.canonical_board, request.hero_cards);
+					}
+					catch (const std::out_of_range&)
+					{
+						diagnostics->status = MultiwayResolverStatus::BucketUnavailable;
+					}
+				}
+			}
+			diagnostics->root_bucket = root.bucket;
+			return root;
+		}
+
+#pragma pack(push, 8)
+		struct ResolverSearchPlan
+		{
+			bool run_search = false;
+			bool delivers_policy = false;
+			bool has_early_fallback = false;
+			MultiwayResolverStatus fallback_status = MultiwayResolverStatus::RejectedByBudget;
+		};
+#pragma pack(pop)
+
+		ResolverSearchPlan assess_resolver_search_eligibility(
+			const MultiwayResolverRequest& request,
+			const MultiwayState& state,
+			const PreparedResolverRoot& root,
+			const MultiwayResolverConfig& config,
+			MultiwayResolverDiagnostics* diagnostics)
+		{
+			ResolverSearchPlan plan;
+			plan.delivers_policy = config.search_mode == MultiwayResolverSearchMode::SearchActive
+				|| config.search_mode == MultiwayResolverSearchMode::ReleaseDefault;
+			if (diagnostics->status == MultiwayResolverStatus::ArtifactMismatch || diagnostics->status == MultiwayResolverStatus::BucketUnavailable)
+			{
+				plan.has_early_fallback = true;
+				plan.fallback_status = diagnostics->status;
+				return plan;
+			}
+			if (root.blueprint != nullptr && root.blueprint->identity != request.blueprint_identity)
+			{
+				plan.has_early_fallback = true;
+				plan.fallback_status = MultiwayResolverStatus::ArtifactMismatch;
+				return plan;
+			}
+			if (config.full_blueprint != nullptr && config.full_blueprint->identity() != request.blueprint_identity)
+			{
+				plan.has_early_fallback = true;
+				plan.fallback_status = MultiwayResolverStatus::ArtifactMismatch;
+				return plan;
+			}
+			if (config.mapped_full_blueprint != nullptr && config.mapped_full_blueprint->identity() != request.blueprint_identity)
+			{
+				plan.has_early_fallback = true;
+				plan.fallback_status = MultiwayResolverStatus::ArtifactMismatch;
+				return plan;
+			}
+			if (deadline_reached(request.deadline, config.runtime_limits.deadline_reserve))
+			{
+				diagnostics->deadline_expired = true;
+				plan.has_early_fallback = true;
+				plan.fallback_status = MultiwayResolverStatus::DeadlineFallback;
+				return plan;
+			}
+			if (config.search_mode == MultiwayResolverSearchMode::ForcedFallback)
+			{
+				plan.has_early_fallback = true;
+				return plan;
+			}
+
+			const auto runtime_search_requested =
+				config.search_mode == MultiwayResolverSearchMode::SearchShadow
+				|| config.search_mode == MultiwayResolverSearchMode::SearchActive
+				|| (config.search_mode == MultiwayResolverSearchMode::ReleaseDefault
+					&& has_release_search_configuration(config));
+			if (runtime_search_requested)
+			{
+				diagnostics->search_eligibility = search_eligibility(
+					request, state, root.menu, config);
+				if (plan.delivers_policy
+					&& diagnostics->search_eligibility != MultiwayResolverSearchEligibility::Eligible)
+				{
+					plan.has_early_fallback = true;
+					return plan;
+				}
+			}
+			else if (config.search_mode == MultiwayResolverSearchMode::ReleaseDefault)
+			{
+				plan.has_early_fallback = true;
+				return plan;
+			}
+			plan.run_search = diagnostics->search_eligibility == MultiwayResolverSearchEligibility::Eligible;
+			return plan;
+		}
+
+		void finalize_resolver_fallback(
+			const MultiwayResolverRequest& request,
+			const PreparedResolverRoot& root,
+			const MultiwayResolverConfig& config,
+			MultiwayResolverStatus status,
+			MultiwayResolverResult* result)
+		{
+			result->diagnostics.status = status;
+			if (config.stable_root_cache != nullptr && config.stable_root_cache->find(request.blueprint_identity, root.public_state_id, request.hero_seat, static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)), root.menu, &result->policy))
+			{
+				set_policy_provenance(
+					&result->diagnostics, MultiwayPolicyProvenance::StableRootFallback);
+			}
+			if (result->policy.empty() && try_apply_blueprint_policy(root.blueprint, request.blueprint_identity, { root.public_state_id }, { { root.public_state_id }, request.hero_seat }, root.bucket, root.menu, &result->policy))
+			{
+				set_policy_provenance(
+					&result->diagnostics, MultiwayPolicyProvenance::BlueprintFallback);
+			}
+			if (result->policy.empty())
+			{
+				result->policy = static_policy(root.menu);
+				set_policy_provenance(
+					&result->diagnostics, MultiwayPolicyProvenance::StaticLegalFallback);
+			}
+			result->diagnostics.policy_normalized =
+				normalize_multiway_resolver_policy(&result->policy);
+			sample_policy(result, request.sampling_seed, root.public_state_id);
+		}
+
+		bool invoke_resolver_search(
+			const MultiwayResolverRequest& request,
+			const MultiwayState& state,
+			const MultiwayResolverConfig& config,
+			const PreparedResolverRoot& root,
+			const ResolverSearchPlan& plan,
+			std::vector<MultiwayResolverActionProbability>* search_policy,
+			MultiwayResolverResult* result)
+		{
+			if (!plan.run_search)
+				return false;
+			MultiwayResolverDiagnostics search_diagnostics = result->diagnostics;
+			const auto search_outcome = run_search(
+				request, state, config, root.canonical_board, root.menu, root.bucket,
+				root.public_state_id, search_policy, &search_diagnostics);
+			result->diagnostics.search_failure = search_failure(search_outcome);
+			result->diagnostics.search_memory_status = search_diagnostics.search_memory_status;
+			result->diagnostics.search_memory_stage = search_diagnostics.search_memory_stage;
+			result->diagnostics.search_estimated_memory_bytes =
+				search_diagnostics.search_estimated_memory_bytes;
+			result->diagnostics.search_admitted_memory_bytes =
+				search_diagnostics.search_admitted_memory_bytes;
+			result->diagnostics.search_memory_degraded = search_diagnostics.search_memory_degraded;
+			if (search_outcome == RuntimeSearchOutcome::Completed && plan.delivers_policy)
+			{
+				result->policy = std::move(*search_policy);
+				result->diagnostics = search_diagnostics;
+				result->diagnostics.status = result->diagnostics.deadline_expired
+					? MultiwayResolverStatus::Partial
+					: MultiwayResolverStatus::Solved;
+				result->diagnostics.search_engine = MultiwayResolverEngine::RootExternalSamplingMCCFR;
+				result->diagnostics.search_engine_version = MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
+				set_policy_provenance(&result->diagnostics, MultiwayPolicyProvenance::RuntimeSearch);
+				result->diagnostics.policy_normalized = true;
+				sample_policy(result, request.sampling_seed, root.public_state_id);
+				if (config.stable_root_cache != nullptr)
+				{
+					config.stable_root_cache->store(
+						request.blueprint_identity, root.public_state_id, request.hero_seat,
+						static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)),
+						result->policy);
+				}
+				return true;
+			}
+			if (plan.delivers_policy)
+			{
+				const auto fallback_status = deadline_reached(
+												 request.deadline, config.runtime_limits.deadline_reserve)
+					? MultiwayResolverStatus::DeadlineFallback
+					: (search_outcome == RuntimeSearchOutcome::NoRoot
+						  || search_outcome == RuntimeSearchOutcome::MemoryRejected)
+					? MultiwayResolverStatus::RejectedByBudget
+					: MultiwayResolverStatus::ResourceExhausted;
+				finalize_resolver_fallback(request, root, config, fallback_status, result);
+				return true;
+			}
+			if (search_outcome == RuntimeSearchOutcome::Completed)
+			{
+				result->diagnostics.shadow_search_completed = true;
+				result->diagnostics.shadow_completed_batches = search_diagnostics.completed_batches;
+				result->diagnostics.shadow_completed_trajectories =
+					search_diagnostics.completed_trajectories;
+				result->diagnostics.shadow_search_merged_delta_entries =
+					search_diagnostics.search_merged_delta_entries;
+				result->diagnostics.shadow_search_elapsed_nanoseconds =
+					search_diagnostics.search_elapsed_nanoseconds;
+				result->diagnostics.shadow_search_observed_memory_bytes =
+					search_diagnostics.search_observed_memory_bytes;
+			}
+			return false;
+		}
+
 	} // namespace
 
 	void MultiwayRuntimeSearchLimits::validate() const
@@ -931,201 +1202,25 @@ namespace texas::solver::multiway
 		MultiwayResolverResult result;
 		try
 		{
-			config_.validate();
-			request.blueprint_identity.validate();
-			result.diagnostics.artifact_identity = request.blueprint_identity;
-			result.diagnostics.has_artifact_identity = true;
-			if (request.public_state.id.value == 0U || request.public_state.canonical_history_id == 0U || request.hero_seat < 0 || !are_valid_and_distinct_cards(request.hero_cards.data(), request.hero_cards.size()) || request.public_state.board.size() != board_count_for(request.public_state.betting.street) || !are_valid_and_distinct_cards(request.public_state.board.data(), request.public_state.board.size()) || contains_card(request.public_state.board, request.hero_cards[0]) || contains_card(request.public_state.board, request.hero_cards[1]))
+			const auto state = validate_resolver_request(request, config_, &result.diagnostics);
+			const auto root = prepare_resolver_root(request, state, config_, &result.diagnostics);
+			const auto search_plan = assess_resolver_search_eligibility(
+				request, state, root, config_, &result.diagnostics);
+			if (search_plan.has_early_fallback)
 			{
-				throw std::invalid_argument("multiway resolver request has invalid public or hero cards");
-			}
-			const auto state = MultiwayState::from_snapshot(request.public_state.betting);
-			if (state.current_player() != request.hero_seat || static_cast<std::size_t>(request.hero_seat) >= state.stacks().size() || state.folded()[static_cast<std::size_t>(request.hero_seat)] || state.legal_actions().empty())
-			{
-				throw std::invalid_argument("multiway resolver hero is not the current legal actor");
-			}
-			auto canonical_board = request.public_state.board;
-			std::sort(canonical_board.begin(), canonical_board.end());
-			const auto* blueprint = config_.verified_blueprint == nullptr
-				? nullptr
-				: &config_.verified_blueprint->snapshot;
-			if (config_.verified_blueprint != nullptr && config_.verified_blueprint->snapshot.identity != request.blueprint_identity)
-			{
-				throw std::invalid_argument("multiway resolver verified blueprint identity does not match request");
-			}
-			validate_ranges(request, state, &result.diagnostics);
-			auto menu = reconstruct_root_menu(request, state, config_);
-			if (menu.empty() || menu.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
-			{
-				throw std::invalid_argument("multiway resolver reconstructed an invalid root menu");
-			}
-			const auto reconstructed_id = MultiwayPublicBuilder::stable_public_state_id(
-				request.public_state.betting, canonical_board, request.public_state.history, menu);
-			result.diagnostics.root_menu_size = static_cast<std::uint32_t>(menu.size());
-			result.diagnostics.resolved_public_state_id = reconstructed_id;
-
-			std::uint32_t bucket = 0U;
-			if (is_postflop(state.street()))
-			{
-				if (config_.buckets == nullptr)
-				{
-					result.diagnostics.status = MultiwayResolverStatus::BucketUnavailable;
-				}
-				else if (config_.buckets->identity() != request.blueprint_identity)
-				{
-					result.diagnostics.status = MultiwayResolverStatus::ArtifactMismatch;
-				}
-				else
-				{
-					try
-					{
-						bucket = config_.buckets->lookup(state.street(), canonical_board, request.hero_cards);
-					}
-					catch (const std::out_of_range&)
-					{
-						result.diagnostics.status = MultiwayResolverStatus::BucketUnavailable;
-					}
-				}
-			}
-			result.diagnostics.root_bucket = bucket;
-
-			const auto use_fallback = [&](MultiwayResolverStatus status) {
-				result.diagnostics.status = status;
-				if (config_.stable_root_cache != nullptr && config_.stable_root_cache->find(request.blueprint_identity, reconstructed_id, request.hero_seat, static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)), menu, &result.policy))
-				{
-					set_policy_provenance(
-						&result.diagnostics, MultiwayPolicyProvenance::StableRootFallback);
-				}
-				if (result.policy.empty() && try_apply_blueprint_policy(blueprint, request.blueprint_identity, { reconstructed_id }, { { reconstructed_id }, request.hero_seat }, bucket, menu, &result.policy))
-				{
-					set_policy_provenance(
-						&result.diagnostics, MultiwayPolicyProvenance::BlueprintFallback);
-				}
-				if (result.policy.empty())
-				{
-					result.policy = static_policy(menu);
-					set_policy_provenance(
-						&result.diagnostics, MultiwayPolicyProvenance::StaticLegalFallback);
-				}
-				result.diagnostics.policy_normalized =
-					normalize_multiway_resolver_policy(&result.policy);
-				sample_policy(&result, request.sampling_seed, reconstructed_id);
-			};
-
-			if (result.diagnostics.status == MultiwayResolverStatus::ArtifactMismatch || result.diagnostics.status == MultiwayResolverStatus::BucketUnavailable)
-			{
-				use_fallback(result.diagnostics.status);
-				return result;
-			}
-			if (blueprint != nullptr && blueprint->identity != request.blueprint_identity)
-			{
-				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
-				return result;
-			}
-			if (config_.full_blueprint != nullptr && config_.full_blueprint->identity() != request.blueprint_identity)
-			{
-				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
-				return result;
-			}
-			if (config_.mapped_full_blueprint != nullptr && config_.mapped_full_blueprint->identity() != request.blueprint_identity)
-			{
-				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
-				return result;
-			}
-			if (deadline_reached(request.deadline, config_.runtime_limits.deadline_reserve))
-			{
-				result.diagnostics.deadline_expired = true;
-				use_fallback(MultiwayResolverStatus::DeadlineFallback);
-				return result;
-			}
-
-			if (config_.search_mode == MultiwayResolverSearchMode::ForcedFallback)
-			{
-				use_fallback(MultiwayResolverStatus::RejectedByBudget);
-				return result;
-			}
-
-			const auto runtime_search_requested =
-				config_.search_mode == MultiwayResolverSearchMode::SearchShadow || config_.search_mode == MultiwayResolverSearchMode::SearchActive || (config_.search_mode == MultiwayResolverSearchMode::ReleaseDefault && has_release_search_configuration(config_));
-			const auto runtime_search_delivers_policy =
-				config_.search_mode == MultiwayResolverSearchMode::SearchActive || config_.search_mode == MultiwayResolverSearchMode::ReleaseDefault;
-			if (runtime_search_requested)
-			{
-				result.diagnostics.search_eligibility = search_eligibility(request, state, menu, config_);
-				if (runtime_search_delivers_policy && result.diagnostics.search_eligibility != MultiwayResolverSearchEligibility::Eligible)
-				{
-					use_fallback(MultiwayResolverStatus::RejectedByBudget);
-					return result;
-				}
-			}
-			else if (config_.search_mode == MultiwayResolverSearchMode::ReleaseDefault)
-			{
-				use_fallback(MultiwayResolverStatus::RejectedByBudget);
+				finalize_resolver_fallback(
+					request, root, config_, search_plan.fallback_status, &result);
 				return result;
 			}
 
 			std::vector<MultiwayResolverActionProbability> search_policy;
-			if (result.diagnostics.search_eligibility == MultiwayResolverSearchEligibility::Eligible)
+			if (invoke_resolver_search(
+					request, state, config_, root, search_plan, &search_policy, &result))
 			{
-				MultiwayResolverDiagnostics search_diagnostics = result.diagnostics;
-				const auto search_outcome = run_search(
-					request, state, config_, canonical_board, menu, bucket, reconstructed_id,
-					&search_policy, &search_diagnostics);
-				result.diagnostics.search_failure = search_failure(search_outcome);
-				result.diagnostics.search_memory_status = search_diagnostics.search_memory_status;
-				result.diagnostics.search_memory_stage = search_diagnostics.search_memory_stage;
-				result.diagnostics.search_estimated_memory_bytes =
-					search_diagnostics.search_estimated_memory_bytes;
-				result.diagnostics.search_admitted_memory_bytes =
-					search_diagnostics.search_admitted_memory_bytes;
-				result.diagnostics.search_memory_degraded = search_diagnostics.search_memory_degraded;
-				if (search_outcome == RuntimeSearchOutcome::Completed && runtime_search_delivers_policy)
-				{
-					result.policy = std::move(search_policy);
-					result.diagnostics = search_diagnostics;
-					result.diagnostics.status = result.diagnostics.deadline_expired
-						? MultiwayResolverStatus::Partial
-						: MultiwayResolverStatus::Solved;
-					result.diagnostics.search_engine = MultiwayResolverEngine::RootExternalSamplingMCCFR;
-					result.diagnostics.search_engine_version = MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
-					set_policy_provenance(&result.diagnostics, MultiwayPolicyProvenance::RuntimeSearch);
-					result.diagnostics.policy_normalized = true;
-					sample_policy(&result, request.sampling_seed, reconstructed_id);
-					if (config_.stable_root_cache != nullptr)
-					{
-						config_.stable_root_cache->store(
-							request.blueprint_identity, reconstructed_id, request.hero_seat,
-							static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)),
-							result.policy);
-					}
-					return result;
-				}
-				if (runtime_search_delivers_policy)
-				{
-					const auto fallback_status = deadline_reached(request.deadline, config_.runtime_limits.deadline_reserve)
-						? MultiwayResolverStatus::DeadlineFallback
-						: (search_outcome == RuntimeSearchOutcome::NoRoot || search_outcome == RuntimeSearchOutcome::MemoryRejected)
-						? MultiwayResolverStatus::RejectedByBudget
-						: MultiwayResolverStatus::ResourceExhausted;
-					use_fallback(fallback_status);
-					return result;
-				}
-				if (search_outcome == RuntimeSearchOutcome::Completed)
-				{
-					result.diagnostics.shadow_search_completed = true;
-					result.diagnostics.shadow_completed_batches = search_diagnostics.completed_batches;
-					result.diagnostics.shadow_completed_trajectories =
-						search_diagnostics.completed_trajectories;
-					result.diagnostics.shadow_search_merged_delta_entries =
-						search_diagnostics.search_merged_delta_entries;
-					result.diagnostics.shadow_search_elapsed_nanoseconds =
-						search_diagnostics.search_elapsed_nanoseconds;
-					result.diagnostics.shadow_search_observed_memory_bytes =
-						search_diagnostics.search_observed_memory_bytes;
-				}
+				return result;
 			}
-
-			use_fallback(MultiwayResolverStatus::Solved);
+			finalize_resolver_fallback(
+				request, root, config_, MultiwayResolverStatus::Solved, &result);
 			if (result.diagnostics.shadow_search_completed)
 			{
 				result.diagnostics.shadow_policy_l1_distance =

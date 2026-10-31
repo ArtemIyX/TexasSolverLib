@@ -95,12 +95,14 @@ namespace texas::solver::hunl
 			std::uint64_t retained_bytes_ = 0U;
 		};
 
+#pragma pack(push, 8)
 		struct RangeReach
 		{
 			std::array<double, 2> player = { 1.0, 1.0 };
 			double chance = 1.0;
 			double sampling = 1.0;
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] bool deadline_expired(
 			const std::optional<std::chrono::steady_clock::time_point>& deadline) noexcept
@@ -114,6 +116,7 @@ namespace texas::solver::hunl
 			return deadline.has_value() && std::chrono::steady_clock::now() + kRootExportReserve >= *deadline;
 		}
 
+#pragma pack(push, 8)
 		struct PrivateInfoset
 		{
 			InfosetId id{};
@@ -121,6 +124,7 @@ namespace texas::solver::hunl
 			Street street = Street::Preflop;
 			std::uint8_t action_count = 0;
 		};
+#pragma pack(pop)
 
 		class PrivateInfosetCoordinator
 		{
@@ -378,6 +382,7 @@ namespace texas::solver::hunl
 			return same_public_state && expected.private_hole_cards == actual.private_hole_cards && expected.bucket_reach == actual.bucket_reach && expected.scope == actual.scope && expected.units == actual.units && expected.abstraction_version == actual.abstraction_version && expected.model_version == actual.model_version;
 		}
 
+#pragma pack(push, 8)
 		struct LeafResultCursor
 		{
 			const std::vector<HUNLLeafEvaluationRequest>& requests;
@@ -385,6 +390,7 @@ namespace texas::solver::hunl
 			std::size_t next = 0U;
 			std::size_t end = 0U;
 		};
+#pragma pack(pop)
 
 		double traverse(
 			const HUNLState& state,
@@ -669,6 +675,7 @@ namespace texas::solver::hunl
 		return estimate_range_memory(root, config);
 	}
 
+#pragma pack(push, 8)
 	struct HUNLSampledRangeSession::Impl
 	{
 		HUNLStructuredRootRequest root;
@@ -1154,6 +1161,7 @@ namespace texas::solver::hunl
 			return output;
 		}
 	};
+#pragma pack(pop)
 
 	HUNLSampledRangeSession::HUNLSampledRangeSession(
 		HUNLStructuredRootRequest root,

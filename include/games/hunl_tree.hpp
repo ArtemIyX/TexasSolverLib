@@ -7,6 +7,7 @@
 #include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl.hpp"
+#include "games/hunl_terminal_types.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -20,36 +21,8 @@ namespace texas::games::hunl
 	/** @brief Memoization key forward-declared for tree construction. */
 	struct MemoKey;
 
-	/** @brief Tag describing why a HUNL tree node has terminal semantics. */
-	enum class TerminalKindTag : std::uint8_t
-	{
-		NonTerminal = 0, ///< Node is not a terminal settlement.
-		Fold = 1,		 ///< One player folded and the other wins.
-		Showdown = 2,	 ///< Remaining players are evaluated at showdown.
-	};
-
-	/** @brief Terminal classification and settlement metadata for a tree node. */
-	struct TerminalKind
-	{
-		TerminalKindTag tag = TerminalKindTag::NonTerminal; ///< Terminal category.
-		std::uint8_t winner = 0;							///< Winning player for a fold terminal.
-		int contribution_loss = 0;							///< Loser's committed chips in a fold terminal.
-		bool board_complete = false;						///< Whether a showdown board has five cards.
-
-		/** @brief Creates a non-terminal classification. */
-		static TerminalKind non_terminal();
-		/** @brief Creates a fold result.
-		 * @param winner Player who did not fold.
-		 * @param contribution_loss Chips committed by the folding player.
-		 */
-		static TerminalKind fold(std::uint8_t winner, int contribution_loss);
-		/** @brief Creates a showdown result.
-		 * @param board_complete True when the board contains all five community cards.
-		 */
-		static TerminalKind showdown(bool board_complete);
-	};
-
 	/** @brief Node and contiguous child data for one recursive tree state. */
+#pragma pack(push, 8)
 	struct HUNLTreeNode
 	{
 		PlayerId player = -1;										  ///< Actor, or sentinel for chance and terminal nodes.
@@ -75,8 +48,10 @@ namespace texas::games::hunl
 			Street street,
 			std::vector<std::uint8_t> board);
 	};
+#pragma pack(pop)
 
 	/** @brief Memoized recursive HUNL game tree and its construction metadata. */
+#pragma pack(push, 8)
 	struct HUNLTree
 	{
 		std::vector<HUNLTreeNode> nodes;		  ///< Nodes indexed by their uint32_t IDs.
@@ -97,8 +72,10 @@ namespace texas::games::hunl
 			std::uint32_t depth,
 			std::uint32_t depth_limit_plies);
 	};
+#pragma pack(pop)
 
 	/** @brief Variable-capacity state key used to deduplicate recursive tree nodes. */
+#pragma pack(push, 8)
 	struct MemoKey
 	{
 		PlayerId cur_player = -1;															 ///< Actor or chance sentinel.
@@ -123,6 +100,7 @@ namespace texas::games::hunl
 		/** @brief Compares all state fields used for memoization. */
 		bool operator==(const MemoKey& other) const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Classifies a game state as non-terminal, fold or showdown. */
 	TerminalKind classify_terminal_kind(const HUNLState& state);
@@ -132,11 +110,13 @@ namespace texas::games::hunl
 namespace std
 {
 
+#pragma pack(push, 8)
 	template <>
 	struct hash<texas::MemoKey>
 	{
 		/** @brief Hashes a memo key consistently with its equality operator. */
 		std::size_t operator()(const texas::MemoKey& key) const noexcept;
 	};
+#pragma pack(pop)
 
 } // namespace std

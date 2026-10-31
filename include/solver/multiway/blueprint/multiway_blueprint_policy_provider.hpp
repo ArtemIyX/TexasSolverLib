@@ -31,6 +31,7 @@ namespace texas::solver::multiway
 
 	// Public-only identity inputs for one bounded missing-infoset sample.
 	/** Bounded public-state sample retained to diagnose a blueprint lookup miss. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintLookupDiagnostic
 	{
 		MultiwayBlueprintLookupStatus status = MultiwayBlueprintLookupStatus::Missing;
@@ -66,8 +67,10 @@ namespace texas::solver::multiway
 		std::uint8_t legal_action_count = 0U;
 		std::array<MultiwayActionDescriptor, MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_ACTIONS> legal_actions{};
 	};
+#pragma pack(pop)
 
 	/** Aggregates lookup outcomes and deterministic diagnostic samples. */
+#pragma pack(push, 8)
 	struct MultiwayBlueprintLookupAudit
 	{
 		std::uint64_t lookup_hits = 0U;
@@ -97,6 +100,7 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, MULTIWAY_MAX_LOOKUP_DIAGNOSTIC_SAMPLES> diagnostic_sample_priorities_{};
 		std::vector<MultiwayBlueprintLookupDiagnostic> diagnostic_samples_;
 	};
+#pragma pack(pop)
 
 	// Verified mapped shards keep serialized rows in the OS page cache. Row
 	// offsets are sparse and bounded; strategy lookup decodes into caller scratch.

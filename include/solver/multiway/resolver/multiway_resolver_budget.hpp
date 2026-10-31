@@ -12,6 +12,7 @@ namespace texas::solver::multiway
 {
 
 	/** Deadline reserve and bounded batch, trajectory, and row limits. */
+#pragma pack(push, 8)
 	struct MultiwayResolverBudgetConfig
 	{
 		std::chrono::steady_clock::time_point external_deadline{};
@@ -24,6 +25,7 @@ namespace texas::solver::multiway
 		/** Checks deadline and capacity limits for a resolver request. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Reason a request-local budget checkpoint allows or stops further search. */
 	enum class MultiwayResolverBudgetCheckpoint : std::uint8_t

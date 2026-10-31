@@ -19,6 +19,7 @@ namespace
 
 	constexpr std::array<texas::Probability, 3> kBlueprint = { 0.2, 0.3, 0.5 };
 
+#pragma pack(push, 8)
 	struct ContinuationProviderProbe
 	{
 		texas::MultiwayContinuationLeafData data{};
@@ -26,6 +27,7 @@ namespace
 		std::size_t calls = 0U;
 		texas::MultiwayLeafEvaluationRequest observed{};
 	};
+#pragma pack(pop)
 
 	bool provide_continuation_leaf(
 		const texas::MultiwayLeafEvaluationRequest& request,

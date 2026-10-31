@@ -21,6 +21,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Schema versions for bucket, blueprint, and checkpoint artifacts. */
+#pragma pack(push, 8)
 	struct MultiwayArtifactSchemaVersions
 	{
 		std::uint32_t bucket_artifact = 0U;
@@ -34,8 +35,10 @@ namespace texas::solver::multiway
 			return bucket_artifact == other.bucket_artifact && blueprint_artifact == other.blueprint_artifact && checkpoint_artifact == other.checkpoint_artifact;
 		}
 	};
+#pragma pack(pop)
 
 	/** Binary, model, workflow, and artifact schema identity for evidence. */
+#pragma pack(push, 8)
 	struct MultiwayProducerIdentity
 	{
 		std::uint32_t schema_version = MULTIWAY_EVIDENCE_SCHEMA_VERSION;
@@ -59,8 +62,10 @@ namespace texas::solver::multiway
 			return schema_version == other.schema_version && source_commit == other_source_commit && binary_dirty_state == other.binary_dirty_state && build_configuration == other.build_configuration && compiler_identity == other.compiler_identity && model_identity == other.model_identity && workflow_config_fingerprint == other.workflow_config_fingerprint && artifact_schemas == other.artifact_schemas;
 		}
 	};
+#pragma pack(pop)
 
 	/** Schema, profile kind, and producer metadata shared by evidence reports. */
+#pragma pack(push, 8)
 	struct MultiwayEvidenceHeader
 	{
 		std::uint32_t schema_version = 0U;
@@ -70,6 +75,7 @@ namespace texas::solver::multiway
 		/** Checks the header against the expected report schema version. */
 		void validate(std::uint32_t expected_schema_version) const;
 	};
+#pragma pack(pop)
 
 	/** Rejects producer metadata that differs from the expected identity. */
 	void validate_matching_producer_identity(

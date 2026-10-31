@@ -42,11 +42,13 @@ namespace texas::core
 		T* allocate(std::size_t count = 1);
 
 	private:
+#pragma pack(push, 8)
 		struct Block
 		{
 			std::vector<std::byte> storage;
 			std::size_t used = 0;
 		};
+#pragma pack(pop)
 
 		static constexpr std::size_t kDefaultBlockSize = 4096;
 

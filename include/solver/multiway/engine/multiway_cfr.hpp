@@ -16,6 +16,7 @@ namespace texas::solver::multiway
 {
 
 	/** Player count and merge determinism settings for CFR updates. */
+#pragma pack(push, 8)
 	struct MultiwayCFRConfig
 	{
 		std::uint8_t player_count = 2;
@@ -24,8 +25,10 @@ namespace texas::solver::multiway
 		/** Checks that player count and supported update settings are valid. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Node value, reach weights, and per-action regret/strategy deltas. */
+#pragma pack(push, 8)
 	struct MultiwayCFRUpdate
 	{
 		double node_value = 0.0;
@@ -34,11 +37,13 @@ namespace texas::solver::multiway
 		std::vector<double> regret_deltas;
 		std::vector<double> strategy_deltas;
 	};
+#pragma pack(pop)
 
 	// The importance ratio is explicit: values supplied to this update are the
 	// continuation estimator for one sampled opponent/chance trajectory, not
 	// full-tree action values.  `sampling_reach` is the probability of sampling
 	// that trajectory under the proposal distribution.
+#pragma pack(push, 8)
 	struct MultiwayExternalSamplingRequest
 	{
 		std::vector<Probability> player_reaches;
@@ -49,6 +54,7 @@ namespace texas::solver::multiway
 		std::vector<Probability> strategy;
 		std::vector<Value> sampled_action_values;
 	};
+#pragma pack(pop)
 
 	// Constructs an update request from the compiled private-deal proposal
 	// contract. This prevents traversal code from reconstructing conditioned
@@ -78,6 +84,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Sampling method, uncertainty, and model metadata for a quality metric. */
+#pragma pack(push, 8)
 	struct MultiwayQualityDiagnostics
 	{
 		MultiwayMetricMethod method = MultiwayMetricMethod::ExactEnumeration;
@@ -93,8 +100,10 @@ namespace texas::solver::multiway
 		std::string policy_version;
 		std::string model_version;
 	};
+#pragma pack(pop)
 
 	/** Profile values, best responses, improvements, and NashConv diagnostics. */
+#pragma pack(push, 8)
 	struct MultiwayNashConv
 	{
 		std::vector<Value> profile_values;
@@ -103,6 +112,7 @@ namespace texas::solver::multiway
 		Value value = 0.0;
 		MultiwayQualityDiagnostics diagnostics;
 	};
+#pragma pack(pop)
 
 	// Product of chance reach and every seat except traverser. This deliberately
 	// has no "other player" shortcut and is valid for two through six seats.

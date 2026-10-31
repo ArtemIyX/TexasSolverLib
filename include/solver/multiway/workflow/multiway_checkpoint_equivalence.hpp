@@ -14,6 +14,7 @@ namespace texas::solver::multiway
 {
 
 	/** Deterministic settings and coverage from one training run. */
+#pragma pack(push, 8)
 	struct MultiwayEquivalenceRunEvidence
 	{
 		MultiwayProducerIdentity producer{};
@@ -30,8 +31,10 @@ namespace texas::solver::multiway
 		/** Checks producer identity, completed work, and run fingerprints. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Blueprint files and run evidence to compare after checkpoint resume. */
+#pragma pack(push, 8)
 	struct MultiwayCheckpointEquivalenceRequest
 	{
 		std::filesystem::path continuous_blueprint;
@@ -39,8 +42,10 @@ namespace texas::solver::multiway
 		MultiwayEquivalenceRunEvidence continuous{};
 		MultiwayEquivalenceRunEvidence resumed{};
 	};
+#pragma pack(pop)
 
 	/** Per-property equality results and artifact bytes/hashes for a comparison. */
+#pragma pack(push, 8)
 	struct MultiwayCheckpointEquivalenceReport
 	{
 		std::uint32_t schema_version = MULTIWAY_CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION;
@@ -70,6 +75,7 @@ namespace texas::solver::multiway
 		/** Checks schema, evidence identity, and predicate consistency. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Compares bytes, hashes, metadata, coverage, and deterministic run state. */
 	[[nodiscard]] MultiwayCheckpointEquivalenceReport compare_multiway_checkpoints(

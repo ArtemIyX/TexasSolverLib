@@ -37,6 +37,7 @@ namespace
 		return config;
 	}
 
+#pragma pack(push, 8)
 	struct InjectedLeafContext
 	{
 		std::uint32_t calls = 0;
@@ -46,6 +47,7 @@ namespace
 		bool received_private_deal = true;
 		bool received_provenance = true;
 	};
+#pragma pack(pop)
 
 	bool injected_zero_sum_leaf(
 		void* raw_context,
@@ -131,10 +133,12 @@ namespace
 		return true;
 	}
 
+#pragma pack(push, 8)
 	struct DeadlineAwareLeafContext
 	{
 		bool received_deadline = false;
 	};
+#pragma pack(pop)
 
 	bool deadline_aware_slow_leaf(
 		void* raw_context,

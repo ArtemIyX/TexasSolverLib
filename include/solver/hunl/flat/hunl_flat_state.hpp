@@ -5,6 +5,7 @@
  */
 
 #include "games/hunl_flat_graph.hpp"
+#include "solver/hunl/flat/hunl_flat_types.hpp"
 #include "solver/hunl/bucket/hunl_bucket_map.hpp"
 #include "util/aligned_allocator.hpp"
 
@@ -28,21 +29,8 @@ namespace texas::solver::hunl
 	/** @brief Forward declaration of the flat information-set value table. */
 	class HUNLFlatInfosetTable;
 
-	/** @brief Memory order used for an information set's bucket/action values. */
-	enum class HUNLFlatValueLayout : std::uint8_t
-	{
-		InfosetHandAction = 0, ///< Values laid out by hand, then action.
-		InfosetActionHand = 1, ///< Values laid out by action, then hand.
-	};
-
-	/** @brief Scalar precision used for flat regret and strategy storage. */
-	enum class HUNLFlatStoragePrecision : std::uint8_t
-	{
-		Float64 = 0, ///< Store values as double precision.
-		Float32 = 1, ///< Store values as single precision.
-	};
-
 	/** @brief Contiguous storage offsets and dimensions for one information set. */
+#pragma pack(push, 8)
 	struct HUNLFlatInfosetTableMeta
 	{
 		InfosetId id{};						  ///< Graph information-set ID.
@@ -56,15 +44,19 @@ namespace texas::solver::hunl
 		PlayerId player = -1;				  ///< Player owning the information set.
 		std::uint8_t action_count = 0;		  ///< Number of actions at this information set.
 	};
+#pragma pack(pop)
 
 	/** @brief Half-open flat-array range [begin, end). */
+#pragma pack(push, 8)
 	struct HUNLFlatRange
 	{
 		std::size_t begin = 0; ///< First included index.
 		std::size_t end = 0;   ///< One past the last included index.
 	};
+#pragma pack(pop)
 
 	/** @brief Per-worker partitions across infosets, buckets, values, nodes and depths. */
+#pragma pack(push, 8)
 	struct HUNLFlatWorkerAssignment
 	{
 		std::uint32_t worker_index = 0;					 ///< Worker assigned these ranges.
@@ -76,6 +68,7 @@ namespace texas::solver::hunl
 		std::vector<HUNLFlatRange> depth_reduce_ranges;	 ///< Reduction ranges by depth.
 		std::vector<std::uint64_t> depth_backward_costs; ///< Estimated backward work by depth.
 	};
+#pragma pack(pop)
 
 	static_assert(std::is_trivially_copyable_v<HUNLFlatRange>, "HUNLFlatRange should stay trivially copyable");
 	static_assert(std::is_trivially_copyable_v<HUNLFlatInfosetTableMeta>,
@@ -86,6 +79,7 @@ namespace texas::solver::hunl
 	#pragma warning(disable : 4324)
 #endif
 	/** @brief Cache-line-aligned temporary arrays owned by one flat solver worker. */
+#pragma pack(push, 8)
 	struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch
 	{
 		HUNLAlignedVector<double> player0_reach;								   ///< Temporary player-zero reach values.
@@ -113,11 +107,15 @@ namespace texas::solver::hunl
 			std::size_t max_child_count,
 			std::size_t max_bucket_count);
 	};
+#pragma pack(pop)
+	static_assert(alignof(HUNLFlatWorkerScratch) == HUNL_CACHELINE_BYTES,
+		"HUNLFlatWorkerScratch should be cache-line aligned");
 #if defined(_MSC_VER)
 	#pragma warning(pop)
 #endif
 
 	/** @brief Partition of flat graph arrays into worker assignments. */
+#pragma pack(push, 8)
 	struct HUNLFlatParallelPlan
 	{
 		std::vector<HUNLFlatWorkerAssignment> workers; ///< Assignment for each worker index.
@@ -134,8 +132,10 @@ namespace texas::solver::hunl
 			const HUNLFlatInfosetTable& infoset_table,
 			std::size_t worker_count);
 	};
+#pragma pack(pop)
 
 	/** @brief Estimated memory use of graph, solver and worker storage. */
+#pragma pack(push, 8)
 	struct HUNLFlatMemoryEstimate
 	{
 		std::uint64_t graph_bytes = 0;			///< Graph and graph-index storage.
@@ -148,8 +148,10 @@ namespace texas::solver::hunl
 		/** @brief Sums the estimate components. */
 		[[nodiscard]] std::uint64_t total_bytes() const noexcept;
 	};
+#pragma pack(pop)
 
 	/** @brief Controls which buffers contribute to a flat solver memory estimate. */
+#pragma pack(push, 8)
 	struct HUNLFlatMemoryEstimateOptions
 	{
 		bool include_solver_buffers = true; ///< Include solver-wide temporary storage.
@@ -159,6 +161,7 @@ namespace texas::solver::hunl
 		std::size_t max_bucket_count = 0;	///< Optional maximum bucket fanout for scratch sizing.
 		std::uint64_t auxiliary_bytes = 0;	///< Additional caller-provided bytes.
 	};
+#pragma pack(pop)
 
 	/** @brief Estimates memory required by a flat graph and solver configuration. */
 	[[nodiscard]] HUNLFlatMemoryEstimate estimate_memory(

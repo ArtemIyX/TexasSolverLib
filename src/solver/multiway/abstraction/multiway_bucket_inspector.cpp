@@ -24,6 +24,7 @@ namespace texas::solver::multiway
 		constexpr std::uint32_t kLeafTables = 4096U;
 		constexpr std::uint64_t kHeaderBytes = 116U;
 
+#pragma pack(push, 8)
 		struct Range
 		{
 			std::uint64_t begin = 0U;
@@ -32,7 +33,9 @@ namespace texas::solver::multiway
 			core::Street street = core::Street::Flop;
 			std::uint64_t street_index = 0U;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct Reader
 		{
 			std::ifstream input;
@@ -80,6 +83,7 @@ namespace texas::solver::multiway
 				return value;
 			}
 		};
+#pragma pack(pop)
 
 		std::uint64_t get_u64(std::ifstream& input)
 		{
@@ -122,11 +126,13 @@ namespace texas::solver::multiway
 			}
 		}
 
+#pragma pack(push, 8)
 		struct Header
 		{
 			MultiwayModelIdentity identity{};
 			std::uint32_t table_count = 0U;
 		};
+#pragma pack(pop)
 
 		Header read_header(const std::filesystem::path& path, const MultiwayModelIdentity& expected)
 		{
@@ -169,6 +175,7 @@ namespace texas::solver::multiway
 			return expected == file_bytes;
 		}
 
+#pragma pack(push, 8)
 		struct LeafResult
 		{
 			std::uint64_t tables = 0U;
@@ -178,6 +185,7 @@ namespace texas::solver::multiway
 			std::exception_ptr error{};
 			std::uint64_t error_table = std::numeric_limits<std::uint64_t>::max();
 		};
+#pragma pack(pop)
 
 		void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept
 		{
@@ -254,11 +262,26 @@ namespace texas::solver::multiway
 						std::vector<std::uint8_t>(board.begin(), board.begin() + board_size)))
 					throw std::invalid_argument("bucket board is not canonical");
 				if (street == static_cast<std::uint8_t>(core::Street::Flop))
+				{
 					++result.flop_tables;
+					if (result.flop_bucket_count != 0U && result.flop_bucket_count != buckets)
+						throw std::invalid_argument("bucket artifact has inconsistent flop bucket counts");
+					result.flop_bucket_count = buckets;
+				}
 				else if (street == static_cast<std::uint8_t>(core::Street::Turn))
+				{
 					++result.turn_tables;
+					if (result.turn_bucket_count != 0U && result.turn_bucket_count != buckets)
+						throw std::invalid_argument("bucket artifact has inconsistent turn bucket counts");
+					result.turn_bucket_count = buckets;
+				}
 				else if (street == static_cast<std::uint8_t>(core::Street::River))
+				{
 					++result.river_tables;
+					if (result.river_bucket_count != 0U && result.river_bucket_count != buckets)
+						throw std::invalid_argument("bucket artifact has inconsistent river bucket counts");
+					result.river_bucket_count = buckets;
+				}
 				else
 					throw std::invalid_argument("bucket artifact contains a non-postflop table");
 				for (std::uint32_t i = 0U; i < MULTIWAY_HOLE_COMBINATION_COUNT; ++i)
@@ -333,11 +356,26 @@ namespace texas::solver::multiway
 			if (!buckets)
 				throw std::invalid_argument("bucket count is zero");
 			if (street == static_cast<int>(core::Street::Flop))
+			{
 				++result.flop_tables;
+				if (result.flop_bucket_count != 0U && result.flop_bucket_count != buckets)
+					throw std::invalid_argument("bucket artifact has inconsistent flop bucket counts");
+				result.flop_bucket_count = buckets;
+			}
 			else if (street == static_cast<int>(core::Street::Turn))
+			{
 				++result.turn_tables;
+				if (result.turn_bucket_count != 0U && result.turn_bucket_count != buckets)
+					throw std::invalid_argument("bucket artifact has inconsistent turn bucket counts");
+				result.turn_bucket_count = buckets;
+			}
 			else if (street == static_cast<int>(core::Street::River))
+			{
 				++result.river_tables;
+				if (result.river_bucket_count != 0U && result.river_bucket_count != buckets)
+					throw std::invalid_argument("bucket artifact has inconsistent river bucket counts");
+				result.river_bucket_count = buckets;
+			}
 			else
 				throw std::invalid_argument("bucket artifact contains a non-postflop table");
 			core::fingerprint::append_u8(result.payload_hash, static_cast<std::uint8_t>(street));
@@ -393,11 +431,26 @@ namespace texas::solver::multiway
 			{
 				const auto& table = tables[table_index];
 				if (table.street() == core::Street::Flop)
+				{
 					++result.flop_tables;
+					if (result.flop_bucket_count != 0U && result.flop_bucket_count != table.bucket_count())
+						throw std::invalid_argument("bucket artifact has inconsistent flop bucket counts");
+					result.flop_bucket_count = table.bucket_count();
+				}
 				else if (table.street() == core::Street::Turn)
+				{
 					++result.turn_tables;
+					if (result.turn_bucket_count != 0U && result.turn_bucket_count != table.bucket_count())
+						throw std::invalid_argument("bucket artifact has inconsistent turn bucket counts");
+					result.turn_bucket_count = table.bucket_count();
+				}
 				else if (table.street() == core::Street::River)
+				{
 					++result.river_tables;
+					if (result.river_bucket_count != 0U && result.river_bucket_count != table.bucket_count())
+						throw std::invalid_argument("bucket artifact has inconsistent river bucket counts");
+					result.river_bucket_count = table.bucket_count();
+				}
 				else
 					throw std::invalid_argument("bucket artifact contains a non-postflop table");
 				core::fingerprint::append_u8(result.payload_hash, static_cast<std::uint8_t>(table.street()));

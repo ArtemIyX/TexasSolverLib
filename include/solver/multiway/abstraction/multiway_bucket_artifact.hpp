@@ -25,6 +25,7 @@ namespace texas::solver::multiway
 	// Versioned deterministic baseline used until trained clustering artifacts are
 	// introduced. The counts are part of the model identity through blueprint config.
 	/** @brief Deterministic bucket counts and feature version for baseline artifacts. */
+#pragma pack(push, 8)
 	struct MultiwayBucketBaselineProfile
 	{
 		std::uint32_t schema_version = MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION;
@@ -40,10 +41,12 @@ namespace texas::solver::multiway
 		/** @brief Returns bucket count for street. */
 		[[nodiscard]] std::uint32_t bucket_count(core::Street street) const;
 	};
+#pragma pack(pop)
 
 	// Compact, allocation-free features calculated for a live hole pair on a
 	// canonical sorted board. They are stable artifact inputs, not a learned model.
 	/** @brief Compact card and board features used to assign a baseline bucket. */
+#pragma pack(push, 8)
 	struct MultiwayBucketFeatures
 	{
 		std::uint16_t board_rank_mask = 0U;
@@ -56,13 +59,16 @@ namespace texas::solver::multiway
 		std::uint8_t hole_pairs_board = 0U;
 		std::uint8_t hole_suit_matches_board = 0U;
 	};
+#pragma pack(pop)
 
 	/** @brief Street and canonical board requested from a bucket artifact. */
+#pragma pack(push, 8)
 	struct MultiwayBucketBoardRequest
 	{
 		core::Street street = core::Street::Preflop;
 		std::vector<std::uint8_t> canonical_board;
 	};
+#pragma pack(pop)
 
 	/** @brief Checks a vector board's street length, card validity and canonical order. */
 	[[nodiscard]] bool is_multiway_canonical_board(
@@ -109,6 +115,11 @@ namespace texas::solver::multiway
 	void validate_multiway_bucket_coverage(
 		const MultiwayBucketRegistry& registry,
 		const std::vector<MultiwayBucketBoardRequest>& required_boards);
+	/** @brief Requires registry identity and every table's bucket count to match the requested profile. */
+	void validate_multiway_bucket_registry_profile(
+		const MultiwayBucketRegistry& registry,
+		const MultiwayModelIdentity& expected_identity,
+		const MultiwayBucketBaselineProfile& expected_profile);
 
 	/** @brief Serializes a registry into its versioned binary representation. */
 	[[nodiscard]] std::vector<std::uint8_t> serialize_multiway_bucket_registry(
@@ -132,11 +143,15 @@ namespace texas::solver::multiway
 	};
 
 	/** @brief Metadata and payload hashes observed while inspecting an artifact. */
+#pragma pack(push, 8)
 	struct MultiwayBucketArtifactInspection
 	{
 		std::uint64_t flop_tables = 0U;
 		std::uint64_t turn_tables = 0U;
 		std::uint64_t river_tables = 0U;
+		std::uint32_t flop_bucket_count = 0U;
+		std::uint32_t turn_bucket_count = 0U;
+		std::uint32_t river_bucket_count = 0U;
 		std::uint64_t live_assignments = 0U;
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t parallel_payload_hash = 0U;
@@ -144,13 +159,16 @@ namespace texas::solver::multiway
 		MultiwayBucketInspectionHashMode hash_mode = MultiwayBucketInspectionHashMode::Legacy;
 		MultiwayModelIdentity identity{};
 	};
+#pragma pack(pop)
 
 	/** @brief Thread and hash settings for artifact inspection. */
+#pragma pack(push, 8)
 	struct MultiwayBucketInspectionOptions
 	{
 		std::uint32_t requested_threads = 0U;
 		MultiwayBucketInspectionHashMode hash_mode = MultiwayBucketInspectionHashMode::Parallel;
 	};
+#pragma pack(pop)
 
 	/** @brief Default number of tables between progress callbacks. */
 	inline constexpr std::uint64_t MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL = 100000U;

@@ -4,8 +4,8 @@ endif()
 
 file(READ "${SOURCE_DIR}/examples/CMakeLists.txt" cmake_text)
 file(READ "${SOURCE_DIR}/examples/multiway_workflow_main.cpp" source_text)
-file(READ "${SOURCE_DIR}/src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp" trainer_text)
-file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_training_report.cpp" report_text)
+file(READ "${SOURCE_DIR}/src/solver/multiway/blueprint/multiway_blueprint_export.cpp" trainer_text)
+file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_training_report_json.cpp" report_text)
 file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_f1_acceptance.cpp" report_reader_text)
 file(READ "${SOURCE_DIR}/tests/test_multiway_blueprint_training.cpp" export_test_text)
 file(READ "${SOURCE_DIR}/scripts/run/run_multiway_ram_1000.ps1" runner_text)
@@ -141,15 +141,19 @@ foreach(runner_configuration_field "DynamicChunkSize" "--dynamic-chunk-size" "Pl
 endforeach()
 
 string(FIND "${trainer_text}" "acquire_export_lease()" lease_position)
-string(FIND "${trainer_text}" "const auto plan = make_export_plan(" plan_position)
-string(FIND "${trainer_text}" "const auto before_export = working_set_monitor_.export_process_observer" process_snapshot_position)
+string(FIND "${trainer_text}" "prepare_full_policy_export_plan(context, path);" plan_position)
+string(FIND "${trainer_text}" "plan = make_export_plan(lease, identity_, training, order);" plan_build_position)
+string(FIND "${trainer_text}" "before_export = working_set_monitor_.export_process_observer" process_snapshot_position)
 string(FIND "${trainer_text}" "evaluate_multiway_export_process_gate(" process_gate_position)
 string(FIND "${trainer_text}" "evaluate_multiway_export_system_gate(" system_gate_position)
-string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan" writer_position)
+string(FIND "${trainer_text}" "enforce_full_policy_export_gates(context, path);" gate_call_position)
+string(FIND "${trainer_text}" "setup_full_policy_export_writer(context, path);" writer_call_position)
+string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintStreamWriter>(" writer_position)
 string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintShardedStreamWriter>(" sharded_writer_position)
-if(lease_position EQUAL -1 OR plan_position EQUAL -1 OR process_snapshot_position EQUAL -1 OR
-   process_gate_position EQUAL -1 OR system_gate_position EQUAL -1 OR writer_position EQUAL -1 OR sharded_writer_position EQUAL -1 OR
-   lease_position GREATER plan_position OR plan_position GREATER process_snapshot_position OR
+if(lease_position EQUAL -1 OR plan_position EQUAL -1 OR plan_build_position EQUAL -1 OR process_snapshot_position EQUAL -1 OR
+   process_gate_position EQUAL -1 OR system_gate_position EQUAL -1 OR gate_call_position EQUAL -1 OR writer_call_position EQUAL -1 OR
+   writer_position EQUAL -1 OR sharded_writer_position EQUAL -1 OR
+   lease_position GREATER plan_position OR plan_position GREATER gate_call_position OR gate_call_position GREATER writer_call_position OR
    process_snapshot_position GREATER process_gate_position OR process_gate_position GREATER writer_position OR
    system_gate_position GREATER writer_position OR process_gate_position GREATER sharded_writer_position OR
    system_gate_position GREATER sharded_writer_position)

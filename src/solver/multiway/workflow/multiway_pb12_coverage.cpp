@@ -20,6 +20,7 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+#pragma pack(push, 8)
 		struct CapturedAction
 		{
 			PlayerId actor;
@@ -27,6 +28,7 @@ namespace texas::solver::multiway
 			int target;
 			std::uint64_t menu_id;
 		};
+#pragma pack(pop)
 
 		constexpr std::array<CapturedAction, 7U> kPrefix = { {
 			{ 0, games::multiway::MultiwayAction::Bet, 450, 16356999006715591126ULL },
@@ -53,11 +55,13 @@ namespace texas::solver::multiway
 			} },
 		} };
 
+#pragma pack(push, 8)
 		struct CoverageTree
 		{
 			std::vector<MultiwayPublicStateDescriptor> admission_order;
 			std::array<MultiwayPublicStateDescriptor, MULTIWAY_PB12_COVERAGE_KEYS.size()> targets{};
 		};
+#pragma pack(pop)
 
 		MultiwayPublicStateDescriptor advance(
 			const MultiwayPublicStateDescriptor& parent,

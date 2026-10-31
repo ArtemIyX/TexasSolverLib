@@ -68,9 +68,53 @@ foreach(_texassolver_option IN LISTS _texassolver_evaluator_options)
 endforeach()
 unset(_texassolver_evaluator_options)
 
+add_library(texas_types INTERFACE)
+add_library(TexasSolver::types ALIAS texas_types)
+set_target_properties(texas_types PROPERTIES EXPORT_NAME types)
+target_include_directories(texas_types
+    INTERFACE
+        $<BUILD_INTERFACE:${TEXASSOLVER_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+target_compile_features(texas_types INTERFACE cxx_std_17)
+
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
 texassolver_configure_core_target(texas)
+target_link_libraries(texas PUBLIC texas_types)
+
+if (TEXASSOLVER_ENABLE_AVX2_KERNELS)
+    if (MSVC)
+        set_source_files_properties(
+            "${TEXASSOLVER_SOURCE_DIR}/src/util/simd.cpp"
+            "${TEXASSOLVER_SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_simd.cpp"
+            PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x86|i[3-6]86)$" OR
+            CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "^(X86|x64)$")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp"
+                PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning.cpp"
+                PROPERTIES COMPILE_DEFINITIONS TEXASSOLVER_COMPACT_PRUNE_AVX2_COMPILED=1)
+        endif()
+    elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        set_source_files_properties(
+            "${TEXASSOLVER_SOURCE_DIR}/src/util/simd.cpp"
+            "${TEXASSOLVER_SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_simd.cpp"
+            PROPERTIES COMPILE_OPTIONS "-mavx2")
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x86|i[3-6]86)$")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp"
+                PROPERTIES COMPILE_OPTIONS "-mavx2")
+            set_source_files_properties(
+                "${TEXASSOLVER_SOURCE_DIR}/src/solver/multiway/engine/multiway_compact_pruning.cpp"
+                PROPERTIES COMPILE_DEFINITIONS TEXASSOLVER_COMPACT_PRUNE_AVX2_COMPILED=1)
+        endif()
+    else()
+        message(WARNING "TEXASSOLVER_ENABLE_AVX2_KERNELS is unsupported by this compiler; using baseline kernels")
+    endif()
+endif()
 
 if (TEXASSOLVER_ENABLE_LOGGING)
     add_library(texas_logging STATIC ${TEXASSOLVER_APPLICATION_SOURCES})
@@ -154,6 +198,10 @@ if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
     add_library(TexasSolver::hunl_fixed_research ALIAS texas_hunl_fixed_research)
 endif()
+
+install(TARGETS texas_types
+    EXPORT TexasSolverTargets
+)
 
 install(TARGETS texas
     EXPORT TexasSolverTargets

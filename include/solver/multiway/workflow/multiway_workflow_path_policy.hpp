@@ -20,6 +20,7 @@ namespace texas::solver::multiway
 	};
 
 	/** Root directory and overwrite policy used to authorize workflow paths. */
+#pragma pack(push, 8)
 	struct MultiwayWorkflowPathPolicy
 	{
 		std::filesystem::path root;
@@ -28,6 +29,7 @@ namespace texas::solver::multiway
 		/** Checks root configuration and path authorization settings. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Creates the repository default workflow path boundary. */
 	[[nodiscard]] MultiwayWorkflowPathPolicy make_default_multiway_workflow_path_policy();

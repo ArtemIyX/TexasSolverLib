@@ -5,8 +5,13 @@
 #include <cstdint>
 #include <limits>
 
+#include "util/restrict.hpp"
+
 #if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 	#include <immintrin.h>
+#endif
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+	#include <intrin.h>
 #endif
 
 namespace texas::util
@@ -61,7 +66,7 @@ namespace texas::util
 		inline double sum_row_chunk(const double* values, bool aligned) noexcept
 		{
 	#if defined(__AVX2__)
-			return aligned ? _mm256_cvtsd_f64(_mm256_castpd256_pd128(_mm256_load_pd(values))) : _mm256_cvtsd_f64(_mm256_castpd256_pd128(_mm256_loadu_pd(values)));
+			return aligned ? _mm_cvtsd_f64(_mm256_castpd256_pd128(_mm256_load_pd(values))) : _mm_cvtsd_f64(_mm256_castpd256_pd128(_mm256_loadu_pd(values)));
 	#else
 			return aligned ? _mm_cvtsd_f64(_mm_load_pd(values)) : _mm_cvtsd_f64(_mm_loadu_pd(values));
 	#endif
@@ -368,7 +373,27 @@ namespace texas::util
 #if defined(__aarch64__) || defined(_M_ARM64)
 		return SimdBackend::Neon;
 #elif defined(__AVX2__)
-		return SimdBackend::Avx2;
+		bool supported = false;
+	#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+		int cpu_info[4] = {};
+		__cpuidex(cpu_info, 1, 0);
+		const bool osxsave = (cpu_info[2] & (1 << 27)) != 0;
+		const bool avx = (cpu_info[2] & (1 << 28)) != 0;
+		if (osxsave && avx)
+		{
+			const auto xcr0 = _xgetbv(0);
+			const bool ymm_state = (xcr0 & 0x6) == 0x6;
+			__cpuidex(cpu_info, 0, 0);
+			if (cpu_info[0] >= 7)
+			{
+				__cpuidex(cpu_info, 7, 0);
+				supported = ymm_state && (cpu_info[1] & (1 << 5)) != 0;
+			}
+		}
+	#elif defined(__GNUC__) || defined(__clang__)
+		supported = __builtin_cpu_supports("avx2") != 0;
+	#endif
+		return supported ? SimdBackend::Avx2 : SimdBackend::Sse2;
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return SimdBackend::Sse2;
 #else
@@ -594,7 +619,16 @@ namespace texas::util
 	void discount_regrets(double* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept
 	{
 #if defined(__AVX2__)
-		discount_regrets_avx2(regrets, len, pos_scale, neg_scale);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			discount_regrets_avx2(regrets, len, pos_scale, neg_scale);
+			return;
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		discount_regrets_sse2(regrets, len, pos_scale, neg_scale);
+	#else
+		discount_regrets_scalar(regrets, len, pos_scale, neg_scale);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		discount_regrets_sse2(regrets, len, pos_scale, neg_scale);
 #else
@@ -605,7 +639,16 @@ namespace texas::util
 	void discount_strategy_sum(double* strategy, std::size_t len, double strat_scale) noexcept
 	{
 #if defined(__AVX2__)
-		discount_strategy_sum_avx2(strategy, len, strat_scale);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			discount_strategy_sum_avx2(strategy, len, strat_scale);
+			return;
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		discount_strategy_sum_sse2(strategy, len, strat_scale);
+	#else
+		discount_strategy_sum_scalar(strategy, len, strat_scale);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		discount_strategy_sum_sse2(strategy, len, strat_scale);
 #else
@@ -616,7 +659,15 @@ namespace texas::util
 	double positive_regrets_and_total(const double* regrets, double* out_positive, std::size_t len) noexcept
 	{
 #if defined(__AVX2__)
-		return positive_regrets_and_total_avx2(regrets, out_positive, len);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			return positive_regrets_and_total_avx2(regrets, out_positive, len);
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		return positive_regrets_and_total_sse2(regrets, out_positive, len);
+	#else
+		return positive_regrets_and_total_scalar(regrets, out_positive, len);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return positive_regrets_and_total_sse2(regrets, out_positive, len);
 #else
@@ -632,7 +683,16 @@ namespace texas::util
 		double opp_reach) noexcept
 	{
 #if defined(__AVX2__)
-		update_regret_sum_avx2(regret_sum, action_values, len, node_value, opp_reach);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			update_regret_sum_avx2(regret_sum, action_values, len, node_value, opp_reach);
+			return;
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		update_regret_sum_sse2(regret_sum, action_values, len, node_value, opp_reach);
+	#else
+		update_regret_sum_scalar(regret_sum, action_values, len, node_value, opp_reach);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		update_regret_sum_sse2(regret_sum, action_values, len, node_value, opp_reach);
 #else
@@ -672,7 +732,16 @@ namespace texas::util
 				break;
 		}
 #if defined(__AVX2__)
-		update_strategy_sum_avx2(strategy_sum, strategy, len, own_reach);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			update_strategy_sum_avx2(strategy_sum, strategy, len, own_reach);
+			return;
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		update_strategy_sum_sse2(strategy_sum, strategy, len, own_reach);
+	#else
+		update_strategy_sum_scalar(strategy_sum, strategy, len, own_reach);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		update_strategy_sum_sse2(strategy_sum, strategy, len, own_reach);
 #else
@@ -708,6 +777,19 @@ namespace texas::util
 				break;
 		}
 #if defined(__AVX2__)
+		if (detect_simd_backend() != SimdBackend::Avx2)
+		{
+			std::size_t i = 0;
+			for (; i + 1 < len; i += 2)
+			{
+				_mm_storeu_pd(out + i, _mm_loadu_pd(in + i));
+			}
+			for (; i < len; ++i)
+			{
+				out[i] = in[i];
+			}
+			return;
+		}
 		std::size_t i = 0;
 		const bool aligned = is_aligned_32(out) && is_aligned_32(in);
 		for (; i + 3 < len; i += 4)
@@ -801,7 +883,15 @@ namespace texas::util
 				break;
 		}
 #if defined(__AVX2__)
-		return dot_product_avx2(lhs, rhs, len);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			return dot_product_avx2(lhs, rhs, len);
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		return dot_product_sse2(lhs, rhs, len);
+	#else
+		return dot_product_scalar(lhs, rhs, len);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		return dot_product_sse2(lhs, rhs, len);
 #else
@@ -836,7 +926,7 @@ namespace texas::util
 			case 4:
 				return values[0] + values[1] + values[2] + values[3];
 			default:
-#if defined(__AVX2__)
+#if defined(__AVX2__) && defined(TEXASSOLVER_ENABLE_UNVALIDATED_AVX2_REDUCTIONS)
 			{
 				std::size_t i = 0;
 				__m256d sum = _mm256_setzero_pd();
@@ -903,7 +993,7 @@ namespace texas::util
 			case 4:
 				return values[0] * weights[0] + values[1] * weights[1] + values[2] * weights[2] + values[3] * weights[3];
 			default:
-#if defined(__AVX2__)
+#if defined(__AVX2__) && defined(TEXASSOLVER_ENABLE_UNVALIDATED_AVX2_REDUCTIONS)
 			{
 				std::size_t i = 0;
 				__m256d sum = _mm256_setzero_pd();
@@ -967,7 +1057,16 @@ namespace texas::util
 	void normalize(double* out, std::size_t len, double total) noexcept
 	{
 #if defined(__AVX2__)
-		normalize_avx2(out, len, total);
+		if (detect_simd_backend() == SimdBackend::Avx2)
+		{
+			normalize_avx2(out, len, total);
+			return;
+		}
+	#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+		normalize_sse2(out, len, total);
+	#else
+		normalize_scalar(out, len, total);
+	#endif
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 		normalize_sse2(out, len, total);
 #else

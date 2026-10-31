@@ -8,10 +8,12 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct EvaluationContext
 	{
 		std::vector<std::uint8_t> rotations;
 	};
+#pragma pack(pop)
 
 	bool evaluate_match(
 		const texas::MultiwayEvaluationMatchRequest& request,

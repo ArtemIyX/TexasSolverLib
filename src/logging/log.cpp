@@ -99,6 +99,7 @@ namespace texas::logging
 			spdlog::sink_ptr sink_;
 			std::atomic<bool> failed_{ false };
 		};
+#pragma pack(push, 8)
 		struct LoggingState
 		{
 			Config config{};
@@ -109,6 +110,9 @@ namespace texas::logging
 			mutable std::ofstream audit_file;
 			std::atomic<bool> enabled{ false };
 		};
+#pragma pack(pop)
+		static_assert(alignof(std::mutex) <= 8 && alignof(std::atomic<bool>) <= 8,
+			"packed LoggingState requires naturally aligned synchronization members");
 		std::mutex lifecycle_mutex;
 		std::unique_ptr<LoggingState> owner;
 		LoggingState* active = nullptr;

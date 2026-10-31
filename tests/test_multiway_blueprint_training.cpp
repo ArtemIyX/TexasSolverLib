@@ -123,6 +123,7 @@ namespace
 		return config.identity();
 	}
 
+#pragma pack(push, 8)
 	struct StreamingExportFixture
 	{
 		texas::MultiwayActionAbstraction abstraction;
@@ -145,14 +146,18 @@ namespace
 		{
 		}
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct ExportProcessObserverState
 	{
 		std::uint64_t before_bytes = 100U;
 		std::uint64_t after_bytes = 150U;
 		std::uint32_t calls = 0U;
 	};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 	struct ExportProgressState
 	{
 		std::uint64_t calls = 0U;
@@ -163,6 +168,7 @@ namespace
 		std::uint64_t last_flushes = 0U;
 		bool ordered = true;
 	};
+#pragma pack(pop)
 
 	void export_progress_observer(const texas::solver::multiway::MultiwayExternalExportProfile& profile,
 		std::uint64_t, void* context) noexcept
@@ -226,6 +232,7 @@ namespace
 		return result;
 	}
 
+#pragma pack(push, 8)
 	struct DisposableTestDirectory
 	{
 		std::filesystem::path path = std::filesystem::temp_directory_path()
@@ -237,6 +244,7 @@ namespace
 			std::filesystem::remove_all(path, error);
 		}
 	};
+#pragma pack(pop)
 
 } // namespace
 

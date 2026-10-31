@@ -18,6 +18,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct ResolverBaselineFixture
 	{
 		texas::MultiwayModelIdentity identity;
@@ -79,6 +80,7 @@ namespace
 			return config;
 		}
 	};
+#pragma pack(pop)
 
 	bool contains_action(
 		const std::vector<texas::MultiwayResolverActionProbability>& policy,
@@ -200,6 +202,7 @@ namespace
 			request.betting->contributions[seat] - request.betting->current_bet);
 	}
 
+#pragma pack(push, 8)
 	struct TraversalBaselineFixture
 	{
 		explicit TraversalBaselineFixture(std::size_t max_sparse_rows = 8U)
@@ -214,6 +217,7 @@ namespace
 		texas::MultiwayRootExternalSamplingTraversal traversal;
 		texas::MultiwayRootBatchRunner runner;
 	};
+#pragma pack(pop)
 
 } // namespace
 

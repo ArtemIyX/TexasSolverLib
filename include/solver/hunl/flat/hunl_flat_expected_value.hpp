@@ -16,14 +16,17 @@ namespace texas::solver::hunl
 {
 
 	/** @brief Non-owning row view over an exported flat average-strategy table. */
+#pragma pack(push, 8)
 	struct HUNLFlatAverageStrategyView
 	{
 		std::vector<const double*> rows_by_infoset;							 ///< Strategy row pointer indexed by information set.
 		const std::vector<HUNLFlatInfosetTableMeta>* meta = nullptr;		 ///< Row shape metadata owned by the source table.
 		HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction; ///< Memory order represented by row pointers.
 	};
+#pragma pack(pop)
 
 	/** @brief Owning average-strategy data and metadata for flat evaluation. */
+#pragma pack(push, 8)
 	struct HUNLFlatAverageStrategyTable
 	{
 		HUNLAlignedVector<double> values;									 ///< Contiguous strategy values.
@@ -33,6 +36,7 @@ namespace texas::solver::hunl
 		/** @brief Creates a non-owning view into this table's rows. */
 		[[nodiscard]] HUNLFlatAverageStrategyView view() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Terminal utility pair indexed by flat graph node. */
 	using HUNLFlatTerminalValueTable = std::vector<std::array<double, 2>>;

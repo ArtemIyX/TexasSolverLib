@@ -14,6 +14,7 @@ namespace texas::solver::multiway
 {
 
 	/** Target progress, peak capacities, throughput, and resource measurements. */
+#pragma pack(push, 8)
 	struct MultiwaySizingReport
 	{
 		MultiwayEvidenceHeader evidence{
@@ -42,6 +43,7 @@ namespace texas::solver::multiway
 		/** Checks schema, trajectory counts, throughput, and pass status. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** Derives sizing outcome metrics from config and training measurements. */
 	[[nodiscard]] MultiwaySizingReport make_multiway_sizing_report(

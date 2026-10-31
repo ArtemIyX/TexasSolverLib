@@ -30,12 +30,14 @@ namespace
 		return total;
 	}
 
+#pragma pack(push, 8)
 	struct BeliefRowSnapshot
 	{
 		std::array<double, texas::CANONICAL_HOLE_COMBINATION_COUNT> weights = {};
 		texas::CanonicalComboLegalMask legal_mask = {};
 		texas::MultiwayRangeBeliefMetadata metadata = {};
 	};
+#pragma pack(pop)
 
 	BeliefRowSnapshot snapshot(const texas::MultiwayRangeBeliefView& view)
 	{
@@ -108,6 +110,7 @@ namespace
 		return policy;
 	}
 
+#pragma pack(push, 8)
 	struct ObservationFixture
 	{
 		ObservationFixture()
@@ -119,6 +122,7 @@ namespace
 		texas::MultiwayBucketTable table;
 		texas::MultiwayBucketActionPolicy policy;
 	};
+#pragma pack(pop)
 
 } // namespace
 

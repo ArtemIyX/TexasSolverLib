@@ -56,12 +56,14 @@ namespace
 		return { { texas::Street::Flop, { 0U, 5U, 10U } } };
 	}
 
+#pragma pack(push, 8)
 	struct FutureFeatureFixture
 	{
 		texas::Street street;
 		std::vector<std::uint8_t> board;
 		std::array<std::uint8_t, 2> hole;
 	};
+#pragma pack(pop)
 
 	FutureFeatureFixture future_feature_fixture(std::uint8_t index)
 	{

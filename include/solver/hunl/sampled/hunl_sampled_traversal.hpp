@@ -22,6 +22,7 @@ namespace texas::solver::hunl
 {
 
 	/** @brief RNG, root, player, hand and iteration inputs for a sampled traversal. */
+#pragma pack(push, 8)
 	struct HUNLSampledTraversalRequest
 	{
 		PlayerId traversing_player = 0;
@@ -34,6 +35,7 @@ namespace texas::solver::hunl
 		std::size_t delta_capacity_hint = 4096;
 		std::optional<std::array<std::array<std::uint8_t, 2>, 2>> private_hole = std::nullopt;
 	};
+#pragma pack(pop)
 
 	/** @brief Traverses the sampled state graph and accumulates strategy deltas. */
 	class HUNLSampledTraversal

@@ -16,6 +16,7 @@ namespace texas::solver::multiway
 	struct MultiwayEvaluationResult;
 
 	/** @brief One observed betting state and action used to evaluate a menu. */
+#pragma pack(push, 8)
 	struct MultiwayActionCalibrationCase
 	{
 		MultiwayBettingSnapshot betting{};
@@ -23,8 +24,10 @@ namespace texas::solver::multiway
 		int observed_target = 0;
 		MultiwayActionAbstractionContext context{};
 	};
+#pragma pack(pop)
 
 	/** @brief Acceptance limits for action-menu calibration. */
+#pragma pack(push, 8)
 	struct MultiwayActionCalibrationLimits
 	{
 		std::size_t maximum_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
@@ -35,6 +38,7 @@ namespace texas::solver::multiway
 		/** @brief Validates all rate, action-count and resource limits. */
 		void validate() const;
 	};
+#pragma pack(pop)
 
 	/** @brief Optional callback that checks artifact coverage for a calibration case. */
 	using MultiwayActionCalibrationArtifactCoverageFn = bool (*)(
@@ -48,6 +52,7 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** @brief Branching, translation, artifact and runtime measurements for a profile. */
+#pragma pack(push, 8)
 	struct MultiwayActionCalibrationResult
 	{
 		std::uint64_t profile_identity = 0U;
@@ -81,6 +86,7 @@ namespace texas::solver::multiway
 			return cases == 0U ? 0.0 : static_cast<double>(artifact_miss_cases) / static_cast<double>(cases);
 		}
 	};
+#pragma pack(pop)
 
 	/** @brief Callback that converts calibration results to a scalar quality. */
 	using MultiwayActionCalibrationValueFn = double (*)(
@@ -88,11 +94,13 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** @brief Quality estimate and standard error for statistical comparison. */
+#pragma pack(push, 8)
 	struct MultiwayActionCalibrationQuality
 	{
 		double value = 0.0;
 		double standard_error = 0.0;
 	};
+#pragma pack(pop)
 
 	// Nash-convergence is a lower-is-better metric; calibration selection uses
 	// higher-is-better quality, so this adapter negates its estimate.
@@ -105,6 +113,7 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** @brief Selected profile and measured comparison with a frozen baseline. */
+#pragma pack(push, 8)
 	struct MultiwayActionCalibrationSelection
 	{
 		MultiwayActionAbstractionConfig abstraction{};
@@ -113,6 +122,7 @@ namespace texas::solver::multiway
 		double candidate_value = 0.0;
 		bool selected = false;
 	};
+#pragma pack(pop)
 
 	/** @brief Measures one action profile over cases and checks the supplied limits. */
 	[[nodiscard]] MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(

@@ -29,6 +29,7 @@
 namespace
 {
 
+#pragma pack(push, 8)
 	struct BenchmarkConfig
 	{
 		std::string game;
@@ -39,6 +40,7 @@ namespace
 		bool profile = false;
 		bool layout_benchmark = false;
 	};
+#pragma pack(pop)
 
 	void print_usage(const char* exe)
 	{
@@ -196,6 +198,7 @@ namespace
 		return "unknown";
 	}
 
+#pragma pack(push, 8)
 	struct LayoutBenchResult
 	{
 		texas::HUNLFlatValueLayout layout = texas::HUNLFlatValueLayout::InfosetHandAction;
@@ -205,6 +208,7 @@ namespace
 		double regret_ms = 0.0;
 		double checksum = 0.0;
 	};
+#pragma pack(pop)
 
 	LayoutBenchResult run_layout_benchmark_variant(
 		const texas::HUNLFlatSolveGraph& graph,

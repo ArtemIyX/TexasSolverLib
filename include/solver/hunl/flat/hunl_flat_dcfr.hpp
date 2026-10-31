@@ -31,6 +31,7 @@ namespace texas::solver::hunl
 	#pragma warning(disable : 4324)
 #endif
 	/** @brief Per-worker elapsed time by flat solver stage. */
+#pragma pack(push, 8)
 	struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatStageProfile
 	{
 		double discount_seconds = 0.0;		   ///< Time spent discounting accumulated values.
@@ -41,6 +42,7 @@ namespace texas::solver::hunl
 		double regret_seconds = 0.0;		   ///< Time spent updating regrets.
 		double average_strategy_seconds = 0.0; ///< Time spent accumulating average strategy.
 	};
+#pragma pack(pop)
 #if defined(_MSC_VER)
 	#pragma warning(pop)
 #endif
@@ -58,10 +60,12 @@ namespace texas::solver::hunl
 	};
 
 	/** @brief Timing profiles collected for workers during flat execution. */
+#pragma pack(push, 8)
 	struct HUNLFlatSchedulerDiagnostics
 	{
 		std::vector<HUNLFlatStageProfile> worker_profiles; ///< One accumulated profile per worker.
 	};
+#pragma pack(pop)
 
 	static_assert(alignof(HUNLFlatStageProfile) == HUNL_CACHELINE_BYTES,
 		"HUNLFlatStageProfile should be cache-line aligned");

@@ -15,6 +15,7 @@ namespace texas::solver::multiway
 {
 
 	/** @brief Resumable position and content state for an artifact writer. */
+#pragma pack(push, 8)
 	struct MultiwayBucketArtifactProgress
 	{
 		std::uint64_t next_board_index = 0U;
@@ -22,6 +23,7 @@ namespace texas::solver::multiway
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t byte_length = 0U;
 	};
+#pragma pack(pop)
 
 	/** @brief Incremental writer for ordered bucket-table artifact records. */
 	class MultiwayBucketArtifactWriter

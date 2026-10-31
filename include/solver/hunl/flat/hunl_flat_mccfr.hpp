@@ -35,6 +35,7 @@ namespace texas::solver::hunl
 	{
 	public:
 		/** @brief Exported root strategy and convergence diagnostics. */
+#pragma pack(push, 8)
 		struct RootStrategySnapshot
 		{
 			InfosetId infoset_id{};
@@ -48,8 +49,10 @@ namespace texas::solver::hunl
 			std::uint64_t memory_used_bytes = 0;
 			bool timed_out = false;
 		};
+#pragma pack(pop)
 
 		/** @brief Result of an iteration or time-budgeted sampled solve. */
+#pragma pack(push, 8)
 		struct DeadlineSolveResult
 		{
 			RootStrategySnapshot latest_snapshot;
@@ -59,16 +62,20 @@ namespace texas::solver::hunl
 			double export_seconds = 0.0;
 			bool timed_out = false;
 		};
+#pragma pack(pop)
 
 		/** @brief Sparse baseline table size counters. */
+#pragma pack(push, 8)
 		struct BaselineStats
 		{
 			std::uint64_t infoset_rows = 0;
 			std::uint64_t node_rows = 0;
 			std::uint64_t bytes = 0;
 		};
+#pragma pack(pop)
 
 		/** @brief Memory totals grouped by sampled solver subsystem. */
+#pragma pack(push, 8)
 		struct MemoryUsage
 		{
 			std::uint64_t graph_bytes = 0;
@@ -85,8 +92,10 @@ namespace texas::solver::hunl
 				return graph_bytes + infoset_metadata_bytes + central_storage_bytes + policy_cache_bytes + traversal_metadata_bytes + worker_scratch_bytes + baseline_bytes;
 			}
 		};
+#pragma pack(pop)
 
 		/** @brief Per-worker sampled traversal timings and counters. */
+#pragma pack(push, 8)
 		struct WorkerProfile
 		{
 			double trajectory_seconds = 0.0;
@@ -114,8 +123,10 @@ namespace texas::solver::hunl
 			std::uint64_t active_infosets = 0;
 			std::uint64_t batch_executions = 0;
 		};
+#pragma pack(pop)
 
 		/** @brief Aggregate solver timings, traversal counters and worker profiles. */
+#pragma pack(push, 8)
 		struct Profile
 		{
 			double snapshot_seconds = 0.0;
@@ -156,8 +167,10 @@ namespace texas::solver::hunl
 			HUNLSampledSimdBackend sampled_simd_backend = HUNLSampledSimdBackend::Scalar;
 			std::vector<WorkerProfile> workers;
 		};
+#pragma pack(pop)
 
 		/** @brief Counts and moments recorded for sampled traversal estimates. */
+#pragma pack(push, 8)
 		struct Counters
 		{
 			std::uint64_t nodes_visited = 0;
@@ -179,6 +192,7 @@ namespace texas::solver::hunl
 			double corrected_estimate_sum = 0.0;
 			double corrected_estimate_sq_sum = 0.0;
 		};
+#pragma pack(pop)
 
 		/** @brief Constructs a sampled solver over a graph and per-player bucket counts. */
 		explicit HUNLFlatMCCFR(
@@ -255,20 +269,25 @@ namespace texas::solver::hunl
 		[[nodiscard]] MemoryUsage memory_usage() const noexcept;
 
 	private:
+#pragma pack(push, 8)
 		struct WorkerDeltaRow
 		{
 			InfosetId id{};
 			std::vector<double> regret_delta;
 			std::vector<double> strategy_delta;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct WorkerBaselineRow
 		{
 			std::uint32_t id = 0;
 			std::vector<double> value_sum;
 			std::vector<std::uint32_t> sample_count;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct ExternalTraversalFrame
 		{
 			enum class Stage : std::uint8_t
@@ -287,7 +306,9 @@ namespace texas::solver::hunl
 			double p1 = 1.0;
 			double return_value = 0.0;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct WorkerScratch
 		{
 			struct TraversalAudit
@@ -328,7 +349,9 @@ namespace texas::solver::hunl
 			WorkerBaselineRow& ensure_infoset_baseline_row(InfosetId id, std::size_t action_count);
 			WorkerBaselineRow& ensure_node_baseline_row(std::uint32_t node_idx, std::size_t action_count);
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct TraversalContext
 		{
 			using TraverseImpl = double (HUNLFlatMCCFR::*)(std::uint32_t node_idx, TraversalContext& context);
@@ -341,7 +364,9 @@ namespace texas::solver::hunl
 			WorkerScratch* scratch = nullptr;
 			TraverseImpl traverse_impl = nullptr;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct TraversalNodeMeta
 		{
 			std::uint32_t child_begin = 0;
@@ -355,6 +380,7 @@ namespace texas::solver::hunl
 			std::uint32_t chance_count = 0;
 			bool has_infoset = false;
 		};
+#pragma pack(pop)
 
 		[[nodiscard]] double traverse(std::uint32_t node_idx, TraversalContext& context);
 		[[nodiscard]] double traverse_exact(std::uint32_t node_idx, TraversalContext& context);

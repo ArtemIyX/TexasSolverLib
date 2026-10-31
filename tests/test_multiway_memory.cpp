@@ -34,6 +34,16 @@ namespace
 
 } // namespace
 
+TEST_CASE(multiway_external_page_lookup_index_bound_accounts_for_rows_and_value_tails)
+{
+	using namespace texas::solver::multiway;
+	EXPECT_EQ(multiway_external_page_lookup_max_page_id(1000U, 10000U, 16U), 1625U);
+	EXPECT_THROW(multiway_external_page_lookup_max_page_id(1U, 1U, 0U), std::invalid_argument);
+	EXPECT_THROW(multiway_external_page_lookup_max_page_id(
+					 std::numeric_limits<std::uint64_t>::max(), 16U, 16U),
+		std::length_error);
+}
+
 TEST_CASE(multiway_process_memory_phase_names_round_trip_in_order)
 {
 	using namespace texas::solver::multiway;
@@ -786,12 +796,14 @@ TEST_CASE(multiway_memory_estimate_saturates_each_peak_on_overflow)
 
 TEST_CASE(multiway_memory_estimate_matches_task_d_f1_a1_and_a3_baselines)
 {
+#pragma pack(push, 8)
 	struct Fixture
 	{
 		std::uint32_t workers;
 		std::uint64_t working_set;
 		std::uint64_t private_committed;
 	};
+#pragma pack(pop)
 	const std::array<Fixture, 2> fixtures = { {
 		{ 1U, 16'575'430'656ULL, 3'441'930'240ULL },
 		{ 4U, 16'586'776'576ULL, 9'948'704'768ULL },

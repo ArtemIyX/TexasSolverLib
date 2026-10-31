@@ -11,11 +11,13 @@ namespace texas::solver::multiway
 {
 
 	/** Allocation count and byte totals captured from a probe. */
+#pragma pack(push, 8)
 	struct MultiwayAllocationProbeSnapshot
 	{
 		std::uint64_t allocation_count = 0U;
 		std::uint64_t allocated_bytes = 0U;
 	};
+#pragma pack(pop)
 
 	/** Accumulates allocation events while installed as the active probe. */
 	class MultiwayAllocationProbe

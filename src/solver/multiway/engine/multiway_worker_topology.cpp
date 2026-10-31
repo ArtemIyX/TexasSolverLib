@@ -55,6 +55,7 @@ namespace texas::solver::multiway
 		}
 
 #if defined(_WIN32)
+	#pragma pack(push, 8)
 		struct WindowsCorePlacement
 		{
 			std::uint16_t processor_group = 0U;
@@ -62,6 +63,7 @@ namespace texas::solver::multiway
 			std::uint32_t physical_core_id = kMultiwayUnknownTopologyId;
 			std::uint16_t smt_sibling_index = kMultiwayUnknownTopologyIndex;
 		};
+	#pragma pack(pop)
 
 		[[nodiscard]] std::uint32_t make_windows_physical_core_id(
 			std::uint16_t group, std::uint16_t core_index) noexcept

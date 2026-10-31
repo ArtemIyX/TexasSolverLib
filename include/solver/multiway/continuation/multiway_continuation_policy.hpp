@@ -44,6 +44,7 @@ namespace texas::solver::multiway
 	// Caller-owned non-owning leaf inputs. The provider may point these views at
 	// immutable blueprint/model storage or preallocated worker scratch.
 	/** Non-owning action and value arrays used by a continuation leaf. */
+#pragma pack(push, 8)
 	struct MultiwayContinuationLeafData
 	{
 		const MultiwayActionDescriptor* actions = nullptr;
@@ -51,6 +52,7 @@ namespace texas::solver::multiway
 		const Value* action_values = nullptr;
 		std::size_t action_count = 0;
 	};
+#pragma pack(pop)
 
 	/** Supplies continuation actions and values for one leaf request. */
 	using MultiwayContinuationLeafProviderFn = bool (*)(
@@ -59,6 +61,7 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** Provider, fallback policy, and bias bound to the leaf adapter. */
+#pragma pack(push, 8)
 	struct MultiwayContinuationLeafContext
 	{
 		// Used by direct callers without traversal provenance. Traversal supplies
@@ -68,6 +71,7 @@ namespace texas::solver::multiway
 		const void* provider_context = nullptr;
 		Probability bias_factor = 5.0;
 	};
+#pragma pack(pop)
 
 	// Adapter for the production MultiwayLeafEvaluator boundary. Invalid provider
 	// output becomes NaN and is rejected by traversal's finite-value check.

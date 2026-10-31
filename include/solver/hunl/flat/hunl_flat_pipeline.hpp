@@ -36,6 +36,7 @@ namespace texas::solver::hunl
 	};
 
 	/** @brief Graph and table counts used to size pipeline buffers. */
+#pragma pack(push, 8)
 	struct HUNLFlatPipelineBuffers
 	{
 		std::uint32_t infoset_count = 0;			///< Number of graph information sets.
@@ -47,8 +48,10 @@ namespace texas::solver::hunl
 		std::uint32_t depth_limited_node_count = 0; ///< Number of depth-limited leaves.
 		bool has_depth_limited_nodes = false;		///< Whether any depth-limited stage work exists.
 	};
+#pragma pack(pop)
 
 	/** @brief One pipeline stage and its worker-range assignment. */
+#pragma pack(push, 8)
 	struct HUNLFlatPipelineStagePlan
 	{
 		HUNLFlatPipelineStageId id = HUNLFlatPipelineStageId::ForwardProfile; ///< Stage identifier.
@@ -58,6 +61,7 @@ namespace texas::solver::hunl
 		std::vector<std::vector<HUNLFlatRange>> worker_depth_ranges;		  ///< Depth ranges by worker.
 		std::vector<std::uint64_t> worker_costs;							  ///< Estimated work by worker.
 	};
+#pragma pack(pop)
 
 	/** @brief Buffer requirements and ordered worker plan for flat stages. */
 	class HUNLFlatPipelinePlan

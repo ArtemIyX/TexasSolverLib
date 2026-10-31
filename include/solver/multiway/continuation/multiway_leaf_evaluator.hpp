@@ -23,6 +23,7 @@ namespace texas::solver::multiway
 	// supplies a plain function pointer so traversal does not use std::function
 	// or virtual dispatch in its hot path.
 	/** Public state and caller-owned views supplied for one leaf evaluation. */
+#pragma pack(push, 8)
 	struct MultiwayLeafEvaluationRequest
 	{
 		const MultiwayBettingSnapshot* betting = nullptr;
@@ -46,6 +47,7 @@ namespace texas::solver::multiway
 		std::uint64_t range_context_identity = 0;
 		std::uint64_t private_context_identity = 0;
 	};
+#pragma pack(pop)
 
 	/** Callback signature for evaluating one leaf request. */
 	using MultiwayLeafEvaluateFn = Value (*)(
@@ -53,6 +55,7 @@ namespace texas::solver::multiway
 		const void* context) noexcept;
 
 	/** Lightweight function-pointer evaluator with a non-owning context. */
+#pragma pack(push, 8)
 	struct MultiwayLeafEvaluator
 	{
 		MultiwayLeafEvaluateFn evaluate = nullptr;
@@ -66,5 +69,6 @@ namespace texas::solver::multiway
 			return evaluate(request, context);
 		}
 	};
+#pragma pack(pop)
 
 } // namespace texas::solver::multiway

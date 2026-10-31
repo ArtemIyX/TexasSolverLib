@@ -28,12 +28,14 @@ namespace texas::solver::dcfr
 {
 
 	/** @brief Discounted Counterfactual Regret Minimization exponents. */
+#pragma pack(push, 8)
 	struct DCFRConfig
 	{
 		double alpha = 1.5; ///< Positive-regret discount exponent; must be finite and greater than zero.
 		double beta = 0.0;	///< Negative-regret discount exponent; must be finite and non-negative.
 		double gamma = 2.0; ///< Strategy-sum discount exponent; must be finite and non-negative.
 	};
+#pragma pack(pop)
 
 	/** @brief Validates alpha and reports values below the analyzed range.
 	 * @throws std::invalid_argument If alpha is non-finite or not positive.
@@ -66,12 +68,14 @@ namespace texas::solver::dcfr
 	}
 
 	/** @brief Multipliers applied to regrets and strategy sums at one iteration. */
+#pragma pack(push, 8)
 	struct DCFRIterationScales
 	{
 		double positive_regret = 1.0; ///< Multiplier for positive cumulative regret.
 		double negative_regret = 1.0; ///< Multiplier for negative cumulative regret.
 		double strategy_sum = 1.0;	  ///< Multiplier for cumulative strategy.
 	};
+#pragma pack(pop)
 
 	/** @brief Computes DCFR discount multipliers for a one-based iteration.
 	 * @throws std::invalid_argument If iteration is zero.
@@ -105,6 +109,7 @@ namespace texas::solver::dcfr
 	namespace detail
 	{
 
+#pragma pack(push, 8)
 		struct InfosetAccum
 		{
 			std::size_t offset = 0;
@@ -112,20 +117,25 @@ namespace texas::solver::dcfr
 			std::uint32_t last_discount_iter = 0;
 			bool active = false;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct InfosetAccumView
 		{
 			double* regret_sum = nullptr;
 			double* strategy_sum = nullptr;
 			std::size_t action_count = 0;
 		};
+#pragma pack(pop)
 
+#pragma pack(push, 8)
 		struct ConstInfosetAccumView
 		{
 			const double* regret_sum = nullptr;
 			const double* strategy_sum = nullptr;
 			std::size_t action_count = 0;
 		};
+#pragma pack(pop)
 
 		class IndexedStrategyTable
 		{

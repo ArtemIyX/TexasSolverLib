@@ -1,5 +1,443 @@
 # Pluribus Roadmap Progress Log
 
+## Multiway compact regret pruning SIMD
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Added scalar and SSE2 compact regret-pruning kernels with exact integer comparisons and counts.
+- Added an isolated AVX2 kernel with baseline runtime CPU and OS-state dispatch; unsupported builds retain scalar/SSE2 fallback.
+- Preserved existing threshold/floor conversion and strict comparison behavior.
+- Added differential backend coverage for empty and unaligned inputs, boundaries, threshold equality, replacement counts, and tails.
+
+### Files
+
+- `CMakeLists.txt`
+- `cmake/TexasSolverTargets.cmake`
+- `include/solver/multiway/engine/detail/multiway_compact_pruning.hpp`
+- `src/solver/multiway/engine/multiway_compact_pruning.cpp`
+- `src/solver/multiway/engine/multiway_compact_pruning_avx2.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Builds and tests were not run, per request.
+- Static diff review only; no compiler report or benchmark was run.
+
+### Limitations
+
+- Available profiling evidence does not establish that this scan is material. No performance improvement is claimed. The smallest next step is to record prune calls, cells scanned, and cumulative time in one fixed representative training profile, then inspect the compiler vectorization report.
+- Differential tests are added but unrun.
+
+## Compiler optimization dispatch and aliasing contracts
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Added runtime AVX2 OS-state and CPU-feature detection for AVX2-compiled kernels.
+- Added runtime guards to utility entry points so an AVX2-enabled build selects SSE2 or scalar code before executing AVX2 instructions.
+- Corrected sampled-HUNL backend reporting from `avx2-fma` to `avx2`; no FMA instructions are used.
+- Added an internal-only restrict macro and applied it to anonymous-namespace sampled-HUNL AVX2 accumulation kernels whose input and output buffers are separate by operation contract. No public API was changed.
+- Added focused backend-name, scalar aliasing, and sampled scalar-versus-selected equivalence contracts.
+
+### Files
+
+- `CMakeLists.txt`
+- `cmake/TexasSolverTargets.cmake`
+- `include/util/restrict.hpp`
+- `include/solver/hunl/sampled/hunl_sampled_simd.hpp`
+- `src/util/simd.cpp`
+- `src/solver/hunl/sampled/hunl_sampled_simd.cpp`
+- `src/solver/hunl/flat/hunl_flat_mccfr.cpp`
+- `tests/test_simd_dispatch_contract.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Not run. The requested process forbids builds and tests.
+
+### Limitations
+
+- No vectorization pragmas, unrolling, or branch hints were retained without compiler/profile evidence.
+- Builds, tests, benchmarks, and compiler vectorization reports were not run per request.
+
+## Struct layout evidence review
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Reordered `HUNLSampledInfosetMeta` fields under pack 8 to remove padding. Static layout analysis predicts 48 bytes to 40 bytes without changing field types or names.
+- Preserved `HUNLSampledNode` state copies, `HUNLFlatNodeMeta` terminal fields, `MultiwayPackedPublicNode` record fields, and multiway IDs because ownership, traversal, exact-mode, external-format, or bounds evidence was insufficient for a safe reduction.
+- Added focused compile-time size, alignment, standard-layout, trivial-copyability, and member-offset contracts for the sampled metadata, sampled row shape, multiway IDs, row shape, and packed record candidates.
+
+### Files
+
+- `include/solver/hunl/sampled/hunl_sampled_storage.hpp`
+- `tests/test_struct_layout_contract.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review only. CMake configuration was run before the user requested no further build or test execution; the build was interrupted and no tests were run.
+
+### Limitations
+
+- Runtime sizeof, vector-capacity, resident-memory, and representative-runtime before/after measurements remain outstanding.
+- AVX2 dispatch remains compile-time selected in `src/util/simd.cpp`; no SIMD code was changed because runtime CPU measurements and a broader dispatch change were outside this static-only continuation.
+
+## Explicit struct packing policy
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Added balanced 8-byte packing scopes around project-owned struct definitions in public headers, implementation files, examples, and tests. The packing restoration probe intentionally uses 1-byte packing.
+- Preserved cache-line aligned worker types and added compile-time checks for their alignment and packed synchronization members. Documented the policy, ABI rebuild requirement, and serialization boundaries.
+
+### Files
+
+- `AGENTS.md`, `docs/PROJECT_GUIDE.md`, `docs/PLURIBUS_LOG.md`
+- Struct-bearing headers under `include/` and implementation files under `src/`
+- Struct-bearing examples under `examples/` and fixtures under `tests/`
+- `tests/test_packing_contract.cpp`
+
+### Validation
+
+- Static source audit checked named struct declarations, balanced packing scopes, preprocessor branch boundaries, and includes within scopes. The only intentionally uncovered declaration is the packing-restoration probe.
+- Reviewed explicit over-alignment declarations, representative layout and serialization code, and the whitespace diff. Build and tests were not run as requested.
+
+### Limitations
+
+- The new compile-time assertions have not been compiled. ABI compatibility with existing binaries and layout behavior across compilers and platforms remain unverified; rebuild consumers with the library.
+
+The user reported that the build and tests passed after the following fixes; commands and test scope were not specified.
+
+## Multiway boundary checks after source splits
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Updated traversal and batch-runner boundary checks for their current source files.
+- Updated workflow export ordering and report field checks for the split implementation.
+
+### Files
+
+- `tests/cmake/test_multiway_traversal_boundary.cmake`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of checked source locations, call ordering, and report fields.
+- Configuration, builds, and tests not run as requested.
+
+### Limitations
+
+- Boundary scripts were not executed.
+
+## Multiway source compilation fixes
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Fixed bucket codec symbol lookup, AIVAT confidence score lookup, tournament comparator deduction, and local solver detail includes.
+
+### Files
+
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_codec.cpp`
+- `src/solver/multiway/evaluation/multiway_aivat.cpp`
+- `src/solver/multiway/engine/multiway_discovery.cpp`, `multiway_solver.cpp`, `multiway_coordinator_admission.cpp`, `multiway_coordinator_merge.cpp`, `multiway_coordinator_checkpoint.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of declarations, call sites, comparator semantics, confidence levels, and include paths; `git diff --check` passed.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Blueprint training compact storage compile fix
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Included the complete compact storage declaration used by training diagnostics.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_blueprint_training_loop.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of storage declarations, value count types, and the affected maximum calculation.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Root policy artifact declaration compile fix
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Included the checkpoint header that declares the root policy artifact used by blueprint serialization.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_root_policy_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of the declaration, namespace, and call signatures.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Multiway blueprint identity serialization compile fix
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Restored file-local identity serialization helpers for blueprint artifacts, matching the existing portable field order and truncated-input handling.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review of helper visibility, field order, and error handling.
+- Build and tests not run as requested.
+
+### Limitations
+
+- Compilation and runtime behavior were not verified.
+
+## Standalone public types extraction
+
+**Status:** Complete
+**Completed:** 2026-10-31
+**Implementation commits:** `e20aa9c6` Types: Extract standalone value headers; `0ef3b50a` Types: Extract remaining planned structs; `1c6751e7` Types: Isolate the lightweight action ID; `85418045` Build: Export the standalone types target; `2f937bee` Types: Document extracted configuration fields
+
+- Extracted the plan’s value structs, enums and supporting identifiers into subsystem `*_types.hpp` headers, retaining namespaces, member order, defaults and old include paths.
+- Added `TexasSolver::types` as a C++17 interface target and linked `TexasSolver::texas` publicly to it without adding solver dependencies to the types target.
+- Kept the shared package export and Threads lookup; out-of-line operations still require the implementation library.
+
+### Files
+
+- `CMakeLists.txt`, `cmake/TexasSolverTargets.cmake`, `tests/cmake/test_cmake_structure.cmake`
+- `docs/PROJECT_GUIDE.md`, `docs/PLURIBUS_LOG.md`
+- `include/core/action_id.hpp`, `include/core/poker.hpp`, `include/core/street_types.hpp`, `include/core/types.hpp`, `include/core/value_types.hpp`
+- `include/games/hunl.hpp`, `include/games/hunl_action_types.hpp`, `include/games/hunl_flat_graph.hpp`, `include/games/hunl_flat_graph_types.hpp`, `include/games/hunl_terminal_types.hpp`, `include/games/hunl_tree.hpp`
+- `include/games/multiway_rake.hpp`, `include/games/multiway_rake_types.hpp`, `include/games/multiway_state.hpp`, `include/games/multiway_state_types.hpp`
+- `include/solver/hunl/flat/hunl_flat_state.hpp`, `include/solver/hunl/flat/hunl_flat_types.hpp`
+- `include/solver/hunl/sampled/hunl_sampled_config.hpp`, `include/solver/hunl/sampled/hunl_sampled_config_types.hpp`, `include/solver/hunl/sampled/hunl_sampled_export.hpp`, `include/solver/hunl/sampled/hunl_sampled_export_types.hpp`, `include/solver/hunl/sampled/hunl_sampled_profile.hpp`, `include/solver/hunl/sampled/hunl_sampled_profile_types.hpp`
+- `include/solver/multiway/abstraction/multiway_future_bucket.hpp`, `include/solver/multiway/abstraction/multiway_future_bucket_types.hpp`, `include/solver/multiway/abstraction/multiway_model_identity.hpp`, `include/solver/multiway/abstraction/multiway_model_identity_types.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_config.hpp`, `include/solver/multiway/blueprint/multiway_blueprint_config_types.hpp`
+
+### Validation
+
+- Static review only: inspected includes and type dependencies, declaration names/defaults/member order, compatibility entry points, target usage requirements, header installation registration, package export and dependency order, and final diffs.
+- `git diff --cached --check` passed for each staged change set.
+- No configuration, compilation, tests, installation, benchmarks, ABI comparison or solver jobs were run, as requested.
+
+### Limitations
+
+- Header compilation, installed consumer use and relocatability remain unverified. The package still finds Threads for types-only consumers, and calling out-of-line methods requires `TexasSolver::texas`.
+## CTest failure scanner detection
+
+**Status:** Complete
+**Completed:** 2026-10-31
+
+- Updated the CTest error scanner to recognize harness `[FAIL]` records with or without source locations and to fall back to CTest's failed-test summary. Missing or unreadable logs now fail closed.
+- Fixed the row-index regression setup by compacting its runs before ordered iteration, preserving the configured fan-in limit.
+
+### Files
+
+- `scripts/python/scan_ctest_errors.py`
+- `scripts/python/test_scan_ctest_errors.py`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/application_and_script_io.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `& .\scripts\codex_powershell.ps1 python .\scripts\python\test_scan_ctest_errors.py` passed (5 tests).
+- Scanning `tmp/ctest_debug.log` reported the row-index failure and failed CTest target, with exit code 1.
+- Focused build of `test_multiway_external_storage` passed; focused CTest passed (1/1).
+
+### Limitations
+
+- Full CTest was not rerun.
+
+## F1 50K bounded scale-up gate
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Defined and prepared a 50-batch, 50,000-trajectory F1 12/12/12 profile with 5,000,000 public-state/sparse-row caps and a 16 GiB disk reservation. Kept memory, disk-amplification, and P99 hard stops unchanged.
+- The focused monitor test passed and the 50K training attempt stopped at the P99 lower-bound gate after 6 checkpoints and 5 cycles. The first two complete cohort P99 values were 66,039.4304 ms and 67,013.8412 ms; cycle 5 at 80,958.331 ms established a strictly higher lower bound for the third cohort. Inspection confirmed this is the intended stop condition, not a monitor defect.
+- Memory and disk gates remained within limits: 16.92 GiB peak working set, 2.68 GiB peak private commit, 26.71 GiB minimum available memory, and 1.84x maximum disk amplification. The 50K profile did not qualify; no resume was run.
+
+### Files
+
+- `configs/multiway/f1_checkpoint_qualification_50k_v1.cfg`
+- `scripts/run/prepare_f1_50k_checkpoint_qualification.ps1`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/resume_f1_10k_checkpoint_qualification.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/f1_50k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell.exe -NoProfile -File .\scripts\run\test_pb12_diagnostic_monitor.ps1` passed.
+- PowerShell AST parsing passed for the preparation, monitor runner, and resume scripts.
+- Prepared `pb12_diagnostic_f1_50k_20261030_gate1`; the recorded trainer and bucket hashes matched retry3.
+- `& .\scripts\run\run_pb12_diagnostic.ps1 -RunName 'pb12_diagnostic_f1_50k_20261030_gate1'` exited 1 because the P99 stop fired. The monitor recorded 6 checkpoints, 5 cycles, and the stop reason. No build or checkpoint-only resume was run.
+
+### Limitations
+
+- The 50K profile is not qualified. Investigate the increasing cycle durations before another bounded run; do not weaken the P99 gate or advance to 50M.
+
+## F1 10K checkpoint-only resume qualification
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Passed the focused PB-12 monitor test and retry3's checkpoint-only resume in a separate named attempt, preserving the earlier root-level resume evidence.
+- Retry3 training evidence passed: exit 0, 10,000 accepted trajectories, zero discarded, 10 checkpoints, 9 cycles, P99 pass, 22.40 GiB peak working set, 8.28 GiB peak private commit, 21.46 GiB minimum available memory, and 1.83x maximum disk amplification.
+- The resume exited 0 with 10,000 accepted and zero discarded trajectories. Model identity matched (`14334205690234538347`), and the original and resumed policy SHA-256 values matched (`D6421B352A1181F10B96C781396327266C84527F8EB3CD51A08C29B6036B7A6A`). Resume resource peaks were 16.30 GiB working set, 2.04 GiB private commit, and 27.64 GiB minimum available memory.
+
+### Files
+
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell.exe -NoProfile -File .\scripts\run\test_pb12_diagnostic_monitor.ps1` passed.
+- `$runName = 'pb12_diagnostic_f1_10k_20261030_retry3'; & .\scripts\run\resume_f1_10k_checkpoint_qualification.ps1 -RunName $runName -ResumeName 'retry1'` exited 0.
+- Inspected `tmp/pb12_diagnostic_f1_10k_20261030_retry3/monitor.jsonl`, `report.json`, and `resume_attempt_retry1/resume_report.json` plus `resume_equivalence.json`.
+- No build or training job was run; only the authorized monitor test and zero-batch resume were executed.
+
+### Limitations
+
+- This qualifies the 10K profile only. The 50M run remains unqualified.
+
+## F1 checkpoint resume exit evidence
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- The retry3 resume logged completed export and produced matching policy SHA-256 values and report identity and trajectory counts, but the wrapper reported a blank exit code and did not persist resource evidence.
+- Retain the launched process handle and support fresh named resume attempts without overwriting the original evidence. Add exit-code regression coverage and document the human retry.
+
+### Files
+
+- `scripts/run/resume_f1_10k_checkpoint_qualification.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the resume logs and reports and compared policy SHA-256 hashes. Builds, tests, compiled programs, and training were not run by the agent at the user's direction.
+
+### Limitations
+
+- The missing exit-code cause and handle fix require human verification. The first resume lacks persisted exit and resource evidence, so a fresh resume must pass all gates.
+
+## F1 10K retry2 checkpoint investigation
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Traced the P99 hard stop to increasing sliding cohorts and live-byte samples; checkpoint writes were much shorter than batch-to-checkpoint cycles. The journal does not establish a single performance root cause.
+- Record the triggering checkpoint and cycle before evaluating the unchanged gate, and add the preserved retry2 sequence to monitor regression coverage. Document both retries, measurement limits, and a fresh human-run name.
+
+### Files
+
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Inspected the preserved monitor, journal, logs, configuration, qualification scripts, and checkpoint timestamp. No builds, tests, compiled programs, or training were run, as requested.
+
+### Limitations
+
+- The regression and future qualification require human execution. Stable storage scans are not explicitly tied to the checkpoint generation; the recorded evidence does not establish whether this affected retry2.
+
+## F1 10K manifest publication investigation
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- The preserved 10K attempt failed publishing the aggregate training manifest during batch 7 with Windows access denied, after six completed batches. The monitor recorded no hard stop; its P99 result was incomplete after the trainer exit.
+- Allow atomic replacement during live monitor reads and add a Windows replacement regression. Keep stable-sample and qualification gates intact.
+- Update the human-run qualification instructions with a fresh run name and the failed attempt's evidence.
+
+### Files
+
+- `scripts/run/pb12_diagnostic_storage.ps1`
+- `scripts/run/test_pb12_diagnostic_monitor.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Source and preserved run evidence inspected; `git diff --check` passed. The human-run monitor test failed because Windows PowerShell passed an invalid null backup path to `File.Replace`; the test now supplies a backup path. The corrected test has not been run. Builds, compiled programs, and training were not run by the agent at the user's direction.
+
+### Limitations
+
+- The logs do not identify the handle that blocked publication. The regression and fresh qualification, including checkpoint-only resume, require human execution.
+
+## F1 10K checkpoint qualification preparation
+
+**Status:** Complete
+**Completed:** 2026-10-30
+
+- Added train-time bucket artifact identity and per-table street bucket-count validation, with inspection output exposing the profile counts.
+- Prepared a bounded 10K F1 12/12/12 qualification and checkpoint-only resume workflow. It records checkpoint write time separately from batch-to-checkpoint cycles and enforces memory, disk, and P99 gates.
+- Kept the monitor compatible with Windows PowerShell numeric literal syntax.
+- Existing Stage 9.4 and 3K results used 96/128/192 buckets, while the F1 artifact contains 12/12/12. Those runs do not qualify the target profile. Current evidence does not justify a 50M run.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `configs/multiway/f1_checkpoint_qualification_10k_v1.cfg`
+- `scripts/run/prepare_f1_10k_checkpoint_qualification.ps1`
+- `scripts/run/run_pb12_diagnostic.ps1`
+- `scripts/run/resume_f1_10k_checkpoint_qualification.ps1`
+- `docs/f1_10k_checkpoint_qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- Windows PowerShell 5.1 AST parsing passed for all three qualification scripts.
+- Builds, tests, training, and compiled programs were not run; the user reserved those for human execution.
+
+### Limitations
+
+- The 10K run and checkpoint-only resume gate remain pending human execution. Do not start the 50M run until both pass.
+
 ## Root README and AI workflow guide
 
 **Status:** Complete

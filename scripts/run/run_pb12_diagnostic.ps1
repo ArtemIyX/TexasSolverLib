@@ -7,15 +7,15 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if ($RunName -notmatch '^pb12_diagnostic_[a-zA-Z0-9_-]{1,64}$') { throw 'Invalid diagnostic run name.' }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot 'pb12_diagnostic_process.ps1')
 $runRoot = Join-Path (Join-Path $repo 'tmp') $RunName
-$exe = Join-Path $repo 'build/Debug/texas_multiway_train.exe'
+$exe = Get-Pb12DiagnosticTrainerExecutable $repo
 $config = Join-Path $runRoot 'training.conf'
 $planPath = Join-Path $runRoot 'plan.json'
 $evidencePath = Join-Path $runRoot 'preparation_evidence.json'
 $store = Join-Path $runRoot 'store'
 $checkpoint = Join-Path $runRoot 'checkpoints/latest.bin'
 $monitorPath = Join-Path $runRoot 'monitor.jsonl'
-. (Join-Path $PSScriptRoot 'pb12_diagnostic_process.ps1')
 . (Join-Path $PSScriptRoot 'pb12_diagnostic_p99.ps1')
 . (Join-Path $PSScriptRoot 'pb12_diagnostic_storage.ps1')
 . (Join-Path $PSScriptRoot 'pb12_diagnostic_journal_tail.ps1')
@@ -25,26 +25,50 @@ foreach ($file in @($exe, $config, $planPath, $evidencePath, $bucketPath)) {
 }
 $plan = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
 $evidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
-if ($plan.batches -ne 3 -or $plan.trajectories_per_batch -ne 1000 -or $plan.checkpoint_interval -ne 1 -or
+$expectedBatches = [int]$plan.batches
+$targetProperty = $plan.PSObject.Properties['target_trajectories']
+$profileProperty = $plan.PSObject.Properties['profile_id']
+$expectedTrajectories = if ($null -ne $targetProperty) { [long]$targetProperty.Value } else { [long]$expectedBatches * 1000 }
+$qualificationProfileByTarget = @{
+    10000 = 'F1-QUAL-10K-12-v1'
+    50000 = 'F1-QUAL-50K-12-v1'
+}
+$expectedQualificationProfile = if ($qualificationProfileByTarget.ContainsKey([int]$expectedTrajectories)) {
+    $qualificationProfileByTarget[[int]$expectedTrajectories]
+} else { $null }
+$isF1Qualification = $null -ne $profileProperty -and $profileProperty.Value -in @($qualificationProfileByTarget.Values)
+$evidenceConfigProperty = $evidence.PSObject.Properties['config_sha256']
+if ($null -eq $evidenceConfigProperty) { $evidenceConfigProperty = $evidence.PSObject.Properties['prepared_config_sha256'] }
+if ($expectedBatches -notin @(3, 10, 50) -or $expectedTrajectories -ne ([long]$expectedBatches * 1000) -or
+    $plan.trajectories_per_batch -ne 1000 -or $plan.checkpoint_interval -ne 1 -or
     (Get-FileHash -LiteralPath $config -Algorithm SHA256).Hash -ne $plan.config_sha256 -or
-    $evidence.prepared_config_sha256 -ne $plan.config_sha256) {
+    $null -eq $evidenceConfigProperty -or $evidenceConfigProperty.Value -ne $plan.config_sha256) {
     throw 'Prepared plan or configuration does not match the bounded diagnostic.'
 }
+if ($expectedBatches -eq 50 -and -not $isF1Qualification) { throw 'A 50-batch diagnostic requires a supported F1 qualification profile.' }
 if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $evidence.binary_sha256) {
     throw 'Trainer binary changed after preparation; prepare a fresh diagnostic directory.'
 }
 $bucket = Get-Item -LiteralPath $bucketPath
 if ($bucket.Length -ne [long]$evidence.bucket_bytes -or
-    $bucket.LastWriteTimeUtc -ne ([DateTime]$evidence.bucket_last_write_utc).ToUniversalTime() -or
-    -not $evidence.bucket_size_and_timestamp_match_stage94) {
+    $bucket.LastWriteTimeUtc -ne ([DateTime]$evidence.bucket_last_write_utc).ToUniversalTime()) {
     throw 'Bucket-file metadata changed after preparation.'
 }
+if ($isF1Qualification -and (Get-FileHash -LiteralPath $bucketPath -Algorithm SHA256).Hash -ne $evidence.bucket_sha256) {
+    throw 'F1 qualification bucket artifact changed after preparation.'
+}
+if (-not $isF1Qualification -and -not $evidence.bucket_size_and_timestamp_match_stage94) {
+    throw 'Diagnostic bucket file does not match the preserved Stage 9.4 input.'
+}
+$expectedDiskSpaceRequirement = if ($expectedTrajectories -eq 50000) { '17179869184' } else { '1073741824' }
+$expectedCatalogCacheBytes = if ($expectedTrajectories -eq 50000) { '67108864' } else { '4194304' }
+$expectedRowPageCacheBytes = if ($expectedTrajectories -eq 50000) { '268435456' } else { '67108864' }
 $requiredConfig = @{
     storage_backend = 'ExternalCompactInt32'; deterministic_seed = '1'; training_worker_count = '1'; scheduler_mode = 'fixed'
-    trajectories_per_batch = '1000'; target_trajectories = '3000'; checkpoint_interval = '1'; batches = '3'; synchronous_durability = 'true'
-    public_catalog_cache_bytes = '4194304'; row_page_cache_bytes = '67108864'; maximum_wal_bytes = '67108864'
+    trajectories_per_batch = '1000'; target_trajectories = "$expectedTrajectories"; checkpoint_interval = '1'; batches = "$expectedBatches"; synchronous_durability = 'true'
+    public_catalog_cache_bytes = $expectedCatalogCacheBytes; row_page_cache_bytes = $expectedRowPageCacheBytes; maximum_wal_bytes = '67108864'
     segment_target_bytes = '67108864'; compaction_fan_in = '4'; compaction_scratch_bytes = '67108864'
-    disk_reserve_bytes = '67108864'; disk_space_requirement_bytes = '1073741824'; process_memory_limit_bytes = '68719476736'
+    disk_reserve_bytes = '67108864'; disk_space_requirement_bytes = $expectedDiskSpaceRequirement; process_memory_limit_bytes = '68719476736'
     input_path = 'artifacts/f1_sizing_v1/buckets/buckets.bin'; storage_directory = $store
     checkpoint_dir = (Join-Path $runRoot 'checkpoints'); output_path = (Join-Path $runRoot 'policy.mwfb')
     report_path = (Join-Path $runRoot 'report.json'); log_path = (Join-Path $runRoot 'training.log')
@@ -53,6 +77,16 @@ $configLines = Get-Content -LiteralPath $config
 foreach ($key in $requiredConfig.Keys) {
     $found = @($configLines | Where-Object { $_ -match ('^' + [regex]::Escape($key) + '=') })
     if ($found.Count -ne 1 -or $found[0] -cne "$key=$($requiredConfig[$key])") { throw "Unsafe configuration: $key" }
+}
+if ($isF1Qualification) {
+    if ($profileProperty.Value -ne $expectedQualificationProfile) {
+        throw 'F1 qualification profile does not match its target trajectory count.'
+    }
+    $expectedBucketConfig = @{ profile_id = $expectedQualificationProfile; flop_buckets = '12'; turn_buckets = '12'; river_buckets = '12' }
+    foreach ($key in $expectedBucketConfig.Keys) {
+        $found = @($configLines | Where-Object { $_ -match ('^' + [regex]::Escape($key) + '=') })
+        if ($found.Count -ne 1 -or $found[0] -cne "$key=$($expectedBucketConfig[$key])") { throw "F1 qualification configuration mismatch: $key" }
+    }
 }
 foreach ($name in @('store', 'checkpoints', 'policy.mwfb', 'report.json', 'training.log', 'stdout.log', 'stderr.log', 'monitor.jsonl')) {
     if (Test-Path -LiteralPath (Join-Path $runRoot $name)) { throw "Diagnostic output already exists: $name" }
@@ -78,7 +112,10 @@ public static class Pb12DiagnosticMemoryStatus {
 '@
 if ([Pb12DiagnosticMemoryStatus]::Available() -lt 3GB) { throw 'Available physical memory is below 3 GiB.' }
 $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($runRoot))
-if ($drive.AvailableFreeSpace -lt (1GB + 64MB + 64MB + 128MB + 64MB)) { throw 'Insufficient disk for the configured reserve and bounded storage operations.' }
+$monitorDiskReserve = [long](64MB + 64MB + 128MB + 64MB)
+if ($drive.AvailableFreeSpace -lt ([long]$expectedDiskSpaceRequirement + $monitorDiskReserve)) {
+    throw 'Insufficient disk for the configured reserve and bounded storage operations.'
+}
 $log = [IO.FileStream]::new($monitorPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
 function Write-Monitor([object]$Event) {
     $line = ($Event | ConvertTo-Json -Compress -Depth 8) + "`n"
@@ -93,6 +130,10 @@ $lastDisk = $null
 $diskStarted = $null
 $lastDiskLaunch = [DateTime]::MinValue
 $lastSample = [DateTime]::MinValue
+$peakWorkingSetBytes = [long]0
+$peakPrivateCommitBytes = [long]0
+$minimumAvailablePhysicalBytes = [uint64]::MaxValue
+$maximumDiskAmplification = [double]0
 $previousLoopMonitorNs = [long]0
 $lastStamp = ''
 $previousCheckpointUtc = $null
@@ -107,6 +148,7 @@ $journalPath = $null
 $journalStarted = $false
 $journalBatches = 0
 $journalCheckpoints = 0
+$bucketSha256 = if ($isF1Qualification) { [string]$evidence.bucket_sha256 } else { $null }
 $journalGeneration = [uint64]0
 $journalCheckpointGenerations = @{}
 $observedCheckpointGenerations = @{}
@@ -148,8 +190,8 @@ function Observe-Journal {
     }
 }
 try {
-    Write-Monitor ([ordered]@{ event = 'start'; utc = $started.ToString('o'); binary_sha256 = $binaryHash; config_sha256 = $plan.config_sha256; p99_cohorts_required = 3; planned_cycles = 2 })
-    $arguments = '--config "{0}" --batches 3 --threads 1 --scheduler fixed --pb12-targeted-coverage --pb12-disk-amplification-bound --progress true --progress-every 1 --progress-memory true --progress-speed true' -f $config
+    Write-Monitor ([ordered]@{ event = 'start'; utc = $started.ToString('o'); binary_sha256 = $binaryHash; config_sha256 = $plan.config_sha256; target_trajectories = $expectedTrajectories; planned_batches = $expectedBatches; p99_cohorts_required = 3; bucket_sha256 = $bucketSha256; bucket_counts = if ($isF1Qualification) { '12/12/12' } else { '96/128/192' } })
+    $arguments = '--config "{0}" --batches {1} --threads 1 --scheduler fixed --pb12-targeted-coverage --pb12-disk-amplification-bound --progress true --progress-every 1 --progress-memory true --progress-speed true' -f $config, $expectedBatches
     $process = Start-Process -FilePath $exe -ArgumentList $arguments -WorkingDirectory $repo -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runRoot 'stdout.log') -RedirectStandardError (Join-Path $runRoot 'stderr.log')
     $null = $process.Handle
     Write-Monitor ([ordered]@{ event = 'process'; pid = $process.Id; process_start_utc = $process.StartTime.ToUniversalTime().ToString('o') })
@@ -158,10 +200,15 @@ try {
         $process.Refresh()
         if ($process.HasExited) { break }
         $now = [DateTime]::UtcNow
-        if (($now - $started).TotalHours -ge 3) { $stopReason = 'three-hour diagnostic observation deadline reached'; break }
+        $deadlineProperty = $plan.PSObject.Properties['observation_deadline_hours']
+        $deadlineHours = if ($null -ne $deadlineProperty) { [double]$deadlineProperty.Value } else { 3.0 }
+        if (($now - $started).TotalHours -ge $deadlineHours) { $stopReason = 'diagnostic observation deadline reached'; break }
         $available = [Pb12DiagnosticMemoryStatus]::Available()
         $workingSet = [long]$process.WorkingSet64
         $privateCommit = [long]$process.PrivateMemorySize64
+        $peakWorkingSetBytes = [Math]::Max($peakWorkingSetBytes, $workingSet)
+        $peakPrivateCommitBytes = [Math]::Max($peakPrivateCommitBytes, $privateCommit)
+        $minimumAvailablePhysicalBytes = [Math]::Min($minimumAvailablePhysicalBytes, $available)
         $reason = Get-Pb12DiagnosticMemoryStop $workingSet $privateCommit $available
         if ($reason) {
             $stopReason = $reason
@@ -201,24 +248,30 @@ try {
             break
         }
         if ($null -ne $diskJob) {
-            if ($diskJob.State -eq 'Completed') {
+            $diskJobElapsedSeconds = ($now - $diskStarted).TotalSeconds
+            $diskJobDecision = Get-Pb12DiagnosticDiskJobDecision $diskJob $diskJobElapsedSeconds
+            if ($diskJobDecision.Action -eq 'Complete') {
                 $result = @(Receive-Job -Job $diskJob -ErrorAction Stop)
                 Remove-Job -Job $diskJob
                 $diskJob = $null
                 if ($result.Count -ne 1 -or [long]$result[0].live_bytes -le 0) { $stopReason = 'disk telemetry unavailable'; break }
                 $lastDisk = $result[0]
                 $ratio = [double]$lastDisk.store_bytes / [double]$lastDisk.live_bytes
+                $maximumDiskAmplification = [Math]::Max($maximumDiskAmplification, $ratio)
                 # A run_*.tmp file alone does not prove that compaction is in flight.
                 $reason = Get-Pb12DiagnosticDiskStop ([long]$lastDisk.live_bytes) ([long]$lastDisk.store_bytes) ([long]$lastDisk.compaction_temp_bytes) $false
                 if ($reason) { $stopReason = $reason; Stop-Pb12DiagnosticProcess $process }
                 Write-Monitor ([ordered]@{ event = 'disk'; utc = $now.ToString('o'); live_bytes = $lastDisk.live_bytes; store_bytes = $lastDisk.store_bytes; temporary_bytes = $lastDisk.compaction_temp_bytes; amplification = $ratio; scan_elapsed_ms = ($now - $diskStarted).TotalMilliseconds; stop_reason = $reason })
                 if ($reason) { break }
-            } elseif ($diskJob.State -notin @('NotStarted', 'Running') -or ($now - $diskStarted).TotalSeconds -gt 30) {
+            } elseif ($diskJobDecision.Action -eq 'Stop') {
                 $stopReason = 'disk telemetry failed or exceeded its observation deadline'
-                $jobState = [string]$diskJob.State
                 $jobErrors = @($diskJob.ChildJobs | ForEach-Object { $_.Error | ForEach-Object { $_.ToString() } })
+                $jobFailureReason = $null
+                if ($diskJob.ChildJobs.Count -gt 0 -and $null -ne $diskJob.ChildJobs[0].JobStateInfo.Reason) {
+                    $jobFailureReason = $diskJob.ChildJobs[0].JobStateInfo.Reason.ToString()
+                }
                 Stop-Pb12DiagnosticProcess $process
-                Write-Monitor ([ordered]@{ event = 'disk_monitor_stop'; utc = $now.ToString('o'); reason = $stopReason; job_state = $jobState; elapsed_ms = ($now - $diskStarted).TotalMilliseconds; errors = $jobErrors })
+                Write-Monitor ([ordered]@{ event = 'disk_monitor_stop'; utc = $now.ToString('o'); reason = $stopReason; job_state = $diskJobDecision.State; job_failure_reason = $jobFailureReason; elapsed_ms = ($now - $diskStarted).TotalMilliseconds; errors = $jobErrors })
                 break
             }
         }
@@ -226,7 +279,7 @@ try {
             $diskStarted = $now
             $lastDiskLaunch = $now
             $helper = Join-Path $PSScriptRoot 'pb12_diagnostic_storage.ps1'
-            $diskJob = Start-Job -ScriptBlock { param($helperPath, $storePath); . $helperPath; Get-StableExternalStorageUsage $storePath -AllowAbsentComponents } -ArgumentList $helper, $store
+            $diskJob = Start-Job -ScriptBlock { param($helperPath, $storePath); . $helperPath; Get-StableExternalStorageUsage $storePath -AllowAbsentComponents -RetryWindowMilliseconds 25000 } -ArgumentList $helper, $store
         }
         if (Test-Path -LiteralPath $checkpoint -PathType Leaf) {
             $info = Get-Item -LiteralPath $checkpoint
@@ -235,18 +288,30 @@ try {
                 $metadata = Get-Pb12CheckpointHeader $checkpoint
                 $after = Get-Item -LiteralPath $checkpoint
                 if ($after.Length -ne $info.Length -or $after.LastWriteTimeUtc -ne $info.LastWriteTimeUtc) { $stopReason = 'checkpoint changed during observation'; break }
+                $checkpointUsage = Get-StableExternalStorageUsage $store
+                $checkpointAmplification = [double]$checkpointUsage.store_bytes / [double]$checkpointUsage.live_bytes
+                $maximumDiskAmplification = [Math]::Max($maximumDiskAmplification, $checkpointAmplification)
+                $checkpointDiskStop = Get-Pb12DiagnosticDiskStop ([long]$checkpointUsage.live_bytes) ([long]$checkpointUsage.store_bytes) ([long]$checkpointUsage.compaction_temp_bytes) $false
+                Write-Monitor ([ordered]@{ event = 'checkpoint_size'; ordinal = ($checkpoints + 1); storage_generation = $metadata.training_generation; live_bytes = $checkpointUsage.live_bytes; store_bytes = $checkpointUsage.store_bytes; amplification = $checkpointAmplification })
+                if ($checkpointDiskStop) { $stopReason = $checkpointDiskStop; Stop-Pb12DiagnosticProcess $process; break }
                 $checkpoints++
+                Write-Monitor ([ordered]@{ event = 'checkpoint_observed'; ordinal = $checkpoints; utc = $now.ToString('o'); checkpoint_write_utc = $after.LastWriteTimeUtc.ToString('o'); storage_generation = $metadata.training_generation; store_batch = $metadata.committed_batch; live_bytes = $checkpointUsage.live_bytes })
                 if ($null -ne $previousCheckpointUtc) {
                     $duration = ($after.LastWriteTimeUtc - $previousCheckpointUtc).TotalMilliseconds
                     if ($duration -le 0) { $stopReason = 'checkpoint cycle telemetry invalid'; break }
-                    # Three batches produce at most two cycles. The P99 stop
-                    # cannot be established, so do not attach stale disk sizes.
-                    $cycles.Add([pscustomobject]@{ duration_ms = $duration; live_bytes = $null })
+                    $cycles.Add([pscustomobject]@{ duration_ms = $duration; live_bytes = [long]$checkpointUsage.live_bytes })
+                    Write-Monitor ([ordered]@{ event = 'checkpoint_cycle'; ordinal = $cycles.Count; duration_ms = $duration; live_bytes = [long]$checkpointUsage.live_bytes })
+                    $p99Stop = Get-Pb12DiagnosticP99Stop $cycles.ToArray()
+                    if ($null -ne $p99Stop) {
+                        $stopReason = $p99Stop.reason
+                        Write-Monitor ([ordered]@{ event = 'p99_stop'; utc = $now.ToString('o'); reason = $stopReason; evidence = $p99Stop.evidence })
+                        Stop-Pb12DiagnosticProcess $process
+                        break
+                    }
                 }
                 $previousCheckpointUtc = $after.LastWriteTimeUtc
                 $lastStamp = $stamp
                 $observedCheckpointGenerations[[string]$metadata.training_generation] = $true
-                Write-Monitor ([ordered]@{ event = 'checkpoint_observed'; ordinal = $checkpoints; utc = $now.ToString('o'); checkpoint_write_utc = $after.LastWriteTimeUtc.ToString('o'); storage_generation = $metadata.training_generation; store_batch = $metadata.committed_batch })
                 if ($stopReason) { break }
             }
         }
@@ -256,6 +321,12 @@ try {
     if ($stopReason) { Stop-Pb12DiagnosticProcess $process }
     else { $process.WaitForExit() }
     $process.Refresh()
+    if ($isF1Qualification) {
+        $bucketHashAfter = (Get-FileHash -LiteralPath $bucketPath -Algorithm SHA256).Hash
+        $bucketUnchanged = $bucketHashAfter -eq $evidence.bucket_sha256
+        Write-Monitor ([ordered]@{ event = 'bucket_artifact_integrity'; unchanged = $bucketUnchanged; sha256 = $bucketHashAfter })
+        if (-not $bucketUnchanged -and -not $stopReason) { $stopReason = 'bucket artifact changed during qualification' }
+    }
     if ($null -ne $stopReason) {
         try {
             do {
@@ -280,21 +351,28 @@ try {
         }
         $stopReason = Get-Pb12DiagnosticCompletionStop -ExitCode $process.ExitCode `
             -ExecutableUnchanged ((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -eq $binaryHash) `
-            -JournalComplete ($journalStarted -and $journalBatches -eq 3 -and $journalCheckpoints -eq 3 -and $journalState.Pending.Length -eq 0) `
-            -DiskAndCheckpointObservationsComplete ($null -ne $lastDisk -and $checkpoints -eq 3 -and $cycles.Count -eq 2) `
+            -JournalComplete ($journalStarted -and $journalBatches -eq $expectedBatches -and $journalCheckpoints -eq $expectedBatches -and $journalState.Pending.Length -eq 0) `
+            -DiskAndCheckpointObservationsComplete ($null -ne $lastDisk -and $checkpoints -eq $expectedBatches -and $cycles.Count -eq ($expectedBatches - 1)) `
             -JournalCheckpointsObserved $journalCheckpointsObserved
         $reportPath = Join-Path $runRoot 'report.json'
         if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
             if (-not $stopReason) { $stopReason = 'final training report is unavailable' }
         } else {
             $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
-            Write-Monitor ([ordered]@{ event = 'report'; sha256 = (Get-FileHash -LiteralPath $reportPath -Algorithm SHA256).Hash; batches = $report.batches; accepted_trajectories = $report.accepted_trajectories; discarded_trajectories = $report.discarded_trajectories; failed = $report.failed })
-            if (($report.batches -ne 3 -or $report.accepted_trajectories -ne 3000 -or $report.discarded_trajectories -ne 0 -or $report.failed) -and -not $stopReason) {
-                $stopReason = 'final report does not show three clean batches'
+            $policyInfo = Get-Item -LiteralPath (Join-Path $runRoot 'policy.mwfb') -ErrorAction SilentlyContinue
+            Write-Monitor ([ordered]@{ event = 'report'; sha256 = (Get-FileHash -LiteralPath $reportPath -Algorithm SHA256).Hash; batches = $report.batches; trajectories = $report.trajectories; accepted_trajectories = $report.accepted_trajectories; discarded_trajectories = $report.discarded_trajectories; failed = $report.failed; model_identity = $report.evidence.producer.model_identity; bucket_model_hash = $report.evidence.producer.bucket_model_hash; checkpoint_write_nanoseconds = $report.checkpoint_write_nanoseconds })
+            if (($report.batches -ne $expectedBatches -or $report.trajectories -ne $expectedTrajectories -or
+                    $report.accepted_trajectories -ne $expectedTrajectories -or $report.discarded_trajectories -ne 0 -or
+                    $report.failed -or [uint64]$report.evidence.producer.bucket_model_hash -eq [uint64]0 -or
+                    [uint64]$report.checkpoint_write_nanoseconds -eq [uint64]0 -or
+                    $null -eq $policyInfo -or $policyInfo.Length -le 0) -and -not $stopReason) {
+                $stopReason = 'final report does not show the configured clean trajectory count'
             }
         }
     }
-    Write-Monitor ([ordered]@{ event = 'end'; utc = [DateTime]::UtcNow.ToString('o'); reason = $stopReason; exit_code = $process.ExitCode; journal_batches = $journalBatches; journal_checkpoints = $journalCheckpoints; checkpoints_observed = $checkpoints; cycles_observed = $cycles.Count; p99_gate = 'inconclusive: fewer than three two-cycle cohorts' })
+    $p99Gate = if ($isF1Qualification -and $cycles.Count -ge 6 -and $null -eq (Get-Pb12DiagnosticP99Stop $cycles.ToArray())) { 'pass: three or more cohorts completed without three increasing cohorts' } elseif ($isF1Qualification) { 'fail: insufficient cohorts or increasing P99 cohorts' } else { 'inconclusive: bounded three-batch diagnostic' }
+    if ($isF1Qualification -and $null -eq $stopReason -and $cycles.Count -lt 6) { $stopReason = 'fewer than three complete checkpoint-cycle cohorts' }
+    Write-Monitor ([ordered]@{ event = 'end'; utc = [DateTime]::UtcNow.ToString('o'); reason = $stopReason; exit_code = $process.ExitCode; journal_batches = $journalBatches; journal_checkpoints = $journalCheckpoints; checkpoints_observed = $checkpoints; cycles_observed = $cycles.Count; p99_gate = $p99Gate; peak_working_set_bytes = $peakWorkingSetBytes; peak_private_commit_bytes = $peakPrivateCommitBytes; minimum_available_physical_bytes = $minimumAvailablePhysicalBytes; maximum_disk_amplification = $maximumDiskAmplification })
 } catch {
     if ($null -ne $process) { Stop-Pb12DiagnosticProcess $process }
     try { Write-Monitor ([ordered]@{ event = 'monitor_failure'; utc = [DateTime]::UtcNow.ToString('o'); error = $_.Exception.Message }) } catch { }
