@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## Standalone public types extraction
+
+**Status:** Complete
+**Completed:** 2026-10-31
+**Implementation commits:** `e20aa9c6` Types: Extract standalone value headers; `0ef3b50a` Types: Extract remaining planned structs; `1c6751e7` Types: Isolate the lightweight action ID; `85418045` Build: Export the standalone types target; `2f937bee` Types: Document extracted configuration fields
+
+- Extracted the plan’s value structs, enums and supporting identifiers into subsystem `*_types.hpp` headers, retaining namespaces, member order, defaults and old include paths.
+- Added `TexasSolver::types` as a C++17 interface target and linked `TexasSolver::texas` publicly to it without adding solver dependencies to the types target.
+- Kept the shared package export and Threads lookup; out-of-line operations still require the implementation library.
+
+### Files
+
+- `CMakeLists.txt`, `cmake/TexasSolverTargets.cmake`, `tests/cmake/test_cmake_structure.cmake`
+- `docs/PROJECT_GUIDE.md`, `docs/PLURIBUS_LOG.md`
+- `include/core/action_id.hpp`, `include/core/poker.hpp`, `include/core/street_types.hpp`, `include/core/types.hpp`, `include/core/value_types.hpp`
+- `include/games/hunl.hpp`, `include/games/hunl_action_types.hpp`, `include/games/hunl_flat_graph.hpp`, `include/games/hunl_flat_graph_types.hpp`, `include/games/hunl_terminal_types.hpp`, `include/games/hunl_tree.hpp`
+- `include/games/multiway_rake.hpp`, `include/games/multiway_rake_types.hpp`, `include/games/multiway_state.hpp`, `include/games/multiway_state_types.hpp`
+- `include/solver/hunl/flat/hunl_flat_state.hpp`, `include/solver/hunl/flat/hunl_flat_types.hpp`
+- `include/solver/hunl/sampled/hunl_sampled_config.hpp`, `include/solver/hunl/sampled/hunl_sampled_config_types.hpp`, `include/solver/hunl/sampled/hunl_sampled_export.hpp`, `include/solver/hunl/sampled/hunl_sampled_export_types.hpp`, `include/solver/hunl/sampled/hunl_sampled_profile.hpp`, `include/solver/hunl/sampled/hunl_sampled_profile_types.hpp`
+- `include/solver/multiway/abstraction/multiway_future_bucket.hpp`, `include/solver/multiway/abstraction/multiway_future_bucket_types.hpp`, `include/solver/multiway/abstraction/multiway_model_identity.hpp`, `include/solver/multiway/abstraction/multiway_model_identity_types.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_config.hpp`, `include/solver/multiway/blueprint/multiway_blueprint_config_types.hpp`
+
+### Validation
+
+- Static review only: inspected includes and type dependencies, declaration names/defaults/member order, compatibility entry points, target usage requirements, header installation registration, package export and dependency order, and final diffs.
+- `git diff --cached --check` passed for each staged change set.
+- No configuration, compilation, tests, installation, benchmarks, ABI comparison or solver jobs were run, as requested.
+
+### Limitations
+
+- Header compilation, installed consumer use and relocatability remain unverified. The package still finds Threads for types-only consumers, and calling out-of-line methods requires `TexasSolver::texas`.
 ## CTest failure scanner detection
 
 **Status:** Complete
