@@ -8,6 +8,7 @@
 
 namespace texas::solver::multiway
 {
+	// Fingerprints are stable FNV-1a identities, not security hashes.
 	/** @brief Combined identity of rules, abstractions, artifacts and runtime schemas. */
 	struct MultiwayModelIdentity
 	{
@@ -28,7 +29,9 @@ namespace texas::solver::multiway
 		/** @brief Checks component and combined fingerprints for consistency. */
 		void validate() const;
 
-		/** @brief Compares every component and the combined fingerprint. */
+		/** @brief Compares every component and the combined fingerprint.
+		 * @param other Identity to compare.
+		 */
 		constexpr bool operator==(const MultiwayModelIdentity& other) const noexcept
 		{
 			return rules_hash == other.rules_hash && rules_schema_hash == other.rules_schema_hash && action_abstraction_hash == other.action_abstraction_hash && bucket_model_hash == other.bucket_model_hash && terminal_model_hash == other.terminal_model_hash && resolver_schema_hash == other.resolver_schema_hash && code_schema_hash == other.code_schema_hash && range_semantics_hash == other.range_semantics_hash && future_bucket_model_hash == other.future_bucket_model_hash && off_tree_policy_hash == other.off_tree_policy_hash && continuation_policy_hash == other.continuation_policy_hash && runtime_search_schema_hash == other.runtime_search_schema_hash && combined_hash == other.combined_hash;
