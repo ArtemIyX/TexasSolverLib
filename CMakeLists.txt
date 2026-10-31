@@ -76,6 +76,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/namespaces.hpp
     include/core/poker.hpp
     include/core/portable_binary.hpp
+    include/core/street_types.hpp
     include/core/types.hpp
     include/core/value_types.hpp
     include/games/hunl.hpp
@@ -83,16 +84,20 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/games/hunl_eval.hpp
     include/games/hunl_flat_builder.hpp
     include/games/hunl_flat_graph.hpp
+    include/games/hunl_flat_graph_types.hpp
     include/games/hunl_solver.hpp
+    include/games/hunl_terminal_types.hpp
     include/games/hunl_tree.hpp
     include/games/kuhn.hpp
     include/games/leduc.hpp
     include/games/multiway_fixed.hpp
     include/games/multiway_private.hpp
     include/games/multiway_rake.hpp
+    include/games/multiway_rake_types.hpp
     include/games/multiway_replay.hpp
     include/games/multiway_rules.hpp
     include/games/multiway_state.hpp
+    include/games/multiway_state_types.hpp
     include/games/multiway_terminal.hpp
     include/preflop/preflop.hpp
     include/preflop/preflop_equity.hpp
@@ -120,6 +125,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_action_abstraction.hpp
     include/solver/multiway/blueprint/multiway_artifact.hpp
     include/solver/multiway/blueprint/multiway_blueprint_config.hpp
+    include/solver/multiway/blueprint/multiway_blueprint_config_types.hpp
     include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp
     include/solver/multiway/blueprint/multiway_blueprint_store.hpp
     include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp
@@ -156,6 +162,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/engine/multiway_allocation_probe.hpp
     include/solver/multiway/engine/multiway_worker_topology.hpp
     include/solver/multiway/abstraction/multiway_model_identity.hpp
+    include/solver/multiway/abstraction/multiway_model_identity_types.hpp
     include/solver/multiway/abstraction/multiway_public_builder.hpp
     include/solver/multiway/session/multiway_range_belief.hpp
     include/solver/multiway/session/multiway_range_update.hpp
