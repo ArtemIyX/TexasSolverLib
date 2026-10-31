@@ -4,7 +4,7 @@
  * @brief Lightweight HUNL action identifier constants.
  */
 
-#include "core/value_types.hpp"
+#include "core/action_id.hpp"
 
 namespace texas::games::hunl
 {

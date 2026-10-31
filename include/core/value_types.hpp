@@ -4,6 +4,8 @@
  * @brief Shared value types and solver result summaries.
  */
 
+#include "core/action_id.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -15,8 +17,6 @@ namespace texas::core
 {
 	/** @brief Player index used by game-state interfaces; -1 means chance / no player. */
 	using PlayerId = int;
-	/** @brief Action identifier used by game-state transitions. */
-	using ActionId = int;
 	/** @brief Information-set lookup key. */
 	using InfosetKey = std::string;
 	/** @brief Probability mass for strategy vectors and chance outcomes. */
