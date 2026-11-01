@@ -3,7 +3,48 @@
 Guidelines for LLM coding agents working in this repository.
 You are an assistant optimized for minimal token usage and concise communication.
 
-## Workflow rules
+## Agent workflow
+- Handle simple and tightly coupled tasks directly; do not spawn subagents by default.
+- For complex tasks, first identify dependencies, affected files, and acceptance tests.
+- Delegate bounded independent work to the available roles when useful.
+- Specify task, allowed scope, required context, expected artifacts and tests.
+- Avoid parallel edits to the same files; coordinate sequentially or use worktrees.
+- Have a separate reviewer validate risky changes when warranted.
+- Merge results only after tests and acceptance criteria pass.
+- Keep agent reports concise: changed paths, relevant evidence, failures, blockers.
+- Write a short durable handoff for unfinished multi-session work.
+
+### Available agents
+
+Project agent definitions live in `.codex/agents/` and are registered in
+`.codex/config.toml`. Select roles based on the task, not as a mandatory pipeline:
+
+| Agent | Use |
+| --- | --- |
+| `coordinator` | Scope substantial work, coordinate dependencies and ownership, and check acceptance. |
+| `explorer` | Read-only mapping of files, symbols, call paths, tests, and dependencies. |
+| `investigator` | Read-only root-cause investigation and architecture tradeoffs. |
+| `implementer` | Implement a bounded change and relevant tests. |
+| `build_repair` | Run requested builds and tests, repair failures, and rerun the requested scope. |
+| `reviewer` | Independently review changes for actionable defects without edits. |
+| `archivist` | Update assigned documentation, plans, and handoffs; create scoped commits when authorized. |
+
+The coordinator may create a narrowly scoped custom agent when existing roles do
+not fit. Default custom work to `gpt-6-luna` with `medium` reasoning when
+available; use another model or effort when the task warrants it. Provide scope,
+file ownership, constraints, authorized checks, and expected output. Avoid adding
+persistent agent files for one-off tasks unless reuse justifies them. Respect
+runtime delegation and permission rules. Subagents inherit the parent sandbox;
+read-only agent instructions do not enforce a separate sandbox. Run builds, tests,
+benchmarks, installs, or solver jobs only when explicitly authorized by the user.
+
+### Agent introduction
+
+At the start of each new task, each agent should introduce itself in its first
+message: `Hey. I'm [name]. Using [model] [effort]`. Use its assigned name, or
+`Codex` for the main agent. Report the actual model and reasoning effort only
+when known; use `unknown` for either value that is unavailable. Subagents should
+include this introduction in their first message to the coordinator.
 
 ### Skill-set
 
@@ -30,25 +71,6 @@ CMake edit is a small part of another task. Also apply it to related `.cmake`,
 This is required without an explicit skill invocation. For vendored CMake files,
 apply the skill's dependency guidance before deciding whether an edit is needed.
 
-### Scripts
-
-Use ``scripts/`` to streamline your work on the project.
-
-Use ``scripts/python/full_build.py`` to ensure that project compiles successfuly.
-
-|Script|When to use|
-|--------|-------|
-|scripts/codex_powershell.ps1|Execute any python script|
-|scripts/python/full_build.py|Execute compact build end-to-end|
-|scripts/python/cpp_file_summary.py|Retrieve information about cpp file|
-|scripts/python/extract_includes.py|Retrieve includes from cpp file|
-|scripts/python/extract_symbols.py|Retrieve symbols from cpp file|
-|scripts/python/list_recent_changes.py|List git changes|
-|scripts/python/cmake_summary.py|Retrieve information about CMakeLists|
-|scripts/python/compact_build.py|Run only build|
-|scripts/python/scan_build_errors.py|Scan compilation errors|
-|scripts/python/compact_ctest.py|Run only ctest|
-|scripts/python/scan_ctest_errors.py|Scan ctest errors|
 
 ## General rules
 

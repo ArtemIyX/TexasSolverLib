@@ -1,0 +1,36 @@
+model = "gpt-6.1-terra"
+model_reasoning_effort = "medium"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+default_subagent_model = "gpt-6-luna"
+default_subagent_reasoning_effort = "medium"
+
+[agents.coordinator]
+description = "Coordinate scoped work, delegation, integration, and acceptance."
+config_file = "agents/coordinator.toml"
+
+[agents.explorer]
+description = "Read-only exploration of code, call paths, tests, and dependencies."
+config_file = "agents/explorer.toml"
+
+[agents.investigator]
+description = "Investigate root causes and analyze architecture and design tradeoffs without edits."
+config_file = "agents/investigator.toml"
+
+[agents.implementer]
+description = "Implement scoped TexasSolver changes with focused skills and authorized verification."
+config_file = "agents/implementer.toml"
+
+[agents.build_repair]
+description = "Build and test the requested configuration, diagnose failures, and make focused repairs."
+config_file = "agents/build_repair.toml"
+
+[agents.reviewer]
+description = "Independently review changes for actionable defects without editing files."
+config_file = "agents/reviewer.toml"
+
+[agents.archivist]
+description = "Maintain documentation and handoffs; create focused commits when authorized."
+config_file = "agents/archivist.toml"
